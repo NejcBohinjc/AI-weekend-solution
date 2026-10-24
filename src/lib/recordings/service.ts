@@ -2,9 +2,9 @@
 // Admins record, import, transcribe and delete; admins and the meeting's invitees can play recordings
 // and read transcripts. The browser uploads each segment straight to Storage with a signed URL, then
 // confirms it here; a confirm is idempotent (unique recording + index), so retries never duplicate.
-import { and, asc, count, eq, inArray, sum } from "drizzle-orm";
+import { and, asc, count, eq, sum } from "drizzle-orm";
 import { db } from "@/db";
-import { meetings, recordings, recordingSegments, type Recording, type RecordingSegment } from "@/db/schema";
+import { meetings, members, recordings, recordingSegments, type Recording, type RecordingSegment } from "@/db/schema";
 import { canUseMeetingNotes } from "@/lib/ai/meeting-tasks-run";
 import { supabaseStore, type ObjectStore } from "@/lib/storage/supabase";
 import { DIRECT_IMPORT_TYPES, MAX_RECORDING_SECONDS, MAX_SEGMENT_BYTES, SEGMENT_SECONDS } from "./constants";
@@ -121,19 +121,35 @@ export async function deleteRecording(member: Member, recordingId: number, store
   await db.delete(recordings).where(eq(recordings.id, rec.id));
 }
 
-export type RecordingWithParts = Recording & { segments: RecordingSegment[] };
+export type RecordingWithParts = Recording & { segments: RecordingSegment[]; startedByName: string | null };
+
+/**
+ * A meeting's recordings with their parts and who started them, in two parallel queries. NO access check:
+ * the caller must already have established that the member is an admin or invited (the meeting page does,
+ * and starts this query early to save a round trip). Everyone else goes through recordingsForMeeting().
+ */
+export async function recordingsOfMeeting(meetingId: number): Promise<RecordingWithParts[]> {
+  const [recs, segs] = await Promise.all([
+    db
+      .select({ rec: recordings, startedByName: members.name })
+      .from(recordings)
+      .leftJoin(members, eq(recordings.startedById, members.id))
+      .where(eq(recordings.meetingId, meetingId))
+      .orderBy(asc(recordings.startedAt)),
+    db
+      .select({ seg: recordingSegments })
+      .from(recordingSegments)
+      .innerJoin(recordings, eq(recordingSegments.recordingId, recordings.id))
+      .where(eq(recordings.meetingId, meetingId))
+      .orderBy(asc(recordingSegments.index)),
+  ]);
+  return recs.map(({ rec, startedByName }) => ({ ...rec, startedByName, segments: segs.filter((s) => s.seg.recordingId === rec.id).map((s) => s.seg) }));
+}
 
 /** The meeting's recordings with their parts, for admins and invitees; nothing for anyone else. */
 export async function recordingsForMeeting(member: Member, meetingId: number): Promise<RecordingWithParts[]> {
   if (!(await canListen(member, meetingId))) return [];
-  const recs = await db.select().from(recordings).where(eq(recordings.meetingId, meetingId)).orderBy(asc(recordings.startedAt));
-  if (!recs.length) return [];
-  const segs = await db
-    .select()
-    .from(recordingSegments)
-    .where(inArray(recordingSegments.recordingId, recs.map((r) => r.id)))
-    .orderBy(asc(recordingSegments.index));
-  return recs.map((r) => ({ ...r, segments: segs.filter((s) => s.recordingId === r.id) }));
+  return recordingsOfMeeting(meetingId);
 }
 
 /** Short-lived download links for every part, in order (admins and invitees only). */

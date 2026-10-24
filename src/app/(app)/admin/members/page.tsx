@@ -7,8 +7,8 @@ import { requireAdmin } from "@/lib/auth";
 import { AccessStatus } from "./access-status";
 
 export default async function MembersPage() {
-  await requireAdmin();
-  const [rows, pending] = await Promise.all([
+  const [, rows, pending] = await Promise.all([
+    requireAdmin(),
     db
       .select({
         id: members.id,

@@ -8,9 +8,10 @@ const globalForDb = globalThis as unknown as { sql?: ReturnType<typeof postgres>
 const sql =
   globalForDb.sql ??
   postgres(process.env.DATABASE_URL!, {
-    // Small: Supabase's pooler (Supavisor, transaction mode) multiplexes these onto a few real connections,
-    // and every function instance has its own pool.
-    max: 5,
+    // Small, but at least as many as the widest page runs at once (analytics: about 8 queries while the
+    // session is checked): with fewer, the rest wait for a free connection, one more round trip each.
+    // Supabase's pooler (Supavisor, transaction mode) multiplexes these onto a few real connections.
+    max: 10,
     // The transaction pooler does not support prepared statements.
     prepare: false,
     // Serverless instances are frozen between requests: drop idle connections before the pooler does,

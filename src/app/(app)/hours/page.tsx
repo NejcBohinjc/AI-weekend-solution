@@ -2,7 +2,7 @@ import Link from "next/link";
 import { EntryList, WeekHistory, WeekProgress } from "@/components/hours";
 import { secondaryButtonClass } from "@/components/ui";
 import { requireMember } from "@/lib/auth";
-import { lastLocation, memberWeek, weeklyTotals } from "@/lib/hours/queries";
+import { lastLocation, memberWeekAndHistory } from "@/lib/hours/queries";
 import { formatWeek, isWeekStart, weekBounds, weekStartOf } from "@/lib/hours/time";
 import { TimerCard } from "./timer-card";
 
@@ -15,7 +15,7 @@ export default async function HoursPage({ searchParams }: { searchParams: Promis
   const thisWeek = weekStartOf(now);
   const week = sp.week && isWeekStart(sp.week) && sp.week <= thisWeek ? sp.week : thisWeek;
   const isThisWeek = week === thisWeek;
-  const [data, history, defaultLocation] = await Promise.all([memberWeek(me.id, week, now), weeklyTotals(me.id, thisWeek, 8, now), lastLocation(me.id)]);
+  const [{ data, history }, defaultLocation] = await Promise.all([memberWeekAndHistory(me.id, week, thisWeek, 8, now), lastLocation(me.id)]);
   const weekHref = (w: string) => (w === thisWeek ? "/hours" : `/hours?week=${w}`);
 
   return (

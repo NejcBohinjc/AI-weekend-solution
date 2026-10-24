@@ -7,7 +7,7 @@ import { secondaryButtonClass } from "@/components/ui";
 import { db } from "@/db";
 import { members } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
-import { memberWeek, weeklyTotals } from "@/lib/hours/queries";
+import { memberWeekAndHistory } from "@/lib/hours/queries";
 import { formatWeek, isWeekStart, weekBounds, weekStartOf } from "@/lib/hours/time";
 
 /** One member's hours, any week, with editing (admins can change any entry). */
@@ -18,20 +18,22 @@ export default async function AdminMemberHoursPage({
   params: Promise<{ memberId: string }>;
   searchParams: Promise<{ week?: string }>;
 }) {
-  const [admin, { memberId: rawId }, sp] = await Promise.all([requireAdmin(), params, searchParams]);
+  const [{ memberId: rawId }, sp] = await Promise.all([params, searchParams]);
   const id = Number(rawId);
   if (!Number.isInteger(id)) notFound();
-  const [member] = await db
-    .select({ id: members.id, name: members.name, tier: members.tier, weeklyHours: members.weeklyHours })
-    .from(members)
-    .where(eq(members.id, id))
-    .limit(1);
-  if (!member) notFound();
 
   const now = new Date();
   const thisWeek = weekStartOf(now);
   const week = sp.week && isWeekStart(sp.week) && sp.week <= thisWeek ? sp.week : thisWeek;
-  const [data, history] = await Promise.all([memberWeek(member.id, week, now), weeklyTotals(member.id, thisWeek, 8, now)]);
+  // The member, their week and their history only need the id from the URL, so all of it is fetched while
+  // the session is checked (one wait instead of three); for a non-admin requireAdmin() redirects and the
+  // results are dropped. An unknown id is a 404.
+  const [admin, [member], { data, history }] = await Promise.all([
+    requireAdmin(),
+    db.select({ id: members.id, name: members.name, tier: members.tier, weeklyHours: members.weeklyHours }).from(members).where(eq(members.id, id)).limit(1),
+    memberWeekAndHistory(id, week, thisWeek, 8, now),
+  ]);
+  if (!member) notFound();
   const weekHref = (w: string) => (w === thisWeek ? `/admin/hours/${member.id}` : `/admin/hours/${member.id}?week=${w}`);
   const here = weekHref(week);
 

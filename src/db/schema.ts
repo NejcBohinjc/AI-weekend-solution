@@ -137,6 +137,14 @@ export const tasks = pgTable(
   (t) => [
     uniqueIndex("tasks_source_key_idx").on(t.source, t.sourceKey),
     index("tasks_assignee_idx").on(t.assigneeId),
+    // "My open tasks" (dashboard, /tasks): by assignee, soonest due first.
+    index("tasks_open_assignee_idx")
+      .on(t.assigneeId, t.dueDate)
+      .where(sql`${t.deletedAt} is null and ${t.kind} = 'project' and ${t.status} <> 'done'`),
+    // Analytics: tasks created or finished since a date; and the tasks of a meeting.
+    index("tasks_created_idx").on(t.createdAt).where(sql`${t.deletedAt} is null`),
+    index("tasks_completed_idx").on(t.completedAt).where(sql`${t.completedAt} is not null`),
+    index("tasks_source_meeting_idx").on(t.sourceMeetingId).where(sql`${t.sourceMeetingId} is not null`),
   ],
 );
 
@@ -165,7 +173,11 @@ export const taskEvents = pgTable(
     newValue: text("new_value"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("task_events_task_idx").on(t.taskId, t.createdAt)],
+  (t) => [
+    index("task_events_task_idx").on(t.taskId, t.createdAt),
+    // Analytics "active this week": who changed a task from the app in a period.
+    index("task_events_activity_idx").on(t.createdAt).where(sql`${t.actorId} is not null and ${t.source} = 'app'`),
+  ],
 );
 
 // Background jobs (tasks sheet sync, hours sheet sync): a lease so only one runs at a time across
@@ -216,6 +228,8 @@ export const timeEntries = pgTable(
     // At most one running timer per member, so a double tap on Start cannot create two.
     uniqueIndex("time_entries_running_idx").on(t.memberId).where(sql`${t.endedAt} is null and ${t.deletedAt} is null`),
     index("time_entries_member_idx").on(t.memberId, t.startedAt),
+    // Entries of everyone in a period (admin "this week" table, analytics), without a member filter.
+    index("time_entries_started_idx").on(t.startedAt).where(sql`${t.deletedAt} is null`),
     index("time_entries_sheet_idx").on(t.sheetStatus),
     check("time_entries_end_after_start", sql`${t.endedAt} is null or ${t.endedAt} > ${t.startedAt}`),
   ],
@@ -284,7 +298,14 @@ export const attendance = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.meetingId, t.memberId] }), index("attendance_member_idx").on(t.memberId)],
+  (t) => [
+    primaryKey({ columns: [t.meetingId, t.memberId] }),
+    index("attendance_member_idx").on(t.memberId),
+    // Late notices waiting for an admin's decision (admin meetings page).
+    index("attendance_late_pending_idx")
+      .on(t.meetingId)
+      .where(sql`${t.state} = 'excused' and ${t.lateNotice} and ${t.lateDecision} is null`),
+  ],
 );
 
 export type Attendance = typeof attendance.$inferSelect;
@@ -333,14 +354,19 @@ export const meetingReminders = pgTable(
 );
 
 // One row per calendar import (file upload, calendar URL or seed), with the report.
-export const meetingImports = pgTable("meeting_imports", {
-  id: serial("id").primaryKey(),
-  actorId: integer("actor_id").references(() => members.id, { onDelete: "set null" }),
-  source: text("source", { enum: ["file", "url", "seed"] }).notNull(),
-  ok: boolean("ok").notNull(),
-  report: jsonb("report").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const meetingImports = pgTable(
+  "meeting_imports",
+  {
+    id: serial("id").primaryKey(),
+    actorId: integer("actor_id").references(() => members.id, { onDelete: "set null" }),
+    source: text("source", { enum: ["file", "url", "seed"] }).notNull(),
+    ok: boolean("ok").notNull(),
+    report: jsonb("report").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // The latest pull of the calendar is looked up on page views; the table gets a row per attempt.
+  (t) => [index("meeting_imports_source_idx").on(t.source, t.id)],
+);
 
 // Meeting notes or a transcript, pasted or uploaded by an attendee. Readable by that meeting's
 // invitees and admins only (enforced in the app).
@@ -383,7 +409,12 @@ export const aiTaskRuns = pgTable(
     outputTokens: integer("output_tokens"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("ai_task_runs_meeting_idx").on(t.meetingId, t.notesHash), index("ai_task_runs_member_idx").on(t.triggeredById, t.createdAt)],
+  (t) => [
+    index("ai_task_runs_meeting_idx").on(t.meetingId, t.notesHash),
+    index("ai_task_runs_member_idx").on(t.triggeredById, t.createdAt),
+    // "Is there a successful run for this note?" (notes waiting on the dashboard, per-note status).
+    index("ai_task_runs_note_idx").on(t.noteId),
+  ],
 );
 
 // One "Ask about a meeting" question: for the per-member rate limit and usage. The question and the
@@ -437,7 +468,7 @@ export const notifications = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     readAt: timestamp("read_at", { withTimezone: true }),
   },
-  (t) => [index("notifications_member_idx").on(t.memberId, t.readAt)],
+  (t) => [index("notifications_member_idx").on(t.memberId, t.readAt), index("notifications_member_created_idx").on(t.memberId, t.createdAt)],
 );
 
 // After a missed meeting (see GENERAL_TASK_AFTER): the member is asked to pick a general task.

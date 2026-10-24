@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { TierBadge } from "@/components/badges";
 import { LinkifiedText } from "@/components/linkified-text";
@@ -21,18 +21,20 @@ import { AddNotesSection, CreateTasksButton } from "../notes-ui";
 import { RecordingItem, type RecordingView } from "../recordings-ui";
 import { RecorderPanel } from "@/components/recorder/recorder-panel";
 import { transcribeEnabled } from "@/lib/ai/transcribe";
-import { recordingsForMeeting } from "@/lib/recordings/service";
+import { recordingsOfMeeting } from "@/lib/recordings/service";
 import { storageConfigured } from "@/lib/storage/supabase";
 
 // Transcribing a recording runs in the background after a server action on this page.
 export const maxDuration = 300;
 
 export default async function MeetingPage({ params }: { params: Promise<{ id: string }> }) {
-  const [me, { id: rawId }] = await Promise.all([requireMember(), params]);
-  syncCalendarInBackground();
+  const { id: rawId } = await params;
   const id = Number(rawId);
   if (!Number.isInteger(id)) notFound();
-  const [meeting, attendees, notes, runs, recs] = await Promise.all([
+  // Everything the page needs only depends on the id in the URL, so it is fetched while the session is
+  // checked (one wait instead of two). Nothing is shown before the invitee-or-admin check below.
+  const [me, meeting, attendees, notes, runs, recs] = await Promise.all([
+    requireMember(),
     meetingById(id),
     meetingAttendees(id),
     db
@@ -47,8 +49,9 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
       .leftJoin(members, eq(aiTaskRuns.triggeredById, members.id))
       .where(eq(aiTaskRuns.meetingId, id))
       .orderBy(desc(aiTaskRuns.id)),
-    recordingsForMeeting(me, id),
+    recordingsOfMeeting(id),
   ]);
+  syncCalendarInBackground();
   if (!meeting) notFound();
   const mine = attendees.find((a) => a.memberId === me.id);
   if (!mine && !me.isAdmin) notFound();
@@ -61,8 +64,6 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
   const summary = attendanceSummary(people.map((p) => p.effective));
   const unanswered = people.filter((p) => !p.state).length;
   const fmt = (d: Date) => d.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE });
-  const starterIds = [...new Set(recs.map((r) => r.startedById).filter((x): x is number => x !== null))];
-  const starters = starterIds.length ? await db.select({ id: members.id, name: members.name }).from(members).where(inArray(members.id, starterIds)) : [];
   const recordingViews: RecordingView[] = recs.map((r) => ({
     id: r.id,
     startedAt: r.startedAt.toISOString(),
@@ -71,7 +72,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
     error: r.error,
     source: r.source,
     fileName: r.fileName,
-    startedBy: starters.find((x) => x.id === r.startedById)?.name ?? null,
+    startedBy: r.startedByName,
     parts: r.segments.length,
     failedParts: r.segments.filter((g) => g.transcriptStatus === "failed").length,
     transcript: r.transcript,

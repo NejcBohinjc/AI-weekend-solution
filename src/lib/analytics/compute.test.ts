@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { computeAnalytics, type Data } from "./compute";
+import { weeklyHours, type Entry } from "./test-helpers";
 
 // Wednesday 28 Oct 2026, noon in Ljubljana (UTC+1 after the clock change on 25 Oct).
 const now = new Date("2026-10-28T11:00:00Z");
 const at = (iso: string) => new Date(iso);
 const h = (memberId: number, startIso: string, hours: number) => ({ memberId, startedAt: at(startIso), endedAt: new Date(at(startIso).getTime() + hours * 3_600_000) });
+
+const entries: Entry[] = [
+  h(1, "2026-10-26T08:00:00Z", 30), // this week: 30 of 70, pro-rated target ~ 70*0.36*0.75 -> on track
+  h(2, "2026-10-26T08:00:00Z", 0.5), // this week: behind
+  // last 4 weeks: Bor under 50% every week, Cene at target
+  ...["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19"].flatMap((d) => [h(2, `${d}T08:00:00Z`, 1), h(3, `${d}T08:00:00Z`, 10), h(1, `${d}T08:00:00Z`, 70)]),
+];
 
 const data: Data = {
   now,
@@ -15,12 +23,9 @@ const data: Data = {
     { id: 3, name: "Cene", tier: "Impact", weeklyHours: 10, active: true },
     { id: 4, name: "Gone", tier: "Impact", weeklyHours: 10, active: false },
   ],
-  entries: [
-    h(1, "2026-10-26T08:00:00Z", 30), // this week: 30 of 70, pro-rated target ~ 70*0.36*0.75 -> on track
-    h(2, "2026-10-26T08:00:00Z", 0.5), // this week: behind
-    // last 4 weeks: Bor under 50% every week, Cene at target
-    ...["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19"].flatMap((d) => [h(2, `${d}T08:00:00Z`, 1), h(3, `${d}T08:00:00Z`, 10), h(1, `${d}T08:00:00Z`, 70)]),
-  ],
+  hours: weeklyHours(entries, now),
+  firstEntryAt: new Date(Math.min(...entries.map((e) => e.startedAt.getTime()))),
+  anyAiTask: true,
   meetings: [
     { id: 10, title: "Grants", series: "Grants", startsAt: at("2026-10-01T15:00:00Z"), endsAt: at("2026-10-01T16:00:00Z"), status: "confirmed" },
     { id: 11, title: "Grants", series: "Grants", startsAt: at("2026-10-15T15:00:00Z"), endsAt: at("2026-10-15T16:00:00Z"), status: "confirmed" },
@@ -74,7 +79,7 @@ test("hours: this week per member sorted, and per week by tier", () => {
 test("office vs home: per week and per tier; entries without a location stay unspecified", () => {
   const withLocation: Data = {
     ...data,
-    entries: data.entries.map((e, i) => ({ ...e, location: i === 0 ? ("office" as const) : i === 1 ? ("home" as const) : null })),
+    hours: weeklyHours(entries.map((e, i) => ({ ...e, location: i === 0 ? ("office" as const) : i === 1 ? ("home" as const) : null })), now),
   };
   const a = computeAnalytics(withLocation, { tier: null, series: null, range: "4w" });
   assert.deepEqual(a.locationByWeek.at(-1), { week: "2026-10-26", office: 30, home: 0.5, unspecified: 0 });

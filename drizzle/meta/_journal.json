@@ -92,6 +92,13 @@
       "when": 1792867380696,
       "tag": "0012_unusual_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792872553637,
+      "tag": "0013_stale_chat",
+      "breakpoints": true
     }
   ]
 }

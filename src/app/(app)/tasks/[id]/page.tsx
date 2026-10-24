@@ -22,15 +22,17 @@ import { SyncStatus } from "../sync-status";
 import { TaskForm } from "../task-form";
 
 export default async function TaskPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string }> }) {
-  const [me, { id: rawId }, { created }] = await Promise.all([requireMember(), params, searchParams]);
+  const [{ id: rawId }, { created }] = await Promise.all([params, searchParams]);
   const id = Number(rawId);
   if (!Number.isInteger(id)) notFound();
-  after(runTasksSyncQuietly);
 
   const actor = aliasedTable(members, "actor");
   const creator = aliasedTable(members, "creator");
   const triggerer = aliasedTable(members, "triggerer");
-  const [[row], events, memberList, syncStatus] = await Promise.all([
+  // The task, its history and the member list only need the id from the URL: they are fetched while the
+  // session is checked. Nothing from them is shown before the permission checks below.
+  const [me, [row], events, memberList, syncStatus] = await Promise.all([
+    requireMember(),
     db
       .select({
         task: tasks,
@@ -55,6 +57,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
     activeMembers(),
     tasksSyncStatus(),
   ]);
+  after(runTasksSyncQuietly);
   if (!row || row.task.deletedAt) notFound();
   if (row.task.kind === "general") {
     const helpers = await db

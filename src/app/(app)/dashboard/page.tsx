@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gte, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
 import Link from "next/link";
 import { TierBadge } from "@/components/badges";
 import { WeekProgress } from "@/components/hours";
@@ -54,20 +54,21 @@ export default async function DashboardPage() {
   syncCalendarInBackground();
   const firstName = member.name.split(" ")[0];
   const now = new Date();
-  const [week, meetings, [openTasks], myOpen, defaultLocation, recordable, waitingNotes] = await Promise.all([
+  const [week, meetings, myOpen, defaultLocation, recordable, waitingNotes] = await Promise.all([
     memberWeek(member.id, weekStartOf(now), now),
     myMeetings(member.id),
+    // My open tasks, soonest due first, for one-tap ticking here: the five shown, and in the same query
+    // (window counts over all of them) the totals for the heading. Unconfirmed AI tasks are not counted as
+    // the member's tasks until they confirm them.
     db
       .select({
-        // Unconfirmed AI tasks are not counted as the member's tasks until they confirm them.
-        n: count(sql`case when ${or(eq(tasks.createdByAi, false), isNotNull(tasks.aiConfirmedAt))} then 1 end`),
-        review: count(sql`case when ${and(eq(tasks.createdByAi, true), isNull(tasks.aiConfirmedAt))} then 1 end`),
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        dueDate: tasks.dueDate,
+        n: sql<number>`(count(*) filter (where ${or(eq(tasks.createdByAi, false), isNotNull(tasks.aiConfirmedAt))}) over ())::int`,
+        review: sql<number>`(count(*) filter (where ${and(eq(tasks.createdByAi, true), isNull(tasks.aiConfirmedAt))}) over ())::int`,
       })
-      .from(tasks)
-      .where(and(eq(tasks.assigneeId, member.id), ne(tasks.status, "done"), isNull(tasks.deletedAt), eq(tasks.kind, "project"))),
-    // My open tasks, soonest due first, for one-tap ticking here.
-    db
-      .select({ id: tasks.id, title: tasks.title, status: tasks.status, dueDate: tasks.dueDate })
       .from(tasks)
       .where(and(eq(tasks.assigneeId, member.id), ne(tasks.status, "done"), isNull(tasks.deletedAt), eq(tasks.kind, "project")))
       .orderBy(sql`${tasks.dueDate} asc nulls last`, tasks.title)
@@ -76,6 +77,7 @@ export default async function DashboardPage() {
     member.isAdmin ? recordableMeetings(now) : null,
     aiEnabled() ? notesWaitingForTasks(member) : null,
   ]);
+  const openTasks = { n: myOpen[0]?.n ?? 0, review: myOpen[0]?.review ?? 0 };
   const confirmed = meetings.filter((r) => r.meeting.status === "confirmed");
   const happening = confirmed.filter((r) => meetingPhase(r.meeting, now) === "open");
   const next = confirmed.find((r) => meetingPhase(r.meeting, now) === "upcoming");

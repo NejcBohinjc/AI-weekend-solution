@@ -34,11 +34,11 @@ const h1 = (n: number) => (Math.round(n * 10) / 10).toLocaleString("en-GB");
 type Search = { tier?: string; series?: string; range?: string };
 
 export default async function AdminAnalyticsPage({ searchParams }: { searchParams: Promise<Search> }) {
-  await requireAdmin();
   const sp = await searchParams;
   const tier = (TIERS as readonly string[]).includes(sp.tier ?? "") ? (sp.tier as Tier) : null;
   const range: Range = sp.range === "8w" || sp.range === "all" ? sp.range : "4w";
-  const data = await loadAnalyticsData();
+  // The data only depends on the range in the URL, so it loads while the session is checked.
+  const [, data] = await Promise.all([requireAdmin(), loadAnalyticsData(new Date(), range)]);
   const allSeries = [...new Set(data.meetings.filter((m) => m.status === "confirmed").map((m) => m.series))].sort();
   const series = allSeries.includes(sp.series ?? "") ? sp.series! : null;
   const view = computeAnalytics(data, { tier, series, range });

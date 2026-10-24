@@ -14,12 +14,13 @@ import { RemindersPanel } from "./reminders-panel";
 type Search = { view?: string; series?: string };
 
 export default async function AdminMeetingsPage({ searchParams }: { searchParams: Promise<Search> }) {
-  await requireAdmin();
-  syncCalendarInBackground();
   const sp = await searchParams;
   const view = sp.view === "past" ? "past" : "upcoming";
   const now = new Date();
-  const [all, last, emails, bySeries, lastPull, lateNotices] = await Promise.all([
+  // The queries do not depend on who is asking, so they run while the session is being checked; if the
+  // member is not an admin, requireAdmin() redirects and their results are never used.
+  const [, all, last, emails, bySeries, lastPull, lateNotices] = await Promise.all([
+    requireAdmin(),
     meetingsWithCounts(now),
     lastMeetingImport(),
     recentEmails(),
@@ -27,6 +28,7 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
     lastCalendarSync(),
     pendingLateNotices(),
   ]);
+  syncCalendarInBackground();
   const auto = calendarUrl()
     ? { minutes: CALENDAR_SYNC_MINUTES, last: lastPull && { at: lastPull.at.toISOString(), ok: lastPull.ok, error: lastPull.error } }
     : null;

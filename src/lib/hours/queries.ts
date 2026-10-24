@@ -43,8 +43,32 @@ export function totalMs(entries: Pick<TimeEntry, "startedAt" | "endedAt">[], fro
 /** One member's week: its entries, total (also split by office / home / unspecified), and the running timer if any. */
 export async function memberWeek(memberId: number, weekStart: string, now: Date) {
   const { from, to } = weekBounds(weekStart);
-  const [entries, running] = await Promise.all([entriesBetween(memberId, from, to), runningEntry(memberId)]);
+  const entries = await entriesBetween(memberId, from, to);
+  // A running timer has no end, so it is in the entries of every week from the one it started in onwards:
+  // for the current week no second query is needed.
+  const running = from <= now && now < to ? (entries.find((e) => !e.endedAt) ?? null) : await runningEntry(memberId);
   return { entries, running, totalMs: totalMs(entries, from, to, now), byLocation: locationTotals(entries, from, to, now), from, to };
+}
+
+/**
+ * The selected week (as memberWeek) plus the totals of the last `count` weeks up to `lastWeek`, from ONE
+ * query of the member's entries: the selected week is nearly always one of those weeks.
+ */
+export async function memberWeekAndHistory(memberId: number, week: string, lastWeek: string, count: number, now: Date) {
+  const weeks = Array.from({ length: count }, (_, i) => addDays(lastWeek, -7 * i));
+  const oldest = weeks[count - 1] < week ? weeks[count - 1] : week; // ISO dates sort as text
+  const entries = await entriesBetween(memberId, weekBounds(oldest).from, weekBounds(lastWeek).to);
+  const { from, to } = weekBounds(week);
+  // Same rule as entriesBetween() for one week.
+  const inWeek = entries.filter((e) => e.startedAt < to && (!e.endedAt || e.endedAt > from));
+  // A running timer has no end, so the window always contains it.
+  const running = entries.find((e) => !e.endedAt) ?? null;
+  const data = { entries: inWeek, running, totalMs: totalMs(inWeek, from, to, now), byLocation: locationTotals(inWeek, from, to, now), from, to };
+  const history = weeks.map((w) => {
+    const b = weekBounds(w);
+    return { week: w, totalMs: totalMs(entries, b.from, b.to, now), byLocation: locationTotals(entries, b.from, b.to, now) };
+  });
+  return { data, history };
 }
 
 /** Totals for the last `count` weeks up to and including `lastWeek`, newest first. */

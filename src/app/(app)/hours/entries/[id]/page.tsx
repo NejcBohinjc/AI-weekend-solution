@@ -15,16 +15,20 @@ export default async function EditEntryPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ returnTo?: string }>;
 }) {
-  const [me, { id: rawId }, sp] = await Promise.all([requireMember(), params, searchParams]);
+  const [{ id: rawId }, sp] = await Promise.all([params, searchParams]);
   const id = Number(rawId);
   if (!Number.isInteger(id)) notFound();
 
-  const [row] = await db
-    .select({ entry: timeEntries, name: members.name })
-    .from(timeEntries)
-    .innerJoin(members, eq(timeEntries.memberId, members.id))
-    .where(and(eq(timeEntries.id, id), isNull(timeEntries.deletedAt)))
-    .limit(1);
+  // The entry is fetched while the session is checked; it is only shown if canEditEntry() allows it.
+  const [me, [row]] = await Promise.all([
+    requireMember(),
+    db
+      .select({ entry: timeEntries, name: members.name })
+      .from(timeEntries)
+      .innerJoin(members, eq(timeEntries.memberId, members.id))
+      .where(and(eq(timeEntries.id, id), isNull(timeEntries.deletedAt)))
+      .limit(1),
+  ]);
   const thisWeek = weekStartOf(new Date());
   if (!row || !row.entry.endedAt || !canEditEntry(me, row.entry, weekBounds(thisWeek).from)) notFound();
   const { entry } = row;
