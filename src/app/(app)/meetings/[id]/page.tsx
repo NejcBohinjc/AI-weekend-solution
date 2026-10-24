@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { TierBadge } from "@/components/badges";
 import { LinkifiedText } from "@/components/linkified-text";
@@ -18,13 +18,21 @@ import { adminMarkRestPresentAction, adminSetAttendanceAction, decideLateNoticeA
 import { AttendanceActions } from "../attendance-actions";
 import { addNoteAction, createTasksFromNotesAction } from "../notes-actions";
 import { AddNotesSection, CreateTasksButton } from "../notes-ui";
+import { RecordingItem, type RecordingView } from "../recordings-ui";
+import { RecorderPanel } from "@/components/recorder/recorder-panel";
+import { transcribeEnabled } from "@/lib/ai/transcribe";
+import { recordingsForMeeting } from "@/lib/recordings/service";
+import { storageConfigured } from "@/lib/storage/supabase";
+
+// Transcribing a recording runs in the background after a server action on this page.
+export const maxDuration = 300;
 
 export default async function MeetingPage({ params }: { params: Promise<{ id: string }> }) {
   const [me, { id: rawId }] = await Promise.all([requireMember(), params]);
   syncCalendarInBackground();
   const id = Number(rawId);
   if (!Number.isInteger(id)) notFound();
-  const [meeting, attendees, notes, runs] = await Promise.all([
+  const [meeting, attendees, notes, runs, recs] = await Promise.all([
     meetingById(id),
     meetingAttendees(id),
     db
@@ -39,6 +47,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
       .leftJoin(members, eq(aiTaskRuns.triggeredById, members.id))
       .where(eq(aiTaskRuns.meetingId, id))
       .orderBy(desc(aiTaskRuns.id)),
+    recordingsForMeeting(me, id),
   ]);
   if (!meeting) notFound();
   const mine = attendees.find((a) => a.memberId === me.id);
@@ -52,6 +61,25 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
   const summary = attendanceSummary(people.map((p) => p.effective));
   const unanswered = people.filter((p) => !p.state).length;
   const fmt = (d: Date) => d.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE });
+  const starterIds = [...new Set(recs.map((r) => r.startedById).filter((x): x is number => x !== null))];
+  const starters = starterIds.length ? await db.select({ id: members.id, name: members.name }).from(members).where(inArray(members.id, starterIds)) : [];
+  const recordingViews: RecordingView[] = recs.map((r) => ({
+    id: r.id,
+    startedAt: r.startedAt.toISOString(),
+    durationMs: r.durationMs,
+    status: r.status,
+    error: r.error,
+    source: r.source,
+    fileName: r.fileName,
+    startedBy: starters.find((x) => x.id === r.startedById)?.name ?? null,
+    parts: r.segments.length,
+    failedParts: r.segments.filter((g) => g.transcriptStatus === "failed").length,
+    transcript: r.transcript,
+    savedNote: r.savedNoteId !== null,
+    transcribedSeconds: r.transcribedSeconds,
+    transcribeModel: r.transcribeModel,
+    languages: r.languages,
+  }));
 
   return (
     <section className="flex max-w-2xl flex-col gap-6">
@@ -106,8 +134,24 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
+      {/* Recordings: admins record and manage them; invitees can listen and read the transcript. */}
+      {(me.isAdmin || recordingViews.length > 0) && (
+        <div id="recording" className="flex scroll-mt-28 flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="recordings">
+          <h2 className="font-semibold">{me.isAdmin ? "Record meeting" : "Recordings"}</h2>
+          {me.isAdmin && <RecorderPanel meetings={[{ id: meeting.id, title: meeting.title, label: meeting.title }]} initialId={meeting.id} storageReady={storageConfigured()} />}
+          {recordingViews.length > 0 && (
+            <div className="flex flex-col gap-3 border-t border-line pt-3">
+              {me.isAdmin && <h3 className="text-sm font-semibold text-subtle">Recordings</h3>}
+              {recordingViews.map((r) => (
+                <RecordingItem key={r.id} rec={r} meetingId={meeting.id} meetingTitle={meeting.title} isAdmin={me.isAdmin} transcribeReady={transcribeEnabled()} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Notes: this page is only shown to the meeting's invitees and admins. */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="meeting-notes">
+      <div id="notes" className="flex scroll-mt-28 flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="meeting-notes">
         <h2 className="font-semibold">Meeting notes</h2>
         {me.isAdmin && !aiEnabled() && (
           <p className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning">

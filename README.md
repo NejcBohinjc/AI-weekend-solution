@@ -76,6 +76,17 @@ On a meeting's page, attendees (and admins) can add the meeting notes or a trans
 
 **Ask about a meeting** (Meetings → ✦ Ask about a meeting, or the link under a meeting's notes): pick a meeting or a date, or just ask "what was discussed on 14 October?". The answer comes only from that meeting's stored notes, in the language of the question, with the lines it relied on quoted; if the notes don't say, it says so. Only the meeting's invitees and admins can ask; 10 questions per member per hour.
 
+## Meeting recorder (admins)
+
+On a meeting's page (or the dashboard, which picks the meeting happening now) admins can **record the meeting** in the browser, or import an audio file (mp3, m4a, wav, webm, ogg). Before recording, the admin confirms that everyone was told the meeting is recorded. The recording is encoded to MP3 in the browser (mono, 16 kHz, 32 kbps, about 14 MB an hour) in 10-minute parts; each part is uploaded as soon as it is done, straight from the browser to a private Supabase Storage bucket, so a crashed tab or a dead phone loses at most the current part, and the next visit offers to finish uploading what is left. A red "Recording" mark stays in the header on every page. Maximum 3 hours. On a phone, keep the screen on.
+
+Admins and the meeting's attendees can play recordings and download them as one MP3. With `OPENAI_API_KEY`, admins can **transcribe** a recording (Slovenian by default; part by part in the background, failed parts can be retried). The admin fixes the transcript and clicks **Save as meeting notes**; only then can tasks be created from it with "Create tasks from notes". Tasks are never created from a raw transcript.
+
+Setup (once):
+1. In Supabase: **Storage → New bucket**, name `meeting-recordings`, **Public: off** (private). No policies are needed: the app uses the service role key on the server and gives the browser short-lived signed upload/download links.
+2. In Vercel (Settings → Environment Variables): `SUPABASE_URL` (Project Settings → API → Project URL) and `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → API → service_role secret; server-side only, never prefix it with `NEXT_PUBLIC_`).
+3. Optional, for transcripts: `OPENAI_API_KEY` (platform.openai.com → API keys) and `TRANSCRIBE_MODEL` (default `gpt-transcribe`). The provider is behind one function, `src/lib/ai/transcribe.ts`.
+
 ## Licence
 
 MIT, see `LICENSE`.

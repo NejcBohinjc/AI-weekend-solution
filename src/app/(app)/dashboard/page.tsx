@@ -1,4 +1,4 @@
-import { and, count, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, gte, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
 import Link from "next/link";
 import { TierBadge } from "@/components/badges";
 import { WeekProgress } from "@/components/hours";
@@ -17,6 +17,27 @@ import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { TimerCard } from "../hours/timer-card";
 import { DoneToggle } from "../tasks/done-toggle";
 import { NowMeetingCard } from "../meetings/now-card";
+import { RecorderPanel } from "@/components/recorder/recorder-panel";
+import { meetings as meetingsTable } from "@/db/schema";
+import { aiEnabled } from "@/lib/ai/meeting-tasks";
+import { notesWaitingForTasks } from "@/lib/ai/pending-notes";
+import { storageConfigured } from "@/lib/storage/supabase";
+
+/** Meetings an admin may record from the dashboard: from two days ago to tomorrow; the one happening now first. */
+async function recordableMeetings(now: Date) {
+  const rows = await db
+    .select({ id: meetingsTable.id, title: meetingsTable.title, startsAt: meetingsTable.startsAt, endsAt: meetingsTable.endsAt })
+    .from(meetingsTable)
+    .where(and(eq(meetingsTable.status, "confirmed"), gte(meetingsTable.startsAt, new Date(now.getTime() - 2 * 86_400_000)), lte(meetingsTable.startsAt, new Date(now.getTime() + 86_400_000))))
+    .orderBy(asc(meetingsTable.startsAt));
+  const isNow = (m: (typeof rows)[number]) => m.startsAt.getTime() - 15 * 60_000 <= now.getTime() && now.getTime() <= m.endsAt.getTime();
+  const fmt = (d: Date) => d.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: TIMEZONE });
+  const list = rows.map((m) => ({ id: m.id, title: m.title, label: `${m.title} · ${fmt(m.startsAt)}${isNow(m) ? " (now)" : ""}`, now: isNow(m) }));
+  return { list: [...list.filter((m) => m.now), ...list.filter((m) => !m.now)], nowId: list.find((m) => m.now)?.id ?? null };
+}
+
+// Transcribing a recording (started from the dashboard's recorder) runs in the background.
+export const maxDuration = 300;
 
 function greeting(now: Date) {
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: TIMEZONE }).format(now));
@@ -33,7 +54,7 @@ export default async function DashboardPage() {
   syncCalendarInBackground();
   const firstName = member.name.split(" ")[0];
   const now = new Date();
-  const [week, meetings, [openTasks], myOpen, defaultLocation] = await Promise.all([
+  const [week, meetings, [openTasks], myOpen, defaultLocation, recordable, waitingNotes] = await Promise.all([
     memberWeek(member.id, weekStartOf(now), now),
     myMeetings(member.id),
     db
@@ -52,6 +73,8 @@ export default async function DashboardPage() {
       .orderBy(sql`${tasks.dueDate} asc nulls last`, tasks.title)
       .limit(5),
     lastLocation(member.id),
+    member.isAdmin ? recordableMeetings(now) : null,
+    aiEnabled() ? notesWaitingForTasks(member) : null,
   ]);
   const confirmed = meetings.filter((r) => r.meeting.status === "confirmed");
   const happening = confirmed.filter((r) => meetingPhase(r.meeting, now) === "open");
@@ -103,6 +126,30 @@ export default async function DashboardPage() {
           </ul>
         )}
       </div>
+      {waitingNotes && waitingNotes.total > 0 && (
+        <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4" data-testid="notes-waiting">
+          <span className="text-xs font-semibold uppercase tracking-wide text-subtle">Create tasks for meetings</span>
+          <span className="font-semibold">
+            {waitingNotes.total} meeting {waitingNotes.total === 1 ? "note is" : "notes are"} waiting for “Create tasks from notes”
+          </span>
+          <ul className="flex flex-col gap-1 text-sm">
+            {waitingNotes.meetings.slice(0, 4).map((m) => (
+              <li key={m.meetingId}>
+                <Link href={`/meetings/${m.meetingId}#notes`} className="text-fg-2 underline-offset-2 hover:underline">
+                  {m.title} · {m.startsAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: TIMEZONE })}
+                  {m.notes > 1 ? ` (${m.notes})` : ""}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {recordable && (
+        <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4" data-testid="record-card">
+          <span className="text-xs font-semibold uppercase tracking-wide text-subtle">Record meeting · admins</span>
+          <RecorderPanel meetings={recordable.list} initialId={recordable.nowId} storageReady={storageConfigured()} />
+        </div>
+      )}
       {next && (
         <Link href={`/meetings/${next.meeting.id}`} className="flex flex-col gap-1 rounded-xl border border-line bg-surface p-4 hover:bg-surface-2" data-testid="next-meeting">
           <span className="text-xs font-semibold uppercase tracking-wide text-subtle">Next meeting</span>

@@ -7,6 +7,8 @@ import { logoutAction } from "@/lib/auth/actions";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { UndoToastProvider } from "@/components/undo-toast";
 import { NotificationBell } from "@/components/notification-bell";
+import { RecorderProvider } from "@/components/recorder/recorder-provider";
+import { RecordingIndicator } from "@/components/recorder/recording-indicator";
 import { unreadCount } from "@/lib/notifications";
 import { themePref } from "@/lib/theme-server";
 
@@ -29,7 +31,7 @@ const ADMIN_NAV: NavItem[] = [
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const member = await requireMember();
 
-  return (
+  const page = (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-10 border-b border-line bg-surface/95 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2.5">
@@ -37,6 +39,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {APP_NAME}
           </Link>
           <div className="ml-auto flex min-w-0 items-center gap-2">
+            {member.isAdmin && <RecordingIndicator />}
             <span className="hidden truncate text-sm text-fg-2 sm:inline">{member.name}</span>
             {/* On phones the admin nav row already says ADMIN; the badge would push "Log out" off-screen. */}
             {member.isAdmin && (
@@ -71,4 +74,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </main>
     </div>
   );
+  // The meeting recorder lives here so a recording keeps running across pages. Admins only.
+  return member.isAdmin ? <RecorderProvider>{page}</RecorderProvider> : page;
 }
