@@ -40,6 +40,11 @@ export function findColumns(headerRow: Cell[]): { columns: Partial<Record<SheetF
   return { columns, missing };
 }
 
+/** The "id" column the two-way sync keeps the task keys in, or -1 if the sheet does not have one yet. */
+export function findIdColumn(headerRow: Cell[]): number {
+  return headerRow.map(normalizeText).indexOf("id");
+}
+
 // ---------- Status ----------
 
 const STATUS_WORDS: Record<TaskStatus, string[]> = {
@@ -68,6 +73,13 @@ export function mapStatus(raw: Cell): { status: TaskStatus; recognised: boolean 
   return status ? { status, recognised: true } : { status: "todo", recognised: false };
 }
 
+const STATUS_TEXT: Record<TaskStatus, string> = { todo: "to do", in_progress: "in progress", done: "done" };
+
+/** How the app writes a status into the sheet. */
+export function formatStatus(status: TaskStatus): string {
+  return STATUS_TEXT[status];
+}
+
 // ---------- Assignee ----------
 
 export type MemberRef = { id: number; name: string; email: string };
@@ -84,6 +96,26 @@ export function matchAssignee(raw: Cell, members: MemberRef[]): { memberId: numb
   if (matches.length === 1) return { memberId: matches[0].id };
   if (matches.length === 0) return { memberId: null, reason: "no member matches" };
   return { memberId: null, reason: `matches ${matches.length} members (${matches.map((m) => m.name).join(", ")})` };
+}
+
+export type AssigneeStyle = "email" | "first" | "full";
+
+/** Writes names the way the sheet already does: emails, first names or full names (by majority). */
+export function detectAssigneeStyle(raws: Cell[]): AssigneeStyle {
+  const values = raws.map((r) => String(r ?? "").trim()).filter(Boolean);
+  const emails = values.filter((v) => v.includes("@")).length;
+  const single = values.filter((v) => !v.includes("@") && !v.includes(" ")).length;
+  if (emails * 2 > values.length) return "email";
+  if (single * 2 > values.length) return "first";
+  return "full";
+}
+
+/** The sheet text for a member. A first name is used only if it still matches exactly one member. */
+export function formatAssignee(member: MemberRef, style: AssigneeStyle, members: MemberRef[]): string {
+  if (style === "email") return member.email;
+  const first = member.name.split(" ")[0];
+  if (style === "first" && matchAssignee(first, members).memberId === member.id) return first;
+  return member.name;
 }
 
 // ---------- Type ----------
@@ -156,6 +188,12 @@ export function parseDeadline(raw: Cell, today: string): { date: string | null; 
   }
 
   return { date: null, error: "not a date" };
+}
+
+/** How the app writes a due date into the sheet: "15.11.2026". */
+export function formatDeadline(date: string): string {
+  const [y, m, d] = date.split("-");
+  return `${d}.${m}.${y}`;
 }
 
 function orError(date: string | null): { date: string | null; error?: string } {

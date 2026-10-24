@@ -19,21 +19,22 @@ export function SheetPanel({ tab, pending, failed, lastError }: { tab: string; p
             {result
               ? `Sent ${result.synced} ${result.synced === 1 ? "entry" : "entries"}${result.failed ? `, ${result.failed} failed` : ""}.`
               : pending
-                ? `${pending} ${pending === 1 ? "entry is" : "entries are"} not in the sheet yet${failed ? ` (${failed} with errors)` : ""}.`
+                ? `${pending} ${pending === 1 ? "entry is" : "entries are"} not synced to the sheet${failed ? ` (${failed} with errors)` : ""}.`
                 : "Every finished entry is in the sheet."}{" "}
             Each entry is written when the timer stops.
           </p>
         </div>
-        {(pending > 0 || result) && (
+        {(pending > 0 || result || lastError) && (
           <form action={formAction}>
             <button type="submit" disabled={busy} className={secondaryButtonClass}>
-              {busy ? "Sending…" : "Send to sheet now"}
+              {busy ? "Retrying…" : "Retry sync to sheet"}
             </button>
           </form>
         )}
       </div>
       {error && (
         <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span className="font-semibold">Last error: </span>
           {error}
         </p>
       )}

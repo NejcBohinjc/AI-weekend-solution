@@ -1,6 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { after } from "next/server";
+import { runTasksSyncQuietly } from "@/lib/tasks/sheet-sync";
 import { signInWithPassword, signOut, startSession } from ".";
 import { checkPasswordRules } from "./password";
 import { setPasswordWithLink } from "./setup-links";
@@ -15,6 +17,8 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
     return { email, error: "Too many failed attempts. Please wait 15 minutes and try again." };
   }
   if (result === "invalid") return { email, error: "Invalid email or password" };
+  // Freshen tasks from the sheet in the background (skipped if the last sync is under a minute old).
+  after(runTasksSyncQuietly);
   redirect("/dashboard");
 }
 

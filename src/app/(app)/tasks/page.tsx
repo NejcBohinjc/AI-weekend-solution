@@ -1,18 +1,25 @@
 import { and, asc, desc, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import Link from "next/link";
+import { after } from "next/server";
 import { DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
 import { db } from "@/db";
 import { members, tasks, taskSyncs } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
 import { STATUS_LABELS, TASK_STATUSES, type TaskStatus } from "@/lib/tasks/constants";
+import { canEditTask } from "@/lib/tasks/permissions";
 import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
-import type { SyncReport } from "@/lib/tasks/sheet-sync";
-import { SyncPanel } from "./sync-panel";
+import { runTasksSyncQuietly, type SyncReport } from "@/lib/tasks/sheet-sync";
+import { tasksSyncStatus } from "@/lib/tasks/sync-status";
+import { finishTaskAction } from "./actions";
+import { SyncReportPanel } from "./sync-panel";
+import { SyncStatus } from "./sync-status";
 
 type Search = { view?: string; type?: string; status?: string };
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<Search> }) {
   const [me, sp] = await Promise.all([requireMember(), searchParams]);
+  // Background sync if the last one is over a minute old; the page never waits for it.
+  after(runTasksSyncQuietly);
   const view = sp.view === "all" ? "all" : "mine";
   const status = TASK_STATUSES.includes(sp.status as TaskStatus) ? (sp.status as TaskStatus) : undefined;
   const type = sp.type || undefined;
@@ -22,7 +29,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   if (status) where.push(eq(tasks.status, status));
   if (type) where.push(type === "none" ? isNull(tasks.type) : eq(tasks.type, type));
 
-  const [rows, types, lastSync] = await Promise.all([
+  const [rows, types, lastSync, syncStatus] = await Promise.all([
     db
       .select({
         id: tasks.id,
@@ -31,9 +38,10 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         type: tasks.type,
         dueDate: tasks.dueDate,
         assigneeRaw: tasks.assigneeRaw,
+        assigneeId: tasks.assigneeId,
+        createdById: tasks.createdById,
         assigneeName: members.name,
         inSheet: tasks.inSheet,
-        source: tasks.source,
       })
       .from(tasks)
       .leftJoin(members, eq(tasks.assigneeId, members.id))
@@ -48,6 +56,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           .orderBy(desc(taskSyncs.id))
           .limit(1)
       : Promise.resolve([]),
+    tasksSyncStatus(me.isAdmin),
   ]);
   const today = todayInLjubljana();
   const href = (patch: Search) => {
@@ -67,21 +76,27 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             {rows.length} {rows.length === 1 ? "task" : "tasks"}, {open} open
           </p>
         </div>
-        <nav aria-label="Task view" className="flex rounded-xl bg-slate-100 p-1 text-sm font-medium">
-          {(["mine", "all"] as const).map((v) => (
-            <Link
-              key={v}
-              href={href({ view: v })}
-              aria-current={view === v ? "page" : undefined}
-              className={`rounded-lg px-3 py-1.5 ${view === v ? "bg-white shadow-sm" : "text-slate-600"}`}
-            >
-              {v === "mine" ? "My tasks" : "All tasks"}
-            </Link>
-          ))}
-        </nav>
+        <div className="flex items-center gap-2">
+          <Link href="/tasks/new" className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-700">
+            New task
+          </Link>
+          <nav aria-label="Task view" className="flex rounded-xl bg-slate-100 p-1 text-sm font-medium">
+            {(["mine", "all"] as const).map((v) => (
+              <Link
+                key={v}
+                href={href({ view: v })}
+                aria-current={view === v ? "page" : undefined}
+                className={`rounded-lg px-3 py-1.5 ${view === v ? "bg-white shadow-sm" : "text-slate-600"}`}
+              >
+                {v === "mine" ? "My tasks" : "All tasks"}
+              </Link>
+            ))}
+          </nav>
+        </div>
       </div>
 
-      {me.isAdmin && <SyncPanel last={(lastSync[0]?.report as SyncReport) ?? null} lastBy={lastSync[0]?.by ?? null} />}
+      <SyncStatus initial={syncStatus} />
+      {me.isAdmin && lastSync[0] && <SyncReportPanel report={lastSync[0].report as SyncReport} by={lastSync[0].by ?? null} />}
 
       <div className="flex flex-col gap-2 text-sm">
         <FilterRow label="Type">
@@ -117,8 +132,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       ) : (
         <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="task-list">
           {rows.map((t) => (
-            <li key={t.id}>
-              <Link href={`/tasks/${t.id}`} className="flex flex-col gap-1.5 px-4 py-3 hover:bg-slate-50">
+            <li key={t.id} className="flex items-center">
+              <Link href={`/tasks/${t.id}`} className="flex min-w-0 flex-1 flex-col gap-1.5 px-4 py-3 hover:bg-slate-50">
                 <span className={`font-medium ${t.status === "done" ? "text-slate-500 line-through" : ""}`}>{t.title}</span>
                 <span className="flex flex-wrap items-center gap-2">
                   <StatusBadge status={t.status} />
@@ -131,11 +146,21 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                       </span>
                     )}
                   </span>
-                  {t.source === "gsheet" && !t.inSheet && me.isAdmin && (
-                    <span className="text-xs text-slate-400">no longer in sheet</span>
-                  )}
+                  {!t.inSheet && me.isAdmin && <span className="text-xs text-slate-400">no longer in sheet</span>}
                 </span>
               </Link>
+              {t.status !== "done" && canEditTask(me, t) && (
+                <form action={finishTaskAction.bind(null, t.id)} className="pr-3">
+                  <button
+                    type="submit"
+                    aria-label={`Mark “${t.title}” as done`}
+                    title="Mark as done"
+                    className="flex size-9 items-center justify-center rounded-full border border-slate-300 text-slate-500 hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
+                  >
+                    ✓
+                  </button>
+                </form>
+              )}
             </li>
           ))}
         </ul>

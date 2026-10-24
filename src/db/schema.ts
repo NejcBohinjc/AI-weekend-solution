@@ -94,8 +94,14 @@ export const tasks = pgTable(
     assigneeId: integer("assignee_id").references(() => members.id, { onDelete: "set null" }),
     type: text("type"), // normalised label, e.g. "marketing"
     dueDate: date("due_date"), // calendar date in Europe/Ljubljana
-    // Where the task came from: "app" or "gsheet". sourceKey identifies the sheet row (see lib/tasks/sheet-sync.ts).
+    createdById: integer("created_by_id").references(() => members.id, { onDelete: "set null" }),
+    // Where the task came from: "app" or "gsheet".
     source: text("source").notNull().default("app"),
+    // The task's key in the sheet's "id" column; null until the sync has given it one.
+    sheetKey: text("sheet_key").unique(),
+    // The task's fields as the sheet held them after the last sync (the base of the three-way merge).
+    sheetSnapshot: jsonb("sheet_snapshot").$type<TaskSheetSnapshot>(),
+    // Legacy row key from before the id column (normalised title + occurrence); matches rows that have no id yet.
     sourceKey: text("source_key"),
     sheetRow: integer("sheet_row"),
     inSheet: boolean("in_sheet").notNull().default(true),
@@ -103,7 +109,7 @@ export const tasks = pgTable(
     assigneeRaw: text("assignee_raw"),
     typeRaw: text("type_raw"),
     deadlineRaw: text("deadline_raw"),
-    // Fields an admin changed in the app; sheet syncs never overwrite these.
+    // Legacy (read-only import): fields an admin changed in the app. Only used to migrate to the two-way sync.
     lockedFields: text("locked_fields").array().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -115,6 +121,13 @@ export const tasks = pgTable(
 );
 
 export type Task = typeof tasks.$inferSelect;
+export type TaskSheetSnapshot = {
+  title: string;
+  status: (typeof TASK_STATUSES)[number];
+  assigneeId: number | null;
+  type: string | null;
+  dueDate: string | null;
+};
 
 // Task history: one row per creation or per changed field. actorId null means the sheet sync did it.
 export const taskEvents = pgTable(
@@ -126,7 +139,7 @@ export const taskEvents = pgTable(
       .references(() => tasks.id, { onDelete: "cascade" }),
     actorId: integer("actor_id").references(() => members.id, { onDelete: "set null" }),
     source: text("source", { enum: ["app", "sheet_sync"] }).notNull(),
-    kind: text("kind", { enum: ["created", "updated"] }).notNull(),
+    kind: text("kind", { enum: ["created", "updated", "conflict"] }).notNull(),
     field: text("field"),
     oldValue: text("old_value"),
     newValue: text("new_value"),
@@ -134,6 +147,17 @@ export const taskEvents = pgTable(
   },
   (t) => [index("task_events_task_idx").on(t.taskId, t.createdAt)],
 );
+
+// Background jobs (tasks sheet sync, hours sheet sync): a lease so only one runs at a time across
+// serverless instances, plus when it last ran and how it went.
+export const syncState = pgTable("sync_state", {
+  name: text("name").primaryKey(),
+  runningSince: timestamp("running_since", { withTimezone: true }),
+  lastStartedAt: timestamp("last_started_at", { withTimezone: true }),
+  lastFinishedAt: timestamp("last_finished_at", { withTimezone: true }),
+  lastOk: boolean("last_ok"),
+  lastError: text("last_error"),
+});
 
 // One row per "Sync from Google Sheets" run, with the full report.
 export const taskSyncs = pgTable("task_syncs", {

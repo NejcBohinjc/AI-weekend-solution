@@ -93,7 +93,7 @@ function EntryRow({ entry: e, viewer, editable, returnTo, now }: { entry: TimeEn
     e.source === "manual" && "added by hand",
     e.source === "seed" && "imported",
     e.editedById && "changed by an admin",
-    e.endedAt && e.sheetStatus === "pending" && (viewer.isAdmin && e.sheetError ? "not in the sheet yet (error)" : "not in the sheet yet"),
+    e.endedAt && e.sheetStatus === "pending" && (viewer.isAdmin && e.sheetError ? "not synced to the sheet (error)" : "not synced to the sheet"),
   ].filter(Boolean);
 
   return (
