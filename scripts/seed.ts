@@ -1,12 +1,16 @@
 // Loads sandbox data from data/ into the database. Safe to re-run (upserts by email).
 import "dotenv/config";
+import { readFileSync } from "node:fs";
 import ExcelJS from "exceljs";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../src/db";
-import { members, timeEntries, TIERS, type Tier } from "../src/db/schema";
+import { attendance, meetings, members, timeEntries, TIERS, type Tier } from "../src/db/schema";
 import { hashPassword } from "../src/lib/auth/password";
 import { PASSWORD_MIN_LENGTH } from "../src/lib/auth/password-rules";
-import { addDays, ljubljanaToUtc } from "../src/lib/hours/time";
+import { addDays, ljubljanaParts, ljubljanaToUtc } from "../src/lib/hours/time";
+import { ATTENDANCE_STATES, type AttendanceState } from "../src/lib/meetings/constants";
+import { parseIcs } from "../src/lib/meetings/ics";
+import { importMeetings, importWindow } from "../src/lib/meetings/import";
 
 async function readSheet(path: string): Promise<Record<string, unknown>[]> {
   const wb = new ExcelJS.Workbook();
@@ -98,9 +102,53 @@ async function seedHours() {
   console.log(`hours: ${rows.length} weekly totals -> ${values.length} entries`);
 }
 
+// Meetings come from data/meetings.ics, the same way an admin imports a calendar export.
+async function seedMeetings() {
+  const { meetings: parsed, skipped } = parseIcs(readFileSync("data/meetings.ics", "utf8"), {
+    from: new Date("2000-01-01T00:00:00Z"),
+    to: importWindow().to,
+  });
+  const report = await importMeetings(parsed, { source: "seed", actorId: null, skipped });
+  console.log(`meetings: ${report.meetings} (${report.invites} invitations, ${report.unknownEmails.length} unknown emails)`);
+}
+
+// attendance.xlsx has one row per member per past meeting; a meeting is found by series and date.
+// Re-running updates seeded rows only, never what members or admins recorded.
+async function seedAttendance() {
+  const rows = await readSheet("data/attendance.xlsx");
+  const ids = new Map((await db.select({ id: members.id, email: members.email }).from(members)).map((m) => [m.email, m.id]));
+  const byKey = new Map(
+    (await db.select({ id: meetings.id, series: meetings.series, startsAt: meetings.startsAt }).from(meetings)).map((m) => [
+      `${m.series}|${ljubljanaParts(m.startsAt).date}`,
+      m.id,
+    ]),
+  );
+  const values = rows.map((r) => {
+    const key = `${r.series}|${(r.date as Date).toISOString().slice(0, 10)}`;
+    const meetingId = byKey.get(key);
+    const memberId = ids.get(String(r.email).toLowerCase());
+    const state = String(r.state) as AttendanceState;
+    if (!meetingId) throw new Error(`attendance.xlsx: no meeting for ${key}`);
+    if (!memberId) throw new Error(`attendance.xlsx: no member with email ${r.email}`);
+    if (!ATTENDANCE_STATES.includes(state)) throw new Error(`attendance.xlsx: unknown state "${state}"`);
+    return { meetingId, memberId, state, source: "seed" as const };
+  });
+  await db
+    .insert(attendance)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [attendance.meetingId, attendance.memberId],
+      set: { state: sql`excluded.state`, updatedAt: new Date() },
+      setWhere: sql`${attendance.source} = 'seed'`,
+    });
+  console.log(`attendance: ${values.length} records`);
+}
+
 async function main() {
   await seedMembers();
   await seedHours();
+  await seedMeetings();
+  await seedAttendance();
   process.exit(0);
 }
 

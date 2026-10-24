@@ -5,6 +5,8 @@ const PUBLIC_PATHS = new Set(["/login", "/set-password"]);
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  // Scheduled jobs authenticate with CRON_SECRET in the route itself, not with a session.
+  if (pathname.startsWith("/api/cron/")) return NextResponse.next();
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   const session = token ? await validateSessionToken(token) : null;
 

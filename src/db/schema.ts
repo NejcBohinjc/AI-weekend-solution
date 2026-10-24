@@ -1,6 +1,26 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  date,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  serial,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { SHEET_STATUSES, TIME_ENTRY_SOURCES } from "../lib/hours/constants";
+import {
+  ATTENDANCE_SOURCES,
+  ATTENDANCE_STATES,
+  DEFAULT_REMINDER_MINUTES,
+  EMAIL_STATUSES,
+  MEETING_STATUSES,
+} from "../lib/meetings/constants";
 import { TASK_STATUSES } from "../lib/tasks/constants";
 import { TIERS } from "../lib/tiers"; // relative: drizzle-kit does not resolve the @/ alias
 
@@ -156,3 +176,113 @@ export const timeEntries = pgTable(
 );
 
 export type TimeEntry = typeof timeEntries.$inferSelect;
+
+// Meetings, imported read-only from the Google Calendar's iCal (.ics) export (see lib/meetings/ics.ts).
+// uid is the event UID; an occurrence of a recurring event gets "<UID>#<start in UTC>".
+export const meetings = pgTable(
+  "meetings",
+  {
+    id: serial("id").primaryKey(),
+    uid: text("uid").notNull().unique(),
+    title: text("title").notNull(),
+    series: text("series").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    location: text("location"),
+    status: text("status", { enum: MEETING_STATUSES }).notNull().default("confirmed"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("meetings_starts_idx").on(t.startsAt)],
+);
+
+export type Meeting = typeof meetings.$inferSelect;
+
+// Who is invited, matched by email to members. Replaced on every import.
+export const meetingInvites = pgTable(
+  "meeting_invites",
+  {
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.meetingId, t.memberId] }), index("meeting_invites_member_idx").on(t.memberId)],
+);
+
+// Attendance someone recorded. No row for a meeting that has ended means "unexcused" (see lib/meetings/rules.ts).
+export const attendance = pgTable(
+  "attendance",
+  {
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    state: text("state", { enum: ATTENDANCE_STATES }).notNull(),
+    note: text("note"), // the reason given with an excuse
+    source: text("source", { enum: ATTENDANCE_SOURCES }).notNull(),
+    setById: integer("set_by_id").references(() => members.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.meetingId, t.memberId] }), index("attendance_member_idx").on(t.memberId)],
+);
+
+export type Attendance = typeof attendance.$inferSelect;
+
+// A member's reminder choices. No row means the defaults (1 day and 10 minutes before, by email).
+export const reminderSettings = pgTable("reminder_settings", {
+  memberId: integer("member_id")
+    .primaryKey()
+    .references(() => members.id, { onDelete: "cascade" }),
+  emailEnabled: boolean("email_enabled").notNull().default(true),
+  minutesBefore: integer("minutes_before").array().notNull().default(DEFAULT_REMINDER_MINUTES),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Every email the app produced. "logged" means it was not sent because no SMTP server is configured.
+export const emailLog = pgTable(
+  "email_log",
+  {
+    id: serial("id").primaryKey(),
+    memberId: integer("member_id").references(() => members.id, { onDelete: "set null" }),
+    to: text("to").notNull(),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    status: text("status", { enum: EMAIL_STATUSES }).notNull(),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("email_log_created_idx").on(t.createdAt)],
+);
+
+// Reminders already handled, one row per meeting, member and "minutes before", so none is sent twice.
+export const meetingReminders = pgTable(
+  "meeting_reminders",
+  {
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    minutesBefore: integer("minutes_before").notNull(),
+    emailId: integer("email_id").references(() => emailLog.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.meetingId, t.memberId, t.minutesBefore] })],
+);
+
+// One row per calendar import (file upload, calendar URL or seed), with the report.
+export const meetingImports = pgTable("meeting_imports", {
+  id: serial("id").primaryKey(),
+  actorId: integer("actor_id").references(() => members.id, { onDelete: "set null" }),
+  source: text("source", { enum: ["file", "url", "seed"] }).notNull(),
+  ok: boolean("ok").notNull(),
+  report: jsonb("report").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

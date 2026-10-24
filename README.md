@@ -46,6 +46,14 @@ Members press **Start** when they begin and **Stop** when they finish (on **Hour
 
 Every finished entry is also written to the tab `Ure dela` of the same Google Sheet (columns oseba, dan začetka, ura začetka, dan konca, ura konca, id), so the sheet must be shared with the service account as **Editor**. The app is the source of truth; make corrections in the app, not in the sheet. Set `GOOGLE_SHEET_HOURS_TAB` if the tab has another name. To make sure the app cannot change anything else, protect the other tabs (**Data → Protect sheets and ranges**) so the service account cannot edit them.
 
+## Meetings, attendance and reminders
+
+Meetings come from the Google Calendar (read-only). Each member sees the meetings they are invited to on **Meetings** (invitees are matched by email), checks in as present or remote from 15 minutes before the start, or sends an excuse with a reason. Whoever did neither counts as unexcused once the meeting is over. Admins import the calendar and record or correct anyone's attendance on **Admin → Meetings** (with "mark the others present" and a member × series table).
+
+- **Calendar:** upload an .ics export (Google Calendar → Settings → Import & export → Export) on Admin → Meetings, or set `MEETINGS_ICS_URL` to the calendar's *Secret address in iCal format* to sync hourly and with a button. `npm run db:seed` imports `data/meetings.ics` and `data/attendance.xlsx`.
+- **Reminders by email:** 1 day and 10 minutes before by default; each member chooses on the Meetings page. Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` (e.g. a Google Workspace account with an app password). Without SMTP, reminders are only recorded and shown on Admin → Meetings. `MAIL_REDIRECT_TO` sends every email to one address, for demos.
+- **Scheduled job:** set `CRON_SECRET` and call `GET /api/cron/reminders` with header `Authorization: Bearer <CRON_SECRET>` every 5 minutes, for example with a free [cron-job.org](https://cron-job.org) job (Vercel Cron on the Hobby plan runs only once a day, too rarely for 10-minute reminders). Locally: `npm run reminders -- --watch`.
+
 ## Licence
 
 MIT, see `LICENSE`.

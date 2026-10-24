@@ -39,9 +39,16 @@ Extras (gamification, Slack, Jarvis agent) count **only after all three areas wo
 - The brief mentions "ten project names" in the sandbox package. **They were not in our zip.** Ask in the WhatsApp group; until then seed 10 plausible placeholder project names and mark them clearly as placeholders.
 - Seeding note: hours.xlsx has weekly totals only. The product needs individual hour entries, so seed each weekly total as one entry dated that week and let members add more.
 
-## Calendar access
+## Calendar access and meetings
 
-Import `data/meetings.ics` into a Google Calendar called "Sandbox", make it public, copy the Calendar ID, and read events with a Google API key (no OAuth needed). Cache events in the database so the app stays fast and works if the API is slow. Reading from Google is the source of truth; sync on a schedule and on demand.
+Meetings are read from the Google Calendar's iCal (.ics) export, never written. Code: `src/lib/meetings/` (`ics.ts` parses with ical.js, `import.ts` saves, `rules.ts` attendance/reminder rules, `reminders.ts` sends; `ics.test.ts` and `rules.test.ts`), pages `src/app/(app)/meetings/` and `src/app/(app)/admin/meetings/`.
+
+- Sources: admin uploads an .ics file on `/admin/meetings` (Google Calendar → Settings → Import & export → Export), or `MEETINGS_ICS_URL` (the calendar's "Secret address in iCal format") is synced at most hourly by the scheduled job and on demand. The seed imports `data/meetings.ics`. Cached in `meetings` so the app is fast; Google stays the source of truth.
+- Parsing: UID (recurring occurrences `UID#<start UTC>`, expanded from 6 months back to 1 year ahead), TZID/VTIMEZONE (unknown zones read as Europe/Ljubljana), EXDATE, moved occurrences, STATUS:CANCELLED. Series = `Series:` line in DESCRIPTION, else CATEGORIES, else title. Invitees = `Members:` line in DESCRIPTION plus ATTENDEE emails, matched to members by email (unknown emails reported).
+- Re-import is idempotent (matched by UID; invites replaced; attendance untouched; a moved meeting gets its reminders again). A whole-calendar import (URL, or file with the box ticked) marks future meetings missing from it `removed` (hidden, kept).
+- Attendance (`attendance`): `present` / `remote` by the member during check-in (15 min before start to 15 min after end); `excused` with a reason until 24 h after the end; no record once check-in has closed = **unexcused** (derived, not stored). Admins set any state any time, "mark the others present", and their record locks it for the member. `attendance.xlsx` is seeded (`source = seed`).
+- Reminders: by email, default 1 day and 10 minutes before; each member picks from 1 week, 3 days, 1 day, 3 h, 1 h, 30 min, 10 min, or turns them off (`reminder_settings`). The scheduled job `GET /api/cron/reminders` (header `Authorization: Bearer CRON_SECRET`, every 5 min from any scheduler) sends what is due; `meeting_reminders` makes it idempotent; no reminder after the start or for an excused meeting. Locally: `npm run reminders -- --watch`.
+- Email: SMTP via nodemailer (`src/lib/email.ts`). Without `SMTP_HOST` nothing is sent, emails are only recorded in `email_log` (shown on `/admin/meetings`). `MAIL_REDIRECT_TO` sends every email to one address (demo/testing). Sandbox addresses do not exist, so never send to them for real.
 
 ## Google Sheets task import
 
@@ -67,11 +74,11 @@ Clockify-style: Start/Stop on `/hours` and the dashboard, plus manual entries. C
 - Next.js (App Router, TypeScript) + Tailwind
 - Postgres (Neon or Supabase free tier) with Drizzle ORM and migrations
 - Deploy on Vercel (public URL)
-- Login: email + password, own implementation in `src/lib/auth/` (argon2id via `@node-rs/argon2`, database sessions in an httpOnly/secure/sameSite=lax cookie, failed-login rate limit in Postgres: 5 per email, 20 per IP per 15 min). Only active members sign in; admin flag read from `members` on every request. No email service: admins generate one-time setup/reset links on `/admin/members` (hashed, single-use, 7 days). Bootstrap the first admin with `npm run create-admin -- <email> "<name>"`. Middleware runs on the Node.js runtime and checks the session in the database.
+- Login: email + password, own implementation in `src/lib/auth/` (argon2id via `@node-rs/argon2`, database sessions in an httpOnly/secure/sameSite=lax cookie, failed-login rate limit in Postgres: 5 per email, 20 per IP per 15 min). Only active members sign in; admin flag read from `members` on every request. Login does not use email (email is only for meeting reminders): admins generate one-time setup/reset links on `/admin/members` (hashed, single-use, 7 days). Bootstrap the first admin with `npm run create-admin -- <email> "<name>"`. Middleware runs on the Node.js runtime and checks the session in the database.
 
 ## Environment variables (names only, document each in the infra page)
 
-`DATABASE_URL`, `APP_URL` (public base URL, used in setup links), `DEMO_MODE` (`true` only for the sandbox demo: seed sets every member's password to `DEMO_PASSWORD` and `/login` shows demo-account buttons), `DEMO_PASSWORD` (min 10 chars), `GOOGLE_CALENDAR_ID`, `GOOGLE_API_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_TASKS_TAB` (default `List1`), `GOOGLE_SHEET_HOURS_TAB` (default `Ure dela`), `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (PEM with `\n` for newlines; the sheet must be shared with the service account as Editor, because hours are written to it).
+`DATABASE_URL`, `APP_URL` (public base URL, used in setup links), `DEMO_MODE` (`true` only for the sandbox demo: seed sets every member's password to `DEMO_PASSWORD` and `/login` shows demo-account buttons), `DEMO_PASSWORD` (min 10 chars), `MEETINGS_ICS_URL` (optional, the calendar's secret iCal address), `CRON_SECRET` (protects `/api/cron/reminders`), `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `MAIL_REDIRECT_TO` (optional), `GOOGLE_CALENDAR_ID`, `GOOGLE_API_KEY` (both unused since meetings come from the iCal export), `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_TASKS_TAB` (default `List1`), `GOOGLE_SHEET_HOURS_TAB` (default `Ure dela`), `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (PEM with `\n` for newlines; the sheet must be shared with the service account as Editor, because hours are written to it).
 Optional (AI): `ANTHROPIC_API_KEY`. Optional (Slack extras): `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`.
 
 ## Build order (finish each step before the next; commit and push after each)

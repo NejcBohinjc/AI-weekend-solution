@@ -7,7 +7,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["@node-rs/argon2"],
+  serverExternalPackages: ["@node-rs/argon2", "nodemailer"],
+  // Admins upload calendar exports (.ics) through a server action; a year of meetings can exceed the 1 MB default.
+  experimental: { serverActions: { bodySizeLimit: "5mb" } },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
