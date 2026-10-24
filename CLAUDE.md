@@ -103,6 +103,13 @@ Optional (AI): `ANTHROPIC_API_KEY` (turns on "Create tasks from notes"; server-s
 - Idempotent: identical notes reuse the stored items of the earlier run (`ai_task_runs`, no second API call); every created item is recorded per meeting by normalised title + assignee (`ai_task_items`), so reruns never duplicate and a deleted AI task is never recreated. Rate limit: 5 API runs per member per hour.
 - AI tasks: `created_by_ai`, `source_meeting_id`, `source_quote`, `ai_model`, `triggered_by_id` (created_by_id stays null), `ai_confirmed_at`. Badge "AI" / "AI, confirmed" everywhere; the assignee reviews (Confirm / edit / reassign / Delete). Deletion is soft (`deleted_at`); the sheet sync removes the row. Unconfirmed AI tasks are not counted in a member's numbers. They sync to the sheet like any task; the sheet carries no AI marker.
 
+## Admin analytics (`/admin/analytics`)
+
+- Data: `src/lib/analytics/load.ts` (rows, server-only) + `compute.ts` (pure, tested in `compute.test.ts`). No API endpoint: the admin-only page computes everything on the server; middleware returns 403 to members.
+- Same rules as the rest of the app: `weekPace()` for on track (pro-rated), `effectiveState()` (unanswered past meeting = unexcused) and `attendanceSummary()` for rates. Unconfirmed AI tasks and deleted tasks are never counted.
+- Filters (URL): tier, meeting series, range (4 weeks / 8 weeks / all, max 26). Drifting = under 50% of target in 2+ of the last 4 full weeks, or 2+ unexcused in the last 6 meetings.
+- Charts are plain SVG (`src/components/charts.tsx`), colours from `--viz-*` tokens validated for colour-blind safety in both themes; every chart has a title, a text summary, a tooltip on hover/focus and a table view.
+
 ## Theme (light / dark)
 
 - All colours are design tokens (CSS variables) in `src/app/globals.css`, light values on `:root`, dark on `[data-theme="dark"]`, exposed to Tailwind via `@theme inline` (`bg-surface`, `text-muted`, `border-line`, `bg-success-bg text-success`, ...). Never use raw palette classes (`bg-white`, `text-slate-600`, `bg-red-50`); add a token instead. Every text/background token pair passes WCAG AA (4.5:1) in both themes.

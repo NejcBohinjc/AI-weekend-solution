@@ -56,6 +56,15 @@
   --orange-bg: #fff7ed;
   --orange: #9a3412;
   --orange-line: #fdba74;
+
+  /* Charts (validated with the dataviz palette checker: CVD-safe, all pairs, both modes) */
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-neutral: #cbd5e1;
+  --viz-grid: #e2e8f0;
+  --viz-axis: #cbd5e1;
+  --viz-cell-ink: #0b0b0b; /* letters inside coloured cells */
 }
 
 [data-theme="dark"] {
@@ -108,6 +117,14 @@
   --orange-bg: #2e1a0b;
   --orange: #fdba74;
   --orange-line: #7a3d14;
+
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-neutral: #3d3d4a;
+  --viz-grid: #26262e;
+  --viz-axis: #3d3d4a;
+  --viz-cell-ink: #0b0b0b;
 }
 
 /* Tailwind utilities for the tokens: bg-surface, text-muted, border-line, bg-success-bg, ... */
