@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { meetingWhen, SeriesBadge } from "@/components/meetings";
+import { ABSENCE_NOTICE_HOURS } from "@/lib/absence-rules";
 import { TIMEZONE } from "@/lib/app";
 import { requireAdmin } from "@/lib/auth";
 import { emailSettings } from "@/lib/email";
 import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
 import { CALENDAR_SYNC_MINUTES, calendarUrl, lastCalendarSync } from "@/lib/meetings/import";
-import { attendanceBySeries, lastMeetingImport, meetingsWithCounts, recentEmails } from "@/lib/meetings/queries";
+import { attendanceBySeries, lastMeetingImport, meetingsWithCounts, pendingLateNotices, recentEmails } from "@/lib/meetings/queries";
 import { attendanceSummary, meetingPhase } from "@/lib/meetings/rules";
 import { ImportPanel } from "./import-panel";
 import { RemindersPanel } from "./reminders-panel";
@@ -18,12 +19,13 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
   const sp = await searchParams;
   const view = sp.view === "past" ? "past" : "upcoming";
   const now = new Date();
-  const [all, last, emails, bySeries, lastPull] = await Promise.all([
+  const [all, last, emails, bySeries, lastPull, lateNotices] = await Promise.all([
     meetingsWithCounts(now),
     lastMeetingImport(),
     recentEmails(),
     attendanceBySeries(now),
     lastCalendarSync(),
+    pendingLateNotices(),
   ]);
   const auto = calendarUrl()
     ? { minutes: CALENDAR_SYNC_MINUTES, last: lastPull && { at: lastPull.at.toISOString(), ok: lastPull.ok, error: lastPull.error } }
@@ -56,6 +58,27 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
           {all.length} meetings in {seriesList.length} series · open a meeting to record attendance
         </p>
       </div>
+
+      {lateNotices.length > 0 && (
+        <section className="flex flex-col gap-2 rounded-xl border border-warning-line bg-warning-bg p-4" data-testid="late-notices">
+          <h2 className="font-semibold text-warning">Late notices to decide ({lateNotices.length})</h2>
+          <p className="text-sm text-fg-2">
+            Excuses sent less than {ABSENCE_NOTICE_HOURS} h before the start. They count as unexcused until you accept them on the meeting page.
+          </p>
+          <ul className="divide-y divide-warning-line text-sm">
+            {lateNotices.map((n) => (
+              <li key={`${n.meetingId}:${n.memberId}`} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span>
+                  <span className="font-medium">{n.name}</span> · {n.note ? `“${n.note}”` : "no reason"}
+                </span>
+                <Link href={`/meetings/${n.meetingId}`} className="font-medium text-link underline underline-offset-2">
+                  {n.title}, {n.startsAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: TIMEZONE })} →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ImportPanel last={last?.report ?? null} lastBy={last?.by ?? null} auto={auto} />

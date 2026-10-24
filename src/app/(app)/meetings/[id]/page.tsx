@@ -13,7 +13,8 @@ import { ATTENDANCE_STATES, STATE_LABELS } from "@/lib/meetings/constants";
 import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
 import { meetingAttendees, meetingById } from "@/lib/meetings/queries";
 import { attendanceSummary, effectiveState, meetingPhase, memberActions } from "@/lib/meetings/rules";
-import { adminMarkRestPresentAction, adminSetAttendanceAction, setMyAttendanceAction } from "../actions";
+import { noticeHint } from "@/lib/meetings/absence";
+import { adminMarkRestPresentAction, adminSetAttendanceAction, decideLateNoticeAction, setMyAttendanceAction } from "../actions";
 import { AttendanceActions } from "../attendance-actions";
 import { addNoteAction, createTasksFromNotesAction } from "../notes-actions";
 import { AddNotesSection, CreateTasksButton } from "../notes-ui";
@@ -46,7 +47,8 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
   const now = new Date();
   const phase = meetingPhase(meeting, now);
   const cancelled = meeting.status !== "confirmed";
-  const people = attendees.map((a) => ({ ...a, effective: effectiveState(a.state, meeting, now) }));
+  const lateOf = (a: { lateNotice: boolean | null; lateDecision: "accepted" | "rejected" | null }) => ({ lateNotice: !!a.lateNotice, lateDecision: a.lateDecision });
+  const people = attendees.map((a) => ({ ...a, effective: effectiveState(a.state, meeting, now, lateOf(a)) }));
   const summary = attendanceSummary(people.map((p) => p.effective));
   const unanswered = people.filter((p) => !p.state).length;
   const fmt = (d: Date) => d.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE });
@@ -81,7 +83,14 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
         <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm" data-testid="my-attendance">
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-semibold">Your attendance</h2>
-            {!cancelled && <AttendanceBadge state={effectiveState(mine.state, meeting, now)} />}
+            {!cancelled &&
+              (mine.state === "excused" && mine.lateNotice ? (
+                <span className="rounded-full bg-warning-bg px-2 py-0.5 text-xs font-medium text-warning ring-1 ring-inset ring-warning-line">
+                  Late notice{mine.lateDecision === "accepted" ? ": accepted" : mine.lateDecision === "rejected" ? ": not accepted" : ": waiting for an admin"}
+                </span>
+              ) : (
+                <AttendanceBadge state={effectiveState(mine.state, meeting, now, lateOf(mine))} />
+              ))}
           </div>
           <AttendanceActions
             action={setMyAttendanceAction.bind(null, meeting.id)}
@@ -89,7 +98,8 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
             note={mine.note}
             can={memberActions({ ...meeting, cancelled }, now)}
             lockedByAdmin={mine.source === "admin"}
-          />
+            noticeHint={noticeHint(meeting.startsAt, now)}
+            />
           {!cancelled && phase === "upcoming" && (
             <p className="text-xs text-subtle">Check-in opens 15 minutes before the start. If you don&apos;t check in or send an excuse, you count as unexcused.</p>
           )}
@@ -156,6 +166,30 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
                   <span className="truncate font-medium">{p.name}</span>
                   {me.isAdmin && <TierBadge tier={p.tier} />}
                 </span>
+                {me.isAdmin && p.state === "excused" && p.lateNotice && (
+                  <span className="flex flex-wrap items-center gap-2 text-xs" data-testid="late-notice">
+                    <span className="rounded-full bg-warning-bg px-2 py-0.5 font-semibold text-warning ring-1 ring-inset ring-warning-line">
+                      Late notice{p.noticeAt ? `, sent ${fmt(p.noticeAt)}` : ""}
+                    </span>
+                    {p.lateDecision ? (
+                      <span className="text-muted">{p.lateDecision === "accepted" ? "Accepted as excused" : "Counts as unexcused"}</span>
+                    ) : (
+                      <>
+                        <span className="text-muted">Counts as unexcused until you decide:</span>
+                        <form action={decideLateNoticeAction.bind(null, meeting.id, p.memberId, "accepted")}>
+                          <button type="submit" className="rounded-lg bg-surface px-2 py-1 font-medium text-fg-2 ring-1 ring-inset ring-line hover:bg-surface-2">
+                            Accept as excused
+                          </button>
+                        </form>
+                        <form action={decideLateNoticeAction.bind(null, meeting.id, p.memberId, "rejected")}>
+                          <button type="submit" className="rounded-lg bg-surface px-2 py-1 font-medium text-fg-2 ring-1 ring-inset ring-line hover:bg-surface-2">
+                            Count as unexcused
+                          </button>
+                        </form>
+                      </>
+                    )}
+                  </span>
+                )}
                 {me.isAdmin && p.state && (
                   <span className="text-xs text-subtle">
                     {p.note && `“${p.note}” · `}
@@ -171,8 +205,8 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
                       type="submit"
                       name="state"
                       value={s}
-                      aria-pressed={p.effective === s}
-                      className={`rounded-lg px-2 py-1 text-xs font-medium ring-1 ring-inset ${p.effective === s ? "bg-primary text-on-primary ring-primary" : "bg-surface text-fg-2 ring-line hover:bg-surface-2"}`}
+                      aria-pressed={(p.state ?? p.effective) === s}
+                      className={`rounded-lg px-2 py-1 text-xs font-medium ring-1 ring-inset ${(p.state ?? p.effective) === s ? "bg-primary text-on-primary ring-primary" : "bg-surface text-fg-2 ring-line hover:bg-surface-2"}`}
                     >
                       {STATE_LABELS[s]}
                     </button>

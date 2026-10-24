@@ -19,7 +19,7 @@ export type Data = {
   entries: { memberId: number; startedAt: Date; endedAt: Date | null }[];
   meetings: { id: number; title: string; series: string; startsAt: Date; endsAt: Date; status: string }[];
   invites: { meetingId: number; memberId: number }[];
-  attendance: { meetingId: number; memberId: number; state: AttendanceState }[];
+  attendance: { meetingId: number; memberId: number; state: AttendanceState; lateNotice?: boolean; lateDecision?: "accepted" | "rejected" | null }[];
   tasks: {
     id: number;
     assigneeId: number | null;
@@ -76,9 +76,13 @@ export function computeAnalytics(d: Data, f: Filters) {
   });
 
   // ---- Attendance ----
-  const stateOf = new Map(d.attendance.map((a) => [`${a.meetingId}:${a.memberId}`, a.state]));
+  const rowOf = new Map(d.attendance.map((a) => [`${a.meetingId}:${a.memberId}`, a]));
   const invitedTo = (meetingId: number) => d.invites.filter((i) => i.meetingId === meetingId && ids.has(i.memberId)).map((i) => i.memberId);
-  const effective = (m: Data["meetings"][number], memberId: number) => effectiveState(stateOf.get(`${m.id}:${memberId}`), m, now);
+  // A late notice counts as unexcused until an admin accepts it.
+  const effective = (m: Data["meetings"][number], memberId: number) => {
+    const a = rowOf.get(`${m.id}:${memberId}`);
+    return effectiveState(a?.state, m, now, a ? { lateNotice: !!a.lateNotice, lateDecision: a.lateDecision ?? null } : null);
+  };
   const past = (m: Data["meetings"][number]) => m.endsAt <= now;
 
   const series = [...new Set(meetingsShown.map((m) => m.series))].sort();

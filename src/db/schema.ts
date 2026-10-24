@@ -22,6 +22,7 @@ import {
   MEETING_STATUSES,
 } from "../lib/meetings/constants";
 import { TASK_STATUSES } from "../lib/tasks/constants";
+import { LATE_DECISIONS, TASK_KINDS } from "../lib/absence-rules";
 import { TIERS } from "../lib/tiers"; // relative: drizzle-kit does not resolve the @/ alias
 
 export { TIER_HOURS, TIERS, type Tier } from "../lib/tiers";
@@ -90,6 +91,10 @@ export const tasks = pgTable(
   {
     id: serial("id").primaryKey(),
     title: text("title").notNull(),
+    // "project" tasks are the normal ones; "general" tasks are standing tasks members pick after missing
+    // a meeting (never done, not synced to the sheet; see lib/absence-rules.ts).
+    kind: text("kind", { enum: TASK_KINDS }).notNull().default("project"),
+    description: text("description"),
     status: text("status", { enum: TASK_STATUSES }).notNull().default("todo"),
     assigneeId: integer("assignee_id").references(() => members.id, { onDelete: "set null" }),
     type: text("type"), // normalised label, e.g. "marketing"
@@ -153,7 +158,7 @@ export const taskEvents = pgTable(
       .references(() => tasks.id, { onDelete: "cascade" }),
     actorId: integer("actor_id").references(() => members.id, { onDelete: "set null" }),
     source: text("source", { enum: ["app", "sheet_sync", "ai"] }).notNull(),
-    kind: text("kind", { enum: ["created", "updated", "conflict", "confirmed", "deleted", "reopened"] }).notNull(),
+    kind: text("kind", { enum: ["created", "updated", "conflict", "confirmed", "deleted", "reopened", "picked"] }).notNull(),
     field: text("field"),
     oldValue: text("old_value"),
     newValue: text("new_value"),
@@ -264,6 +269,13 @@ export const attendance = pgTable(
       .references(() => members.id, { onDelete: "cascade" }),
     state: text("state", { enum: ATTENDANCE_STATES }).notNull(),
     note: text("note"), // the reason given with an excuse
+    // An excuse sent less than ABSENCE_NOTICE_HOURS before the start: counts as unexcused until an
+    // admin accepts it (late_decision "accepted").
+    lateNotice: boolean("late_notice").notNull().default(false),
+    noticeAt: timestamp("notice_at", { withTimezone: true }),
+    lateDecision: text("late_decision", { enum: LATE_DECISIONS }),
+    lateDecidedById: integer("late_decided_by_id").references(() => members.id, { onDelete: "set null" }),
+    lateDecidedAt: timestamp("late_decided_at", { withTimezone: true }),
     source: text("source", { enum: ATTENDANCE_SOURCES }).notNull(),
     setById: integer("set_by_id").references(() => members.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -386,4 +398,43 @@ export const aiTaskItems = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("ai_task_items_key_idx").on(t.meetingId, t.itemKey)],
+);
+
+// In-app notifications. Each one belongs to one member and is only ever shown to that member, so
+// nothing admin-only may go into the text.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    text: text("text").notNull(),
+    link: text("link"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (t) => [index("notifications_member_idx").on(t.memberId, t.readAt)],
+);
+
+// After a missed meeting (see GENERAL_TASK_AFTER): the member is asked to pick a general task.
+export const generalTaskRequests = pgTable(
+  "general_task_requests",
+  {
+    id: serial("id").primaryKey(),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(), // "unexcused", "late notice not accepted", ...
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    pickedTaskId: integer("picked_task_id").references(() => tasks.id, { onDelete: "set null" }),
+    pickedAt: timestamp("picked_at", { withTimezone: true }),
+    // The absence was changed (e.g. to present) before a task was picked.
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("general_task_requests_member_meeting_idx").on(t.memberId, t.meetingId)],
 );

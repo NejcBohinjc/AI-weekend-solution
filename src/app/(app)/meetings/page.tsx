@@ -12,7 +12,7 @@ export default async function MeetingsPage() {
   syncCalendarInBackground();
   const now = new Date();
   const [rows, settings] = await Promise.all([myMeetings(me.id), reminderSettingsFor(me.id)]);
-  const list = rows.map((r) => ({ ...r, phase: meetingPhase(r.meeting, now), effective: effectiveState(r.state, r.meeting, now) }));
+  const list = rows.map((r) => ({ ...r, phase: meetingPhase(r.meeting, now), effective: effectiveState(r.state, r.meeting, now, { lateNotice: !!r.lateNotice, lateDecision: r.lateDecision }) }));
   const happening = list.filter((r) => r.phase === "open" && r.meeting.status === "confirmed");
   const upcoming = list.filter((r) => r.phase === "upcoming");
   const past = list.filter((r) => r.phase === "past").reverse();

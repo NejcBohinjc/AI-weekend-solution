@@ -13,21 +13,59 @@ import { runTasksSyncQuietly, type SyncReport } from "@/lib/tasks/sheet-sync";
 import { tasksSyncStatus } from "@/lib/tasks/sync-status";
 import { DoneToggle } from "./done-toggle";
 import { SyncReportPanel } from "./sync-panel";
+import { GeneralTasks } from "./general-tasks";
 import { SyncStatus } from "./sync-status";
 
-type Search = { view?: string; type?: string; status?: string; deleted?: string };
+type Search = { view?: string; type?: string; status?: string; deleted?: string; tab?: string; picked?: string; error?: string };
+
+/** My tasks / All tasks / General tasks. General tasks are a separate tab, never mixed into project tasks. */
+function TaskTabs({ current, href }: { current: "mine" | "all" | "general"; href: (v: "mine" | "all") => string }) {
+  const tabs = [
+    { key: "mine", label: "My tasks", href: href("mine") },
+    { key: "all", label: "All tasks", href: href("all") },
+    { key: "general", label: "General tasks", href: "/tasks?tab=general" },
+  ] as const;
+  return (
+    <nav aria-label="Task view" className="flex rounded-xl bg-surface-3 p-1 text-sm font-medium">
+      {tabs.map((t) => (
+        <Link
+          key={t.key}
+          href={t.href}
+          aria-current={current === t.key ? "page" : undefined}
+          className={`whitespace-nowrap rounded-lg px-3 py-1.5 ${current === t.key ? "bg-surface shadow-sm" : "text-muted"}`}
+        >
+          {t.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<Search> }) {
   const [me, sp] = await Promise.all([requireMember(), searchParams]);
   // Background sync if the last one is over a minute old; the page never waits for it.
   after(runTasksSyncQuietly);
   const view = sp.view === "all" ? "all" : "mine";
+  if (sp.tab === "general") {
+    return (
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">General tasks</h1>
+            <p className="text-sm text-muted">Standing tasks anyone can help with.</p>
+          </div>
+          <TaskTabs current="general" href={(v) => (v === "all" ? "/tasks?view=all" : "/tasks")} />
+        </div>
+        <GeneralTasks me={me} picked={sp.picked === "1"} error={sp.error} />
+      </section>
+    );
+  }
   const status = TASK_STATUSES.includes(sp.status as TaskStatus) ? (sp.status as TaskStatus) : undefined;
   // A type from TASK_TYPES, "none", or "other" (types typed freely in the sheet).
   const type = sp.type === "none" || sp.type === "other" || (TASK_TYPES as readonly string[]).includes(sp.type ?? "") ? sp.type : undefined;
   const listedTypes = sql.join(TASK_TYPES.map((t) => sql`${t.toLowerCase()}`), sql`, `);
 
-  const where: SQL[] = [isNull(tasks.deletedAt)];
+  const where: SQL[] = [isNull(tasks.deletedAt), eq(tasks.kind, "project")]; // general tasks have their own tab
   if (view === "mine") where.push(eq(tasks.assigneeId, me.id));
   if (status) where.push(eq(tasks.status, status));
   if (type === "none") where.push(isNull(tasks.type));
@@ -87,22 +125,11 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             {rows.length} {rows.length === 1 ? "task" : "tasks"}, {open} open
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link href="/tasks/new" className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
             New task
           </Link>
-          <nav aria-label="Task view" className="flex rounded-xl bg-surface-3 p-1 text-sm font-medium">
-            {(["mine", "all"] as const).map((v) => (
-              <Link
-                key={v}
-                href={href({ view: v })}
-                aria-current={view === v ? "page" : undefined}
-                className={`rounded-lg px-3 py-1.5 ${view === v ? "bg-surface shadow-sm" : "text-muted"}`}
-              >
-                {v === "mine" ? "My tasks" : "All tasks"}
-              </Link>
-            ))}
-          </nav>
+          <TaskTabs current={view} href={(v) => href({ view: v })} />
         </div>
       </div>
 

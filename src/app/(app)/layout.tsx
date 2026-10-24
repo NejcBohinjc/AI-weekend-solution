@@ -6,6 +6,8 @@ import { requireMember } from "@/lib/auth";
 import { logoutAction } from "@/lib/auth/actions";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { UndoToastProvider } from "@/components/undo-toast";
+import { NotificationBell } from "@/components/notification-bell";
+import { unreadCount } from "@/lib/notifications";
 import { themePref } from "@/lib/theme-server";
 
 const MEMBER_NAV: NavItem[] = [
@@ -36,7 +38,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </Link>
           <div className="ml-auto flex min-w-0 items-center gap-2">
             <span className="hidden truncate text-sm text-fg-2 sm:inline">{member.name}</span>
-            {member.isAdmin && <AdminBadge />}
+            {/* On phones the admin nav row already says ADMIN; the badge would push "Log out" off-screen. */}
+            {member.isAdmin && (
+              <span className="hidden sm:inline-flex">
+                <AdminBadge />
+              </span>
+            )}
+            <NotificationBell unread={await unreadCount(member.id)} />
             <ThemeSwitch initial={await themePref()} />
             <form action={logoutAction}>
               <button type="submit" className="whitespace-nowrap rounded-lg px-2.5 py-1 text-sm font-medium text-subtle hover:bg-surface-3 hover:text-fg">

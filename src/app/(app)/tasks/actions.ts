@@ -9,7 +9,7 @@ import { db } from "@/db";
 import { members, taskEvents, tasks, type Task } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
 import { TASK_STATUSES, TASK_TYPES, type TaskStatus } from "@/lib/tasks/constants";
-import { applyTaskChanges, setTaskDone, type TaskField } from "@/lib/tasks/changes";
+import { applyTaskChanges, setTaskDone, TaskRuleError, type TaskField } from "@/lib/tasks/changes";
 import { canConfirmAiTask, canDeleteAiTask, canEditTask } from "@/lib/tasks/permissions";
 import { runTasksSync } from "@/lib/tasks/sheet-sync";
 
@@ -128,7 +128,12 @@ export async function updateTaskAction(taskId: number, _prev: TaskFormState, for
   if (!task) return { error: "You can't edit this task." };
   const result = await parse(formData, task.type);
   if ("error" in result) return result;
-  if (await applyTaskChanges(task, result.data, me.id)) pushToSheetLater(me.id);
+  try {
+    if (await applyTaskChanges(task, result.data, me.id)) pushToSheetLater(me.id);
+  } catch (err) {
+    if (err instanceof TaskRuleError) return { error: err.message, values: undefined };
+    throw err;
+  }
   refresh(taskId);
   return { saved: true };
 }
@@ -142,7 +147,13 @@ export type DoneResult = { ok: boolean; error?: string; title?: string; status?:
 export async function setTaskDoneAction(taskId: number, done: boolean): Promise<DoneResult> {
   const { me, task } = await loadEditable(taskId);
   if (!task) return { ok: false, error: "You can't change this task." };
-  const status = await setTaskDone(task, done, me.id);
+  let status: TaskStatus | null;
+  try {
+    status = await setTaskDone(task, done, me.id);
+  } catch (err) {
+    if (err instanceof TaskRuleError) return { ok: false, error: err.message };
+    throw err;
+  }
   if (status) pushToSheetLater(me.id);
   refresh(taskId);
   return { ok: true, title: task.title, status: status ?? task.status };

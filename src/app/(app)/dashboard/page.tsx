@@ -43,12 +43,12 @@ export default async function DashboardPage() {
         review: count(sql`case when ${and(eq(tasks.createdByAi, true), isNull(tasks.aiConfirmedAt))} then 1 end`),
       })
       .from(tasks)
-      .where(and(eq(tasks.assigneeId, member.id), ne(tasks.status, "done"), isNull(tasks.deletedAt))),
+      .where(and(eq(tasks.assigneeId, member.id), ne(tasks.status, "done"), isNull(tasks.deletedAt), eq(tasks.kind, "project"))),
     // My open tasks, soonest due first, for one-tap ticking here.
     db
       .select({ id: tasks.id, title: tasks.title, status: tasks.status, dueDate: tasks.dueDate })
       .from(tasks)
-      .where(and(eq(tasks.assigneeId, member.id), ne(tasks.status, "done"), isNull(tasks.deletedAt)))
+      .where(and(eq(tasks.assigneeId, member.id), ne(tasks.status, "done"), isNull(tasks.deletedAt), eq(tasks.kind, "project")))
       .orderBy(sql`${tasks.dueDate} asc nulls last`, tasks.title)
       .limit(5),
   ]);

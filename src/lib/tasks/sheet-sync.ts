@@ -171,6 +171,7 @@ export async function syncTasks({
   const cellRange = (f: Field, row: number) => `${columnLetter(columns[COLUMN_OF[f]]!)}${row}`;
   const idRange = (row: number) => `${columnLetter(idCol)}${row}`;
 
+  // General tasks never go to the sheet (lib/absence-rules.ts); they are only looked up to guard them.
   const allTasks = await db.select().from(tasks);
   const byKey = new Map(allTasks.filter((t) => t.sheetKey).map((t) => [t.sheetKey!, t]));
 
@@ -239,6 +240,11 @@ export async function syncTasks({
   const merge = (r: SheetRow, task: Task, key: string, writeKey: boolean) => {
     handled.add(task.id);
     const { ref, values: s, raw, reportUnassigned } = mapRow(r, task);
+    if (task.kind === "general" && s.status === "done") {
+      // General tasks are never done: keep the app's status, whatever the sheet says.
+      s.status = task.status;
+      report.warnings.push({ ...ref, message: "general tasks can't be done; kept its status" });
+    }
     // Base: the sheet as of the last sync. Tasks from the earlier read-only import have none yet: there,
     // fields an admin had edited (locked) count as app changes and everything else follows the sheet.
     const base: TaskSheetSnapshot =
@@ -334,7 +340,7 @@ export async function syncTasks({
   const goneFromSheet: Task[] = [];
   let nextRow = height + 2;
   for (const task of allTasks) {
-    if (handled.has(task.id) || task.deletedAt) continue;
+    if (handled.has(task.id) || task.deletedAt || task.kind === "general") continue;
     if (!task.sheetSnapshot && task.source === "app") {
       const key = task.sheetKey ?? newKey();
       const row = nextRow++;

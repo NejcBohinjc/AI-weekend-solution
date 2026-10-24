@@ -111,6 +111,14 @@ Optional (AI): `ANTHROPIC_API_KEY` (turns on "Create tasks from notes"; server-s
 - Filters (URL): tier, meeting series, range (4 weeks / 8 weeks / all, max 26). Drifting = under 50% of target in 2+ of the last 4 full weeks, or 2+ unexcused in the last 6 meetings.
 - Charts are plain SVG (`src/components/charts.tsx`), colours from `--viz-*` tokens validated for colour-blind safety in both themes; every chart has a title, a text summary, a tooltip on hover/focus and a table view.
 
+## Absence notices, general tasks, notifications (member feedback, Taj)
+
+All rules are in `src/lib/absence-rules.ts` (change them there). ASSUMPTION: "general task" means a standing task anyone can help with, which a member picks after missing a meeting; the reading comes from a short note.
+- **72-hour notice:** an excuse sent at least `ABSENCE_NOTICE_HOURS` (72 real hours, Europe/Ljubljana for display) before the start counts as excused. Later: `attendance.late_notice`; it counts as unexcused (`effectiveState()` with the late fields, used by every count incl. analytics) until an admin accepts it (`late_decision`). The excuse form shows the rule, the deadline and the time left; admins decide on the meeting page and see pending ones on `/admin/meetings`.
+- **General tasks:** `tasks.kind = 'general'` (+ `description`), admin-managed on the "General tasks" tab of `/tasks`. Never done: `assertMayChangeStatus()` in `lib/tasks/changes.ts` rejects it on the server, no done control is shown, they are never written to the sheet and a "done" from the sheet is ignored.
+- **Missed meeting:** when an admin records an absence that `GENERAL_TASK_AFTER` lists (by default unexcused, or a late notice not accepted), `followUpAbsence()` creates a `general_task_requests` row and a notification; the member picks one general task in one tap. Changing the absence before a pick cancels the request. Admins see "Still to pick a general task". Who picked what is shown by name to admins only.
+- **Notifications:** `notifications` table, bell with unread count in the header, `/notifications`. Every query is scoped to the signed-in member; never put admin-only information into a notification.
+
 ## Theme (light / dark)
 
 - All colours are design tokens (CSS variables) in `src/app/globals.css`, light values on `:root`, dark on `[data-theme="dark"]`, exposed to Tailwind via `@theme inline` (`bg-surface`, `text-muted`, `border-line`, `bg-success-bg text-success`, ...). Never use raw palette classes (`bg-white`, `text-slate-600`, `bg-red-50`); add a token instead. Every text/background token pair passes WCAG AA (4.5:1) in both themes.

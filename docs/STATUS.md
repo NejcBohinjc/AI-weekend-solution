@@ -6,6 +6,8 @@
 
 **Also finished:** admin analytics (tiles, hours vs target, hours by tier, attendance by series, members × meetings heatmap, tasks per member and per week incl. AI, drifting members; filters by tier, series and range).
 
+**Also finished (member feedback):** absence notices with the 72-hour rule (late notices decided by admins), in-app notifications with a bell, a "General tasks" list (standing tasks, never done) and a request to pick one after a missed meeting. ASSUMPTION: "general task" is read from a short note as a standing task anyone can help with; if that reading is wrong, the rules are in one file (`src/lib/absence-rules.ts`).
+
 **Not finished:** projects are not in the schema. Hours: no chart on the dashboard yet. Tasks: no projects or board yet. Google Sheets: not yet verified against the real spreadsheet from this machine (no credentials locally); run `npm run sheets:check`. Meetings: email sending needs SMTP settings and a scheduler calling `/api/cron/reminders`; until then reminders are only recorded. No `docs/INFRASTRUCTURE.md` yet.
 
 **What AI does:** turns meeting notes or transcripts into tasks (Claude, structured output, validated server-side). Every AI-created task is marked AI, shows the quote it came from and waits for the assignee to confirm, change or delete it. Optional: off without `ANTHROPIC_API_KEY`.

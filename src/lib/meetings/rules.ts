@@ -7,6 +7,7 @@ import {
   EXCUSE_HOURS_AFTER_END,
   type AttendanceState,
 } from "./constants";
+import { countsAsUnexcused, type LateInfo } from "./absence";
 
 const MIN = 60_000;
 
@@ -23,9 +24,12 @@ export function meetingPhase(m: Times, now: Date): Phase {
 
 /**
  * What a member's attendance counts as: what they (or an admin) recorded, or, once check-in has
- * closed without anything recorded, "unexcused". Null means nothing yet and nothing missed.
+ * closed without anything recorded, "unexcused". Null means nothing yet and nothing missed. Pass the
+ * row's late-notice fields so an undecided or rejected late notice counts as unexcused.
  */
-export function effectiveState(recorded: AttendanceState | null | undefined, m: Times, now: Date): AttendanceState | null {
+export function effectiveState(recorded: AttendanceState | null | undefined, m: Times, now: Date, late?: LateInfo | null): AttendanceState | null {
+  // A late-notice excuse counts as unexcused until an admin accepts it (lib/absence-rules.ts).
+  if (recorded && countsAsUnexcused(recorded, late)) return "unexcused";
   if (recorded) return recorded;
   return meetingPhase(m, now) === "past" ? "unexcused" : null;
 }

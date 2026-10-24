@@ -219,6 +219,22 @@ describe("two-way tasks sync", { skip: testDatabaseSkip() }, () => {
     assert.equal(again.created.length + again.appended.length + again.removedFromSheet.length, 0, "stable, not re-imported");
   });
 
+  test("general tasks never go to the sheet, and a 'done' from the sheet never finishes one", async () => {
+    const [g] = await db.insert(tasks).values({ kind: "general", title: "Support an event", status: "todo", source: "app" }).returning();
+    let report = await sync();
+    assert.ok(!rows().some((r) => r[0] === "Support an event"), "not appended");
+    assert.equal(report.appended.length, 0);
+    // Even if a row with its key appears in the sheet marked done, the app keeps it open.
+    await db.update(tasks).set({ sheetKey: "t-general01", sheetSnapshot: { title: g.title, status: "todo", assigneeId: null, type: null, dueDate: null } }).where(eq(tasks.id, g.id));
+    sheets.tabs.get(TAB)!.grid.push(["Support an event", "done", "", "", "", "", "t-general01"]);
+    report = await sync();
+    const after = await taskBy("Support an event");
+    assert.deepEqual([after.status, after.completedAt], ["todo", null]);
+    assert.ok(report.warnings.some((w) => w.message.includes("general tasks can't be done")));
+    sheets.tabs.get(TAB)!.grid.pop();
+    await db.delete(tasks).where(eq(tasks.id, g.id));
+  });
+
   test("runTasksSync: one at a time, and background syncs wait 60 s unless forced", async () => {
     const first = await runTasksSync({ api: sheets, sheetId: "test", force: true });
     assert.ok(first.ran && first.report?.ok);

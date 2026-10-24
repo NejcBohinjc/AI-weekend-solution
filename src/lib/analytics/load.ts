@@ -15,7 +15,9 @@ export async function loadAnalyticsData(now = new Date()): Promise<Data> {
       .where(isNull(timeEntries.deletedAt)),
     db.select({ id: meetings.id, title: meetings.title, series: meetings.series, startsAt: meetings.startsAt, endsAt: meetings.endsAt, status: meetings.status }).from(meetings),
     db.select({ meetingId: meetingInvites.meetingId, memberId: meetingInvites.memberId }).from(meetingInvites),
-    db.select({ meetingId: attendance.meetingId, memberId: attendance.memberId, state: attendance.state }).from(attendance),
+    db
+      .select({ meetingId: attendance.meetingId, memberId: attendance.memberId, state: attendance.state, lateNotice: attendance.lateNotice, lateDecision: attendance.lateDecision })
+      .from(attendance),
     db
       .select({
         id: tasks.id,
@@ -27,7 +29,8 @@ export async function loadAnalyticsData(now = new Date()): Promise<Data> {
         aiConfirmedAt: tasks.aiConfirmedAt,
         deletedAt: tasks.deletedAt,
       })
-      .from(tasks),
+      .from(tasks)
+      .where(eq(tasks.kind, "project")), // general tasks are standing tasks, not counted
     db
       .select({ memberId: taskEvents.actorId, at: taskEvents.createdAt })
       .from(taskEvents)

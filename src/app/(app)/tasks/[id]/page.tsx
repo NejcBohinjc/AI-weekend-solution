@@ -5,7 +5,7 @@ import { after } from "next/server";
 import { AiBadge, DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
 import { secondaryButtonClass } from "@/components/ui";
 import { db } from "@/db";
-import { meetings, members, taskEvents, tasks } from "@/db/schema";
+import { generalTaskRequests, meetings, members, taskEvents, tasks } from "@/db/schema";
 import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
 import { FIELD_LABELS } from "@/lib/tasks/constants";
@@ -17,6 +17,7 @@ import { runTasksSyncQuietly } from "@/lib/tasks/sheet-sync";
 import { tasksSyncStatus } from "@/lib/tasks/sync-status";
 import { confirmAiTaskAction, deleteAiTaskAction, updateTaskAction } from "../actions";
 import { DoneToggle } from "../done-toggle";
+import { GeneralTaskDetail } from "./general-detail";
 import { SyncStatus } from "../sync-status";
 import { TaskForm } from "../task-form";
 
@@ -55,6 +56,21 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
     tasksSyncStatus(),
   ]);
   if (!row || row.task.deletedAt) notFound();
+  if (row.task.kind === "general") {
+    const helpers = await db
+      .select({ name: members.name })
+      .from(generalTaskRequests)
+      .innerJoin(members, eq(generalTaskRequests.memberId, members.id))
+      .where(eq(generalTaskRequests.pickedTaskId, row.task.id));
+    return (
+      <GeneralTaskDetail
+        task={row.task}
+        isAdmin={me.isAdmin}
+        helpers={helpers.map((h) => h.name)}
+        events={events.map(({ event: e, actorName }) => ({ id: e.id, createdAt: e.createdAt, kind: e.kind, field: e.field, oldValue: e.oldValue, newValue: e.newValue, actorName }))}
+      />
+    );
+  }
   const { task } = row;
   const editable = canEditTask(me, task);
   const inSheet = sheetState(task);
