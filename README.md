@@ -20,6 +20,14 @@ npm run dev                   # http://localhost:3000
 For the local Postgres from `docker-compose.yml`:
 `DATABASE_URL=postgres://shapers:shapers@localhost:5433/shapers`, and `APP_URL=http://localhost:3000`.
 
+## Deploy on Vercel
+
+1. Create a Postgres database (Neon or Supabase) and import the GitHub repository in Vercel.
+2. In Vercel → Settings → Environment Variables, add the variables from `.env.example` for **Production**. `DATABASE_URL` is the pooled connection string; `APP_URL` is the site's address. If `DATABASE_URL` is a transaction pooler (Supabase port 6543), also set `DATABASE_MIGRATION_URL` to the session pooler connection string.
+3. Deploy. Every production deploy first applies the database migrations in `drizzle/` (the `vercel-build` script), then builds; if a migration fails, the deploy fails and the previous version stays live. Preview deploys do not touch the database schema. Leave the Build Command in Vercel at its default, so `vercel-build` is used.
+4. Once, for the sandbox demo: load the data from your computer with `DATABASE_URL` set to the production database and run `npm run db:seed`.
+5. Set Settings → Functions → Region to the database's region (e.g. `fra1` for Frankfurt); every page queries the database, so this makes pages much faster.
+
 ## Sign-in and members
 
 - Members sign in with email and password. Only active members can sign in; the admin flag is read from the database on every request.
