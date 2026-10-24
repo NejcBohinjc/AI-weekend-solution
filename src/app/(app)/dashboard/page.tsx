@@ -19,6 +19,9 @@ function greeting(now: Date) {
   return "Good evening";
 }
 
+// Always rendered fresh: the timer and weekly totals must never come from a cached copy.
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const member = await requireMember();
   syncCalendarInBackground();
@@ -41,7 +44,7 @@ export default async function DashboardPage() {
       {happening.map((r) => (
         <NowMeetingCard key={r.meeting.id} meeting={r.meeting} state={r.state} note={r.note} source={r.source} now={now} />
       ))}
-      <TimerCard startedAt={week.running?.startedAt.toISOString() ?? null} serverNow={now.toISOString()} />
+      <TimerCard startedAt={week.running?.startedAt.toISOString() ?? null} renderedAt={now.toISOString()} />
       <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4">
         <WeekProgress totalMs={week.totalMs} targetHours={member.weeklyHours} />
         <Link href="/hours" className="self-end text-sm font-medium text-slate-600 hover:text-slate-900">

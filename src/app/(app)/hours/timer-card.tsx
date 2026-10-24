@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { errorClass, inputClass, labelClass, secondaryButtonClass } from "@/components/ui";
 import { TIMEZONE } from "@/lib/app";
+import { measureSkew, serverNowMs } from "@/lib/hours/clock";
 import { discardTimerAction, startTimerAction, stopTimerAction, type TimerState } from "./actions";
 
 /** "2:14:37" */
@@ -41,23 +43,54 @@ function localInput(ms: number): string {
   return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
 }
 
+/** A page older than this when it is shown came from the router cache: fetch a fresh one. */
+const STALE_PAGE_MS = 2000;
+
 /**
- * Start/Stop for the signed-in member. The start time lives on the server, so the counter is right
- * after a reload, on another device, or if the phone's clock is off (serverNow corrects for that).
+ * Start/Stop for the signed-in member. The elapsed time is computed only from the entry's startedAt
+ * and the current time (corrected by the server clock offset from /api/time), never from a time baked
+ * into the page, which may be a stale copy from the router cache. Coming back to the page (mount,
+ * tab focus) refreshes it from the server, so a timer started or stopped elsewhere shows correctly.
  */
-export function TimerCard({ startedAt, serverNow }: { startedAt: string | null; serverNow: string }) {
+export function TimerCard({ startedAt, renderedAt }: { startedAt: string | null; renderedAt: string }) {
+  const router = useRouter();
   const [startState, startAction, starting] = useActionState(startTimerAction, {});
   const [stopState, stopAction, stopping] = useActionState(stopTimerAction, {} as TimerState);
   const [discardState, discardAction, discarding] = useActionState(discardTimerAction, {});
-  const [offset] = useState(() => new Date(serverNow).getTime() - Date.now());
-  const [now, setNow] = useState(() => new Date(serverNow).getTime());
+  // Server render: the render time. In the browser: this device's clock (corrected once measured).
+  const [now, setNow] = useState(() => (typeof window === "undefined" ? new Date(renderedAt).getTime() : serverNowMs()));
+  const lastRefresh = useRef(0);
+
+  // Fresh state whenever the member comes back: on mount if this page is a cached copy, and on tab focus.
+  useEffect(() => {
+    const refresh = () => {
+      if (Date.now() - lastRefresh.current < 1000) return; // focus and visibilitychange fire together
+      lastRefresh.current = Date.now();
+      router.refresh();
+    };
+    measureSkew().then(() => {
+      setNow(serverNowMs());
+      if (serverNowMs() - new Date(renderedAt).getTime() > STALE_PAGE_MS) refresh();
+    });
+    const onBack = () => {
+      if (document.visibilityState !== "visible") return;
+      measureSkew().then(() => setNow(serverNowMs()));
+      refresh();
+    };
+    document.addEventListener("visibilitychange", onBack);
+    window.addEventListener("focus", onBack);
+    return () => {
+      document.removeEventListener("visibilitychange", onBack);
+      window.removeEventListener("focus", onBack);
+    };
+  }, [router, renderedAt]);
 
   useEffect(() => {
     if (!startedAt) return;
-    setNow(Date.now() + offset);
-    const timer = setInterval(() => setNow(Date.now() + offset), 1000);
+    setNow(serverNowMs());
+    const timer = setInterval(() => setNow(serverNowMs()), 1000);
     return () => clearInterval(timer);
-  }, [startedAt, offset]);
+  }, [startedAt]);
 
   const running = startedAt !== null;
   const askEnd = running && stopState.askEnd;
