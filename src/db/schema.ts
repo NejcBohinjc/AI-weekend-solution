@@ -24,6 +24,7 @@ import {
 import { TASK_STATUSES } from "../lib/tasks/constants";
 import { LATE_DECISIONS, TASK_KINDS } from "../lib/absence-rules";
 import { TIERS } from "../lib/tiers"; // relative: drizzle-kit does not resolve the @/ alias
+import { RECORDING_STATUSES, SEGMENT_STATUSES } from "../lib/recordings/constants";
 
 export { TIER_HOURS, TIERS, type Tier } from "../lib/tiers";
 
@@ -459,3 +460,59 @@ export const generalTaskRequests = pgTable(
   },
   (t) => [uniqueIndex("general_task_requests_member_meeting_idx").on(t.memberId, t.meetingId)],
 );
+
+// A meeting recording (recorded in the browser, or an imported audio file). Only admins create,
+// transcribe and delete them; admins and the meeting's invitees can play them. The audio lives in the
+// private Supabase Storage bucket "meeting-recordings", one file per segment.
+export const recordings = pgTable(
+  "recordings",
+  {
+    id: serial("id").primaryKey(),
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    startedById: integer("started_by_id").references(() => members.id, { onDelete: "set null" }),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    durationMs: integer("duration_ms").notNull().default(0),
+    status: text("status", { enum: RECORDING_STATUSES }).notNull().default("recording"),
+    error: text("error"),
+    source: text("source", { enum: ["recorded", "uploaded"] }).notNull().default("recorded"),
+    fileName: text("file_name"), // for imported files
+    // Transcription: languages hint ("sl", "sl,en", "" = detect), the joined transcript, usage.
+    languages: text("languages"),
+    transcript: text("transcript"),
+    transcribeModel: text("transcribe_model"),
+    transcribedSeconds: integer("transcribed_seconds").notNull().default(0),
+    transcribeLeaseUntil: timestamp("transcribe_lease_until", { withTimezone: true }),
+    savedNoteId: integer("saved_note_id").references(() => meetingNotes.id, { onDelete: "set null" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("recordings_meeting_idx").on(t.meetingId)],
+);
+
+// One uploaded piece of a recording (~10 minutes). Unique per (recording, index), so a retried upload
+// never adds a second row.
+export const recordingSegments = pgTable(
+  "recording_segments",
+  {
+    id: serial("id").primaryKey(),
+    recordingId: integer("recording_id")
+      .notNull()
+      .references(() => recordings.id, { onDelete: "cascade" }),
+    index: integer("index").notNull(),
+    storagePath: text("storage_path").notNull(),
+    contentType: text("content_type").notNull().default("audio/mpeg"),
+    durationMs: integer("duration_ms").notNull(),
+    bytes: integer("bytes").notNull(),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+    transcript: text("transcript"),
+    transcriptStatus: text("transcript_status", { enum: SEGMENT_STATUSES }),
+    transcriptError: text("transcript_error"),
+    transcriptStartedAt: timestamp("transcript_started_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("recording_segments_recording_index_uq").on(t.recordingId, t.index)],
+);
+
+export type Recording = typeof recordings.$inferSelect;
+export type RecordingSegment = typeof recordingSegments.$inferSelect;
