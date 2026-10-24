@@ -7,14 +7,12 @@ import { after } from "next/server";
 import { db } from "@/db";
 import { members, timeEntries, type TimeEntry } from "@/db/schema";
 import { requireAdmin, requireMember, type SessionMember } from "@/lib/auth";
-import { FORGOTTEN_TIMER_HOURS, MIN_ENTRY_SECONDS } from "@/lib/hours/constants";
-import { findOverlap, runningEntry } from "@/lib/hours/queries";
+import { findOverlap } from "@/lib/hours/queries";
 import { syncHoursSheet, syncHoursSheetQuietly, type HoursSheetResult } from "@/lib/hours/sheet-sync";
+import { stopTimer } from "@/lib/hours/timer";
 import {
   canEditEntry,
-  checkLength,
   formatDuration,
-  fromLocalInput,
   hoursReturnPath,
   parseEntryTimes,
   weekBounds,
@@ -53,38 +51,21 @@ export async function startTimerAction(_prev: TimerState): Promise<TimerState> {
  */
 export async function stopTimerAction(_prev: TimerState, formData: FormData): Promise<TimerState> {
   const me = await requireMember();
-  const running = await runningEntry(me.id);
-  refresh();
-  if (!running) return {};
-
-  const now = new Date();
-  let endedAt = now;
   const picked = formData.get("endedAt");
-  if (typeof picked === "string" && picked) {
-    const at = fromLocalInput(picked);
-    if (!at) return { error: "Pick when you stopped.", askEnd: { startedAt: running.startedAt.toISOString() } };
-    if (at.getTime() > now.getTime() + 60_000) {
-      return { error: "That is in the future.", askEnd: { startedAt: running.startedAt.toISOString() } };
-    }
-    endedAt = at;
-  } else if (now.getTime() - running.startedAt.getTime() > FORGOTTEN_TIMER_HOURS * 3_600_000) {
-    return { askEnd: { startedAt: running.startedAt.toISOString() } };
+  const result = await stopTimer(me.id, { endedAtInput: typeof picked === "string" ? picked : null });
+  // Revalidate after the write, so the page sent back with this response already lists the entry.
+  refresh();
+  switch (result.kind) {
+    case "none":
+      return {};
+    case "discarded":
+      return { notice: "Stopped within a minute, so nothing was saved." };
+    case "ask":
+      return { error: result.error, askEnd: { startedAt: result.startedAt.toISOString() } };
+    case "saved":
+      syncSheetLater();
+      return { notice: `Saved ${formatDuration(result.ms)}.` };
   }
-
-  const ms = endedAt.getTime() - running.startedAt.getTime();
-  if (ms < MIN_ENTRY_SECONDS * 1000 && !picked) {
-    await db.delete(timeEntries).where(and(eq(timeEntries.id, running.id), isNull(timeEntries.endedAt)));
-    return { notice: "Stopped within a minute, so nothing was saved." };
-  }
-  const tooLong = checkLength(running.startedAt, endedAt);
-  if (tooLong) return { error: tooLong.error, askEnd: { startedAt: running.startedAt.toISOString() } };
-
-  await db
-    .update(timeEntries)
-    .set({ endedAt, sheetStatus: "pending", updatedAt: new Date() })
-    .where(and(eq(timeEntries.id, running.id), isNull(timeEntries.endedAt)));
-  syncSheetLater();
-  return { notice: `Saved ${formatDuration(ms)}.` };
 }
 
 /** Throws away a running timer (started by mistake, or forgotten and not worth keeping). */

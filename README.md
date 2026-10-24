@@ -29,22 +29,26 @@ For the local Postgres from `docker-compose.yml`:
 
 Security details: passwords hashed with argon2id (min 10 characters); sessions stored in Postgres (only token hashes), revoked on logout, password change and deactivation; failed sign-ins rate-limited per email (5) and per IP (20) per 15 minutes. All auth code is in `src/lib/auth/`.
 
-## Tasks from Google Sheets
+## Tasks and the Google Sheet
 
-Tasks are imported read-only from a Google Sheet (tab `List1` by default). Setup:
+Every member can create tasks, and edit, hand over or finish the tasks assigned to them or created by them. Admins can edit all tasks. Every change is kept in the task's history.
+
+Tasks are synced both ways with a tab of a Google Sheet (`List1` by default): changes in the app are written to the sheet and changes in the sheet are imported. Each row gets a task id in an `id` column, so sorting the sheet never creates duplicates. If the same field was changed on both sides between two syncs, the app's value wins and the sheet's value is kept in the history. The sync runs by itself in the background (at most once a minute while people use the app); anyone can press **Sync now**.
+
+Setup:
 
 1. In Google Cloud, enable the **Google Sheets API** and create a **service account**; create a JSON key for it.
-2. Share the spreadsheet with the service account's email as **Editor** (the tasks tab is only read; work hours are written to their own tab, see below).
-3. Set `GOOGLE_SHEET_ID` (from the sheet URL), `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (the key's `private_key`, with `\n` for newlines). Optional: `GOOGLE_SHEET_TASKS_TAB`.
-4. As an admin, open **Tasks** and click **Sync from Google Sheets**. The report lists what was created, updated, skipped and left unassigned.
+2. Share the spreadsheet with the service account's email as **Editor**.
+3. Set `GOOGLE_SHEET_ID` (from the sheet URL), `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (the key's `private_key`, with `\n` for newlines). Optional: `GOOGLE_SHEET_TASKS_TAB`, `GOOGLE_SHEET_HOURS_TAB`.
+4. Check it: `npm run sheets:check` (prints the exact Google error if something is wrong).
 
-Running the sync again never creates duplicates, and fields an admin changed in the app are not overwritten. Mapping tests: `npm test`.
+The app only touches the tasks tab and the hours tab, and in the tasks tab only its own columns (task, status, nosilec, tip taska, deadline, id). Tests: `npm test` (the database tests need a local Postgres, see above).
 
 ## Work hours
 
 Members press **Start** when they begin and **Stop** when they finish (on **Hours** or the dashboard), or add time by hand. They see their week against their tier's commitment and their recent weeks. Admins see on **Admin → Hours** who is behind this week and who is working now, and can open any member to see and correct their hours.
 
-Every finished entry is also written to the tab `Ure dela` of the same Google Sheet (columns oseba, dan začetka, ura začetka, dan konca, ura konca, id), so the sheet must be shared with the service account as **Editor**. The app is the source of truth; make corrections in the app, not in the sheet. Set `GOOGLE_SHEET_HOURS_TAB` if the tab has another name. To make sure the app cannot change anything else, protect the other tabs (**Data → Protect sheets and ranges**) so the service account cannot edit them.
+Every finished entry is also written to the tab `Ure dela` of the same Google Sheet (created if missing) (columns oseba, dan začetka, ura začetka, dan konca, ura konca, id), so the sheet must be shared with the service account as **Editor**. The app is the source of truth; make corrections in the app, not in the sheet. Entries not yet in the sheet say "not synced to the sheet"; admins see the last error and can retry on **Admin → Hours**. Set `GOOGLE_SHEET_HOURS_TAB` if the tab has another name. To make sure the app cannot change anything else, protect the other tabs (**Data → Protect sheets and ranges**) so the service account cannot edit them.
 
 ## Meetings, attendance and reminders
 

@@ -1,27 +1,37 @@
-import { aliasedTable, asc, desc, eq } from "drizzle-orm";
+import { aliasedTable, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 import { DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
+import { secondaryButtonClass } from "@/components/ui";
 import { db } from "@/db";
 import { members, taskEvents, tasks } from "@/db/schema";
 import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
 import { FIELD_LABELS } from "@/lib/tasks/constants";
+import { canEditTask } from "@/lib/tasks/permissions";
+import { activeMembers, taskTypes } from "@/lib/tasks/queries";
 import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
-import { updateTaskAction } from "../actions";
-import { TaskEditForm } from "./task-edit-form";
+import { runTasksSyncQuietly } from "@/lib/tasks/sheet-sync";
+import { tasksSyncStatus } from "@/lib/tasks/sync-status";
+import { finishTaskAction, updateTaskAction } from "../actions";
+import { SyncStatus } from "../sync-status";
+import { TaskForm } from "../task-form";
 
-export default async function TaskPage({ params }: { params: Promise<{ id: string }> }) {
-  const [me, { id: rawId }] = await Promise.all([requireMember(), params]);
+export default async function TaskPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string }> }) {
+  const [me, { id: rawId }, { created }] = await Promise.all([requireMember(), params, searchParams]);
   const id = Number(rawId);
   if (!Number.isInteger(id)) notFound();
+  after(runTasksSyncQuietly);
 
   const actor = aliasedTable(members, "actor");
-  const [[row], events, memberList] = await Promise.all([
+  const creator = aliasedTable(members, "creator");
+  const [[row], events, memberList, types, syncStatus] = await Promise.all([
     db
-      .select({ task: tasks, assigneeName: members.name })
+      .select({ task: tasks, assigneeName: members.name, creatorName: creator.name })
       .from(tasks)
       .leftJoin(members, eq(tasks.assigneeId, members.id))
+      .leftJoin(creator, eq(tasks.createdById, creator.id))
       .where(eq(tasks.id, id))
       .limit(1),
     db
@@ -30,35 +40,52 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
       .leftJoin(actor, eq(taskEvents.actorId, actor.id))
       .where(eq(taskEvents.taskId, id))
       .orderBy(desc(taskEvents.createdAt), desc(taskEvents.id)),
-    me.isAdmin
-      ? db.select({ id: members.id, name: members.name }).from(members).where(eq(members.active, true)).orderBy(asc(members.name))
-      : Promise.resolve([]),
+    activeMembers(),
+    taskTypes(),
+    tasksSyncStatus(me.isAdmin),
   ]);
   if (!row) notFound();
   const { task } = row;
-  const fromSheet = task.source === "gsheet";
+  const editable = canEditTask(me, task);
   const fmt = (d: Date) => d.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE });
+  const fieldLabel = (f: string | null) => FIELD_LABELS[f as keyof typeof FIELD_LABELS] ?? f;
 
   return (
     <section className="flex max-w-2xl flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <Link href="/tasks" className="text-sm text-slate-500 hover:text-slate-900">
-          ← Tasks
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Link href="/tasks" className="text-sm text-slate-500 hover:text-slate-900">
+            ← Tasks
+          </Link>
+          <SyncStatus initial={syncStatus} />
+        </div>
+        {created && (
+          <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Task created. It goes to the sheet in a moment.
+          </p>
+        )}
         <h1 className="text-2xl font-bold tracking-tight">{task.title}</h1>
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <StatusBadge status={task.status} />
           {task.type && <TypeBadge type={task.type} />}
           {task.dueDate && <DueDate date={task.dueDate} today={todayInLjubljana()} done={task.status === "done"} />}
           <span className="text-slate-600">{row.assigneeName ?? "Unassigned"}</span>
+          {row.creatorName && <span className="text-xs text-slate-400">created by {row.creatorName}</span>}
+          {!task.inSheet && <span className="text-xs text-amber-700">no longer in the sheet</span>}
         </p>
+        {editable && task.status !== "done" && (
+          <form action={finishTaskAction.bind(null, task.id)}>
+            <button type="submit" className={secondaryButtonClass}>
+              ✓ Mark as done
+            </button>
+          </form>
+        )}
       </div>
 
-      {me.isAdmin && fromSheet && (
+      {me.isAdmin && (task.statusRaw || task.assigneeRaw || task.deadlineRaw) && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-white p-4 text-sm">
           <dt className="col-span-2 mb-1 font-semibold">
-            From Google Sheets{task.sheetRow ? `, row ${task.sheetRow}` : ""}
-            {!task.inSheet && <span className="font-normal text-amber-700"> · no longer in the sheet</span>}
+            In the sheet{task.sheetRow ? `, row ${task.sheetRow}` : ""} <span className="font-normal text-slate-500">· as last read · admins only</span>
           </dt>
           <dt className="text-slate-500">status</dt>
           <dd>{task.statusRaw ?? "—"}</dd>
@@ -71,13 +98,25 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
         </dl>
       )}
 
-      {me.isAdmin && (
-        <TaskEditForm
-          action={updateTaskAction.bind(null, task.id)}
-          task={{ status: task.status, assigneeId: task.assigneeId, type: task.type, dueDate: task.dueDate, lockedFields: task.lockedFields }}
-          members={memberList}
-          fromSheet={fromSheet}
-        />
+      {editable ? (
+        <div className="flex flex-col gap-2">
+          <h2 className="font-semibold">Edit or hand over</h2>
+          <TaskForm
+            action={updateTaskAction.bind(null, task.id)}
+            initial={{
+              title: task.title,
+              status: task.status,
+              assigneeId: task.assigneeId ? String(task.assigneeId) : "",
+              type: task.type ?? "",
+              dueDate: task.dueDate ?? "",
+            }}
+            members={memberList}
+            types={types}
+            submitLabel="Save task"
+          />
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500">Only the assignee, the person who created it, or an admin can change this task.</p>
       )}
 
       <div className="flex flex-col gap-2">
@@ -90,7 +129,9 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
               {": "}
               {e.kind === "created"
                 ? e.newValue
-                : `${FIELD_LABELS[e.field as keyof typeof FIELD_LABELS] ?? e.field}: ${e.oldValue ?? "empty"} → ${e.newValue ?? "empty"}`}
+                : e.kind === "conflict"
+                  ? `${fieldLabel(e.field)} was changed in the sheet to “${e.oldValue ?? "empty"}” and here to “${e.newValue ?? "empty"}”; kept “${e.newValue ?? "empty"}”`
+                  : `${fieldLabel(e.field)}: ${e.oldValue ?? "empty"} → ${e.newValue ?? "empty"}`}
             </li>
           ))}
         </ol>

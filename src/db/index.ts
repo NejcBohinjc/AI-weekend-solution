@@ -8,3 +8,8 @@ const sql = globalForDb.sql ?? postgres(process.env.DATABASE_URL!, { max: 5, pre
 if (process.env.NODE_ENV !== "production") globalForDb.sql = sql;
 
 export const db = drizzle(sql, { schema });
+
+/** Closes the pool, so scripts and tests can exit. */
+export function closeDb(): Promise<void> {
+  return sql.end();
+}

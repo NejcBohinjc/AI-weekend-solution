@@ -1,68 +1,54 @@
-"use client";
-
-import { useActionState } from "react";
-import { secondaryButtonClass } from "@/components/ui";
 import { TIMEZONE } from "@/lib/app";
+import { FIELD_LABELS } from "@/lib/tasks/constants";
 import type { SyncReport } from "@/lib/tasks/sheet-sync";
-import { syncFromSheetAction } from "./actions";
 
-export function SyncPanel({ last, lastBy }: { last: SyncReport | null; lastBy: string | null }) {
-  const [report, formAction, pending] = useActionState(syncFromSheetAction, last);
-  const fresh = report !== last;
-  const when = report && new Date(report.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE });
+const fieldNames = (fields: string[]) => fields.map((f) => FIELD_LABELS[f as keyof typeof FIELD_LABELS]?.toLowerCase() ?? f).join(", ");
 
+/** The last sync's full report, with raw sheet values and reasons. Admins only. */
+export function SyncReportPanel({ report, by }: { report: Partial<SyncReport> & { at: string; ok: boolean }; by: string | null }) {
+  const when = new Date(report.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE });
+  const list = <T,>(items: T[] | undefined) => items ?? [];
   return (
-    <section aria-label="Google Sheets sync" className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="font-semibold">Google Sheets</h2>
-          <p className="text-xs text-slate-500">
-            {report ? `${fresh ? "Synced" : "Last sync"} ${when}${!fresh && lastBy ? ` by ${lastBy}` : ""}` : "Never synced"}. Read-only:
-            the sheet is never changed.
+    <details className="rounded-xl border border-slate-200 bg-white p-4 text-sm" open={!report.ok} data-testid="sync-report">
+      <summary className="cursor-pointer font-semibold">
+        Sync report <span className="font-normal text-slate-500">· {when}{by ? ` by ${by}` : ""} · admins only</span>
+      </summary>
+      <div className="mt-3 flex flex-col gap-2">
+        {!report.ok ? (
+          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-red-700">
+            Sync failed: {report.error}
           </p>
-        </div>
-        <form action={formAction}>
-          <button type="submit" disabled={pending} className={secondaryButtonClass}>
-            {pending ? "Syncing…" : "Sync from Google Sheets"}
-          </button>
-        </form>
+        ) : (
+          <p className="flex flex-wrap gap-x-4 gap-y-1">
+            <Count n={list(report.created).length} label="new from sheet" />
+            <Count n={list(report.updated).length} label="updated from sheet" />
+            <Count n={list(report.appended).length} label="added to sheet" />
+            <Count n={list(report.exported).length} label="updated in sheet" />
+            <Count n={list(report.conflicts).length} label="conflicts" />
+            <Count n={report.unchanged ?? 0} label="unchanged" />
+            <span className="text-slate-500">
+              {report.rowsRead ?? 0} rows read from “{report.tab}”
+            </span>
+          </p>
+        )}
+        {list(report.missingColumns).length > 0 && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">
+            Columns not found in the sheet: {list(report.missingColumns).join(", ")}. Those fields are kept in the app only.
+          </p>
+        )}
+        <Details title="Unassigned" open items={list(report.unassigned).map((u) => `Row ${u.row} “${u.title}”: nosilec “${u.raw}”, ${u.reason}`)} />
+        <Details title="Warnings" open items={list(report.warnings).map((w) => `Row ${w.row} “${w.title}”: ${w.message}`)} />
+        <Details
+          title="Conflicts (the app's value was kept)"
+          open
+          items={list(report.conflicts).map((c) => `Row ${c.row} “${c.title}”, ${fieldNames([c.field])}: sheet had “${c.sheetValue ?? "empty"}”, kept “${c.appValue ?? "empty"}”`)}
+        />
+        <Details title="Skipped rows" items={list(report.skipped).map((s) => `Row ${s.row}: ${s.reason}`)} />
+        <Details title="Updated from the sheet" items={list(report.updated).map((u) => `Row ${u.row} “${u.title}”: ${fieldNames(u.fields)}`)} />
+        <Details title="Written to the sheet" items={[...list(report.appended).map((a) => `Row ${a.row} “${a.title}”: new row`), ...list(report.exported).map((e) => `Row ${e.row} “${e.title}”: ${fieldNames(e.fields)}`)]} />
+        <Details title="No longer in the sheet (kept here)" items={list(report.noLongerInSheet).map((n) => `“${n.title}”`)} />
       </div>
-      {report && <SyncReportView report={report} />}
-    </section>
-  );
-}
-
-function SyncReportView({ report }: { report: SyncReport }) {
-  if (!report.ok) {
-    return (
-      <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-        Sync failed: {report.error}
-      </p>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-2 text-sm" data-testid="sync-report">
-      <p className="flex flex-wrap gap-x-4 gap-y-1">
-        <Count n={report.created.length} label="created" />
-        <Count n={report.updated.length} label="updated" />
-        <Count n={report.unchanged} label="unchanged" />
-        <Count n={report.skipped.length} label="skipped" />
-        <Count n={report.unassigned.length} label="unassigned" />
-        <span className="text-slate-500">{report.rowsRead} rows read from “{report.tab}”</span>
-      </p>
-      {report.missingColumns.length > 0 && (
-        <Note tone="warn">Columns not found in the sheet: {report.missingColumns.join(", ")}. Those fields were left empty.</Note>
-      )}
-      <Details title="Unassigned" items={report.unassigned.map((u) => `Row ${u.row} “${u.title}”: nosilec “${u.raw}”, ${u.reason}`)} />
-      <Details title="Warnings" items={report.warnings.map((w) => `Row ${w.row} “${w.title}”: ${w.message}`)} />
-      <Details title="Skipped" items={report.skipped.map((s) => `Row ${s.row}: ${s.reason}`)} />
-      <Details title="Updated" items={report.updated.map((u) => `Row ${u.row} “${u.title}”: ${u.fields.join(", ")}`)} />
-      <Details
-        title="Kept admin edits"
-        items={report.keptAdminEdits.map((k) => `Row ${k.row} “${k.title}”: sheet differs on ${k.fields.join(", ")}, kept the app value`)}
-      />
-      <Details title="No longer in the sheet (kept here)" items={report.noLongerInSheet.map((n) => `“${n.title}”`)} />
-    </div>
+    </details>
   );
 }
 
@@ -74,14 +60,10 @@ function Count({ n, label }: { n: number; label: string }) {
   );
 }
 
-function Note({ tone, children }: { tone: "warn"; children: React.ReactNode }) {
-  return <p className={tone === "warn" ? "rounded-lg bg-amber-50 px-3 py-2 text-amber-900" : ""}>{children}</p>;
-}
-
-function Details({ title, items }: { title: string; items: string[] }) {
+function Details({ title, items, open }: { title: string; items: string[]; open?: boolean }) {
   if (!items.length) return null;
   return (
-    <details className="rounded-lg bg-slate-50 px-3 py-2" open={title === "Unassigned" || title === "Warnings"}>
+    <details className="rounded-lg bg-slate-50 px-3 py-2" open={open}>
       <summary className="cursor-pointer font-medium">
         {title} ({items.length})
       </summary>

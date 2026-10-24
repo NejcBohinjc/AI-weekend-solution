@@ -3,6 +3,8 @@
 import { and, asc, desc, eq, gt, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 import { db } from "@/db";
 import { members, timeEntries, type TimeEntry } from "@/db/schema";
+import { getSyncState } from "@/lib/sync-state";
+import { HOURS_SYNC } from "./sheet-sync";
 import { addDays, overlapMs, weekBounds } from "./time";
 
 const notDeleted = isNull(timeEntries.deletedAt);
@@ -83,12 +85,21 @@ export async function teamWeek(weekStart: string, now: Date) {
 
 /** Entries still waiting to be written to (or removed from) the sheet, and the latest error. */
 export async function hoursSheetQueue() {
-  const rows = await db
-    .select({ error: timeEntries.sheetError, updatedAt: timeEntries.updatedAt })
-    .from(timeEntries)
-    .where(and(eq(timeEntries.sheetStatus, "pending"), or(isNotNull(timeEntries.endedAt), isNotNull(timeEntries.deletedAt))))
-    .orderBy(desc(timeEntries.updatedAt));
-  return { pending: rows.length, failed: rows.filter((r) => r.error).length, lastError: rows.find((r) => r.error)?.error ?? null };
+  const [rows, state] = await Promise.all([
+    db
+      .select({ error: timeEntries.sheetError, updatedAt: timeEntries.updatedAt })
+      .from(timeEntries)
+      .where(and(eq(timeEntries.sheetStatus, "pending"), or(isNotNull(timeEntries.endedAt), isNotNull(timeEntries.deletedAt))))
+      .orderBy(desc(timeEntries.updatedAt)),
+    getSyncState(HOURS_SYNC),
+  ]);
+  return {
+    pending: rows.length,
+    failed: rows.filter((r) => r.error).length,
+    // The last run's error (e.g. missing configuration, 403) if it failed, else the latest entry error.
+    lastError: (state?.lastOk === false ? state.lastError : null) ?? rows.find((r) => r.error)?.error ?? null,
+    lastRunAt: state?.lastFinishedAt ?? null,
+  };
 }
 
 /** An entry of the member (a running timer counts as open-ended) that overlaps [startedAt, endedAt), other than `exceptId`. */
