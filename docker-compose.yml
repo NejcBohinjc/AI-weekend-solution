@@ -1,0 +1,14 @@
+# Local Postgres for development. Production uses a hosted Postgres (Neon/Supabase) via DATABASE_URL.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: shapers
+      POSTGRES_PASSWORD: shapers
+      POSTGRES_DB: shapers
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:
