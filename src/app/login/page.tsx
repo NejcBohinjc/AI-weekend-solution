@@ -1,4 +1,6 @@
 import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { redirect } from "next/navigation";
+import { getCurrentMember } from "@/lib/auth";
 import { db } from "@/db";
 import { members } from "@/db/schema";
 import { APP_NAME, APP_TAGLINE } from "@/lib/app";
@@ -27,6 +29,8 @@ async function loadDemoConfig(): Promise<DemoConfig | null> {
 }
 
 export default async function LoginPage() {
+  // Already signed in: straight to the app (the middleware no longer looks sessions up on every request).
+  if (await getCurrentMember()) redirect("/dashboard");
   const demo = await loadDemoConfig();
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-8 px-4 py-10">

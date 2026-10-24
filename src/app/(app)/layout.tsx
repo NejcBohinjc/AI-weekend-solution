@@ -2,14 +2,13 @@ import Link from "next/link";
 import { AdminBadge } from "@/components/badges";
 import { NavLinks, type NavItem } from "@/components/nav-links";
 import { APP_NAME } from "@/lib/app";
-import { requireMember } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { logoutAction } from "@/lib/auth/actions";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { UndoToastProvider } from "@/components/undo-toast";
 import { NotificationBell } from "@/components/notification-bell";
 import { RecorderProvider } from "@/components/recorder/recorder-provider";
 import { RecordingIndicator } from "@/components/recorder/recording-indicator";
-import { unreadCount } from "@/lib/notifications";
 import { themePref } from "@/lib/theme-server";
 
 const MEMBER_NAV: NavItem[] = [
@@ -29,7 +28,7 @@ const ADMIN_NAV: NavItem[] = [
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const member = await requireMember();
+  const { member, unread } = await requireSession();
 
   const page = (
     <div className="flex min-h-dvh flex-col">
@@ -51,7 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 <AdminBadge />
               </span>
             )}
-            <NotificationBell unread={await unreadCount(member.id)} />
+            <NotificationBell unread={unread} />
             <ThemeSwitch initial={await themePref()} />
             <form action={logoutAction}>
               <button type="submit" className="whitespace-nowrap rounded-lg px-2.5 py-1 text-sm font-medium text-subtle hover:bg-surface-3 hover:text-fg">
