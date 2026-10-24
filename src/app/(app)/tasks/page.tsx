@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import Link from "next/link";
 import { after } from "next/server";
-import { DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
+import { AiBadge, DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
 import { db } from "@/db";
 import { members, tasks, taskSyncs } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
@@ -15,7 +15,7 @@ import { finishTaskAction } from "./actions";
 import { SyncReportPanel } from "./sync-panel";
 import { SyncStatus } from "./sync-status";
 
-type Search = { view?: string; type?: string; status?: string };
+type Search = { view?: string; type?: string; status?: string; deleted?: string };
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<Search> }) {
   const [me, sp] = await Promise.all([requireMember(), searchParams]);
@@ -27,7 +27,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const type = sp.type === "none" || sp.type === "other" || (TASK_TYPES as readonly string[]).includes(sp.type ?? "") ? sp.type : undefined;
   const listedTypes = sql.join(TASK_TYPES.map((t) => sql`${t.toLowerCase()}`), sql`, `);
 
-  const where: SQL[] = [];
+  const where: SQL[] = [isNull(tasks.deletedAt)];
   if (view === "mine") where.push(eq(tasks.assigneeId, me.id));
   if (status) where.push(eq(tasks.status, status));
   if (type === "none") where.push(isNull(tasks.type));
@@ -49,6 +49,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         inSheet: tasks.inSheet,
         source: tasks.source,
         sheetSnapshot: tasks.sheetSnapshot,
+        createdByAi: tasks.createdByAi,
+        aiConfirmedAt: tasks.aiConfirmedAt,
+        triggeredById: tasks.triggeredById,
       })
       .from(tasks)
       .leftJoin(members, eq(tasks.assigneeId, members.id))
@@ -72,6 +75,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     return qs ? `/tasks?${qs}` : "/tasks";
   };
   const open = rows.filter((r) => r.status !== "done").length;
+  const toReview = rows.filter((r) => r.createdByAi && !r.aiConfirmedAt && r.assigneeId === me.id).length;
   const pendingInSheet = new Set(rows.filter((r) => sheetState(r) === "pending").map((r) => r.id));
 
   return (
@@ -102,6 +106,17 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         </div>
       </div>
 
+      {sp.deleted && (
+        <p role="status" className="rounded-xl bg-surface-3 px-4 py-3 text-sm text-fg-2">
+          The AI-created task was deleted. Running the AI again on the same notes will not bring it back.
+        </p>
+      )}
+      {toReview > 0 && (
+        <p className="rounded-xl border border-violet-line bg-violet-bg px-4 py-3 text-sm text-violet" data-testid="review-banner">
+          {toReview === 1 ? "1 task the AI created from meeting notes is" : `${toReview} tasks the AI created from meeting notes are`} waiting for
+          your review. Open it to confirm, change or delete it.
+        </p>
+      )}
       <SyncStatus initial={syncStatus} awaitSync={pendingInSheet.size > 0} />
       {me.isAdmin && lastSync[0] && <SyncReportPanel report={lastSync[0].report as SyncReport} by={lastSync[0].by ?? null} />}
 
@@ -147,6 +162,10 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                 <span className={`font-medium ${t.status === "done" ? "text-subtle line-through" : ""}`}>{t.title}</span>
                 <span className="flex flex-wrap items-center gap-2">
                   <StatusBadge status={t.status} />
+                  {t.createdByAi && <AiBadge confirmed={!!t.aiConfirmedAt} />}
+                  {t.createdByAi && !t.aiConfirmedAt && t.assigneeId === me.id && (
+                    <span className="text-xs font-semibold text-violet">Review</span>
+                  )}
                   {t.type && <TypeBadge type={t.type} />}
                   {t.dueDate && <DueDate date={t.dueDate} today={today} done={t.status === "done"} />}
                   <span className="text-xs text-muted">

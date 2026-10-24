@@ -4,4 +4,4 @@
 
 **Not finished:** no public deploy yet; projects are not in the schema. Analytics is a placeholder page. Hours: no chart on the dashboard yet. Tasks: no projects or board yet. Google Sheets: not yet verified against the real spreadsheet from this machine (no credentials locally); run `npm run sheets:check`. Meetings: email sending needs SMTP settings and a scheduler calling `/api/cron/reminders`; until then reminders are only recorded.
 
-**What AI does:** nothing in the product yet.
+**What AI does:** turns meeting notes or transcripts into tasks (Claude, structured output, validated server-side). Every AI-created task is marked AI, shows the quote it came from and waits for the assignee to confirm, change or delete it. Optional: off without `ANTHROPIC_API_KEY`.

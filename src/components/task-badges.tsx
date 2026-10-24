@@ -33,3 +33,18 @@ export function DueDate({ date, today, done }: { date: string; today: string; do
     </span>
   );
 }
+
+/** Marks a task the AI created from meeting notes; "AI, confirmed" once the assignee accepted it. */
+export function AiBadge({ confirmed }: { confirmed: boolean }) {
+  return (
+    <span
+      title={confirmed ? "Created by AI from meeting notes, confirmed by the assignee" : "Created by AI from meeting notes, not yet confirmed"}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${confirmed ? "bg-indigo-bg text-indigo ring-indigo-line" : "bg-violet-bg text-violet ring-violet-line"}`}
+    >
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+        <path d="M12 2l2.4 6.9L21 11l-6.6 2.1L12 20l-2.4-6.9L3 11l6.6-2.1z" />
+      </svg>
+      {confirmed ? "AI, confirmed" : "AI"}
+    </span>
+  );
+}

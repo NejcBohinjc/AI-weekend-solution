@@ -109,6 +109,16 @@ export const tasks = pgTable(
     assigneeRaw: text("assignee_raw"),
     typeRaw: text("type_raw"),
     deadlineRaw: text("deadline_raw"),
+    // AI-created tasks (from meeting notes). created_by_id stays null for them; triggered_by_id is the
+    // member who ran it. They start unconfirmed until the assignee confirms (ai_confirmed_at).
+    createdByAi: boolean("created_by_ai").notNull().default(false),
+    sourceMeetingId: integer("source_meeting_id").references(() => meetings.id, { onDelete: "set null" }),
+    sourceQuote: text("source_quote"),
+    aiModel: text("ai_model"),
+    triggeredById: integer("triggered_by_id").references(() => members.id, { onDelete: "set null" }),
+    aiConfirmedAt: timestamp("ai_confirmed_at", { withTimezone: true }),
+    // Soft delete (AI tasks): hidden everywhere; the sync removes its sheet row.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
     // Legacy (read-only import): fields an admin changed in the app. Only used to migrate to the two-way sync.
     lockedFields: text("locked_fields").array().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -138,8 +148,8 @@ export const taskEvents = pgTable(
       .notNull()
       .references(() => tasks.id, { onDelete: "cascade" }),
     actorId: integer("actor_id").references(() => members.id, { onDelete: "set null" }),
-    source: text("source", { enum: ["app", "sheet_sync"] }).notNull(),
-    kind: text("kind", { enum: ["created", "updated", "conflict"] }).notNull(),
+    source: text("source", { enum: ["app", "sheet_sync", "ai"] }).notNull(),
+    kind: text("kind", { enum: ["created", "updated", "conflict", "confirmed", "deleted"] }).notNull(),
     field: text("field"),
     oldValue: text("old_value"),
     newValue: text("new_value"),
@@ -312,3 +322,64 @@ export const meetingImports = pgTable("meeting_imports", {
   report: jsonb("report").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Meeting notes or a transcript, pasted or uploaded by an attendee. Readable by that meeting's
+// invitees and admins only (enforced in the app).
+export const meetingNotes = pgTable(
+  "meeting_notes",
+  {
+    id: serial("id").primaryKey(),
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    authorId: integer("author_id").references(() => members.id, { onDelete: "set null" }),
+    content: text("content").notNull(),
+    contentHash: text("content_hash").notNull(), // SHA-256 of content
+    fileName: text("file_name"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("meeting_notes_meeting_idx").on(t.meetingId)],
+);
+
+// One "Create tasks from notes" run: the validated items the model returned and what was created.
+export const aiTaskRuns = pgTable(
+  "ai_task_runs",
+  {
+    id: serial("id").primaryKey(),
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    noteId: integer("note_id").references(() => meetingNotes.id, { onDelete: "set null" }),
+    notesHash: text("notes_hash").notNull(),
+    triggeredById: integer("triggered_by_id").references(() => members.id, { onDelete: "set null" }),
+    model: text("model"),
+    calledApi: boolean("called_api").notNull(), // false when the items of an earlier run were reused
+    ok: boolean("ok").notNull(),
+    error: text("error"),
+    items: jsonb("items").notNull().default([]),
+    created: integer("created").notNull().default(0),
+    skipped: integer("skipped").notNull().default(0),
+    discarded: integer("discarded").notNull().default(0),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ai_task_runs_meeting_idx").on(t.meetingId, t.notesHash), index("ai_task_runs_member_idx").on(t.triggeredById, t.createdAt)],
+);
+
+// Every action item ever created for a meeting, by title + assignee. A rerun skips these, so
+// nothing is duplicated and a task deleted by its assignee is not recreated.
+export const aiTaskItems = pgTable(
+  "ai_task_items",
+  {
+    id: serial("id").primaryKey(),
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    itemKey: text("item_key").notNull(),
+    taskId: integer("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    runId: integer("run_id").references(() => aiTaskRuns.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("ai_task_items_key_idx").on(t.meetingId, t.itemKey)],
+);

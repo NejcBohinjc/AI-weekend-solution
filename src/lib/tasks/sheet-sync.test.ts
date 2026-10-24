@@ -167,6 +167,19 @@ describe("two-way tasks sync", { skip: !local && "needs a local DATABASE_URL (it
     assert.equal((await sync()).appended.length, 0, "Plakat is not re-added");
   });
 
+  test("a task deleted in the app loses its sheet row and is not imported again", async () => {
+    const najem = await taskBy("Najem dvorane");
+    const rowsBefore = rows().length;
+    await db.update(tasks).set({ deletedAt: new Date() }).where(eq(tasks.id, najem.id));
+    const report = await sync();
+    assert.deepEqual(report.removedFromSheet, [{ title: "Najem dvorane" }]);
+    assert.equal(rows().length, rowsBefore - 1);
+    assert.ok(!rows().some((r) => r[0] === "Najem dvorane"));
+    assert.ok(rows().some((r) => r[0] === "=Nova naloga"), "other rows intact");
+    const again = await sync();
+    assert.equal(again.created.length + again.appended.length + again.removedFromSheet.length, 0, "stable, not re-imported");
+  });
+
   test("runTasksSync: one at a time, and background syncs wait 60 s unless forced", async () => {
     const first = await runTasksSync({ api: sheets, sheetId: "test", force: true });
     assert.ok(first.ran && first.report?.ok);

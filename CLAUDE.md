@@ -83,7 +83,7 @@ Clockify-style: Start/Stop on `/hours` and the dashboard, plus manual entries. C
 ## Environment variables (names only, document each in the infra page)
 
 `DATABASE_URL`, `DATABASE_MIGRATION_URL` (optional; used by deploy migrations instead of a transaction-pooler `DATABASE_URL`), `APP_URL` (public base URL, used in setup links), `DEMO_MODE` (`true` only for the sandbox demo: seed sets every member's password to `DEMO_PASSWORD` and `/login` shows demo-account buttons), `DEMO_PASSWORD` (min 10 chars), `MEETINGS_ICS_URL` (the calendar's secret iCal address; meetings are pulled automatically every 15 min), `CRON_SECRET` (protects `/api/cron/reminders`), `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `MAIL_REDIRECT_TO` (optional), `GOOGLE_CALENDAR_ID`, `GOOGLE_API_KEY` (both unused since meetings come from the iCal export), `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_TASKS_TAB` (default `List1`), `GOOGLE_SHEET_HOURS_TAB` (default `Ure dela`), `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (PEM with `\n` for newlines; the sheet must be shared with the service account as Editor, because hours are written to it).
-Optional (AI): `ANTHROPIC_API_KEY`. Optional (Slack extras): `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`.
+Optional (AI): `ANTHROPIC_API_KEY` (turns on "Create tasks from notes"; server-side only), `ANTHROPIC_MODEL` (default `claude-sonnet-5-5`). Optional (Slack extras): `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`.
 
 ## Build order (finish each step before the next; commit and push after each)
 
@@ -95,6 +95,13 @@ Optional (AI): `ANTHROPIC_API_KEY`. Optional (Slack extras): `SLACK_BOT_TOKEN`, 
 6. Admin analytics: hours compliance by tier, attendance rate by series and member, weekly trends, a "drifting members" list (e.g. under 50% of target hours, or repeated unexcused absences), task throughput.
 7. Infra page (`docs/INFRASTRUCTURE.md`, one page: services, how they connect, env var names, deploy from zero), final README, demo script.
 8. Extras, in this order: gamification (streaks of weeks at target, attendance streaks, badges) > Slack reminders 3 days and 1 day before meetings > Slack activity signal (admin only) > Jarvis agent.
+
+## Meeting notes → AI tasks
+
+- Meeting invitees and admins add notes on the meeting page (paste, or a .txt/.md/.vtt/.srt file; max 100,000 characters; subtitle timestamps stripped). Stored in `meeting_notes`, readable only by that meeting's invitees and admins.
+- "Create tasks from notes" (`src/lib/ai/meeting-tasks.ts` + `meeting-tasks-run.ts`): Anthropic API server-side only, model `ANTHROPIC_MODEL` (default `claude-sonnet-5-5`), structured outputs (`output_config.format`, zod) with server-side refusal fallbacks. The prompt gives the meeting's invitees (name + email) and date; notes are fenced in `<meeting_notes>` and treated as untrusted data. Every item is re-validated: assignee matched to an invitee by email/name (unknown → unassigned, never an id from the model), due date valid and near the meeting, type from `TASK_TYPES`, invalid items dropped. Hidden (with an admin note) when `ANTHROPIC_API_KEY` is missing.
+- Idempotent: identical notes reuse the stored items of the earlier run (`ai_task_runs`, no second API call); every created item is recorded per meeting by normalised title + assignee (`ai_task_items`), so reruns never duplicate and a deleted AI task is never recreated. Rate limit: 5 API runs per member per hour.
+- AI tasks: `created_by_ai`, `source_meeting_id`, `source_quote`, `ai_model`, `triggered_by_id` (created_by_id stays null), `ai_confirmed_at`. Badge "AI" / "AI, confirmed" everywhere; the assignee reviews (Confirm / edit / reassign / Delete). Deletion is soft (`deleted_at`); the sheet sync removes the row. Unconfirmed AI tasks are not counted in a member's numbers. They sync to the sheet like any task; the sheet carries no AI marker.
 
 ## Theme (light / dark)
 

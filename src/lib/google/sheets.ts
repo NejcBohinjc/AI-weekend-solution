@@ -149,6 +149,17 @@ export class SheetTab {
     return true;
   }
 
+  /** Deletes several rows in one request, bottom-up so earlier deletions do not shift later ones. */
+  async deleteRows(rows: number[]): Promise<void> {
+    if (!rows.length) return;
+    const gid = await this.findGid();
+    if (gid === null) throw new Error(`Tab "${this.tab}" not found`);
+    const requests = [...new Set(rows)]
+      .sort((a, b) => b - a)
+      .map((row) => ({ deleteDimension: { range: { sheetId: gid, dimension: "ROWS", startIndex: row - 1, endIndex: row } } }));
+    await this.api.request({ url: `${this.base}:batchUpdate`, method: "POST", data: { requests } });
+  }
+
   async deleteRow(row: number): Promise<void> {
     const gid = await this.findGid();
     if (gid === null) throw new Error(`Tab "${this.tab}" not found`);

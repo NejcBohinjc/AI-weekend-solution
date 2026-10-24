@@ -1,8 +1,12 @@
 import Link from "next/link";
+import { desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { TierBadge } from "@/components/badges";
 import { LinkifiedText } from "@/components/linkified-text";
 import { AttendanceBadge, meetingWhen, SeriesBadge } from "@/components/meetings";
+import { db } from "@/db";
+import { aiTaskRuns, meetingNotes, members } from "@/db/schema";
+import { aiEnabled } from "@/lib/ai/meeting-tasks";
 import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
 import { ATTENDANCE_STATES, STATE_LABELS } from "@/lib/meetings/constants";
@@ -11,13 +15,30 @@ import { meetingAttendees, meetingById } from "@/lib/meetings/queries";
 import { attendanceSummary, effectiveState, meetingPhase, memberActions } from "@/lib/meetings/rules";
 import { adminMarkRestPresentAction, adminSetAttendanceAction, setMyAttendanceAction } from "../actions";
 import { AttendanceActions } from "../attendance-actions";
+import { addNoteAction, createTasksFromNotesAction } from "../notes-actions";
+import { AddNotesSection, CreateTasksButton } from "../notes-ui";
 
 export default async function MeetingPage({ params }: { params: Promise<{ id: string }> }) {
   const [me, { id: rawId }] = await Promise.all([requireMember(), params]);
   syncCalendarInBackground();
   const id = Number(rawId);
   if (!Number.isInteger(id)) notFound();
-  const [meeting, attendees] = await Promise.all([meetingById(id), meetingAttendees(id)]);
+  const [meeting, attendees, notes, runs] = await Promise.all([
+    meetingById(id),
+    meetingAttendees(id),
+    db
+      .select({ note: meetingNotes, author: members.name })
+      .from(meetingNotes)
+      .leftJoin(members, eq(meetingNotes.authorId, members.id))
+      .where(eq(meetingNotes.meetingId, id))
+      .orderBy(desc(meetingNotes.createdAt)),
+    db
+      .select({ noteId: aiTaskRuns.noteId, ok: aiTaskRuns.ok, created: aiTaskRuns.created, at: aiTaskRuns.createdAt, by: members.name })
+      .from(aiTaskRuns)
+      .leftJoin(members, eq(aiTaskRuns.triggeredById, members.id))
+      .where(eq(aiTaskRuns.meetingId, id))
+      .orderBy(desc(aiTaskRuns.id)),
+  ]);
   if (!meeting) notFound();
   const mine = attendees.find((a) => a.memberId === me.id);
   if (!mine && !me.isAdmin) notFound();
@@ -74,6 +95,39 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
           )}
         </div>
       )}
+
+      {/* Notes: this page is only shown to the meeting's invitees and admins. */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="meeting-notes">
+        <h2 className="font-semibold">Meeting notes</h2>
+        {me.isAdmin && !aiEnabled() && (
+          <p className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning">
+            Creating tasks from notes with AI is off: ANTHROPIC_API_KEY is not set. Notes can still be added. (Only admins see this.)
+          </p>
+        )}
+        {notes.map(({ note, author }) => {
+          // The run that created this note's tasks (a rerun on the same notes creates none).
+          const lastRun = runs.find((r) => r.noteId === note.id && r.ok && r.created > 0) ?? runs.find((r) => r.noteId === note.id && r.ok);
+          return (
+            <div key={note.id} className="flex flex-col gap-2 border-t border-line pt-3 first:border-t-0 first:pt-0">
+              <p className="text-xs text-subtle">
+                Added by {author ?? "a former member"} on {fmt(note.createdAt)}
+                {note.fileName && ` · ${note.fileName}`} · {note.content.length.toLocaleString("en-GB")} characters
+              </p>
+              <details>
+                <summary className="cursor-pointer text-sm font-medium">Show notes</summary>
+                <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-surface-2 p-3 font-sans text-sm text-fg-2">{note.content}</pre>
+              </details>
+              {lastRun && (
+                <p className="text-xs text-subtle">
+                  AI ran on {fmt(lastRun.at)}{lastRun.by ? ` (${lastRun.by})` : ""}: {lastRun.created} {lastRun.created === 1 ? "task" : "tasks"} created.
+                </p>
+              )}
+              {aiEnabled() && <CreateTasksButton action={createTasksFromNotesAction.bind(null, note.id, meeting.id)} />}
+            </div>
+          );
+        })}
+        <AddNotesSection action={addNoteAction.bind(null, meeting.id)} initiallyOpen={notes.length === 0} />
+      </div>
 
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-end justify-between gap-2">

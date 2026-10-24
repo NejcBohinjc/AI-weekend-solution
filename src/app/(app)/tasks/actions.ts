@@ -1,6 +1,6 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -9,7 +9,7 @@ import { db } from "@/db";
 import { members, taskEvents, tasks, type Task } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
 import { STATUS_LABELS, TASK_STATUSES, TASK_TYPES } from "@/lib/tasks/constants";
-import { canEditTask } from "@/lib/tasks/permissions";
+import { canConfirmAiTask, canDeleteAiTask, canEditTask } from "@/lib/tasks/permissions";
 import { runTasksSync } from "@/lib/tasks/sheet-sync";
 
 type Field = "title" | "status" | "assigneeId" | "type" | "dueDate";
@@ -113,10 +113,42 @@ async function applyChanges(task: Task, next: Partial<Pick<Task, Field>>, actorI
   return true;
 }
 
-async function loadEditable(taskId: number) {
+async function loadTask(taskId: number) {
   const me = await requireMember();
-  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  const [task] = await db.select().from(tasks).where(and(eq(tasks.id, taskId), isNull(tasks.deletedAt))).limit(1);
+  return { me, task: task ?? null };
+}
+
+async function loadEditable(taskId: number) {
+  const { me, task } = await loadTask(taskId);
   return { me, task: task && canEditTask(me, task) ? task : null };
+}
+
+/** The assignee accepts a task the AI created ("AI, confirmed"). */
+export async function confirmAiTaskAction(taskId: number): Promise<void> {
+  const { me, task } = await loadTask(taskId);
+  if (task && canConfirmAiTask(me, task)) {
+    await db.transaction(async (tx) => {
+      await tx.update(tasks).set({ aiConfirmedAt: new Date() }).where(eq(tasks.id, task.id));
+      await tx.insert(taskEvents).values({ taskId: task.id, actorId: me.id, source: "app", kind: "confirmed", newValue: "Confirmed the AI-created task" });
+    });
+  }
+  refresh(taskId);
+}
+
+/** Deletes an AI-created task. It is not recreated by a rerun on the same notes, and its sheet row is removed. */
+export async function deleteAiTaskAction(taskId: number): Promise<void> {
+  const { me, task } = await loadTask(taskId);
+  if (task && canDeleteAiTask(me, task)) {
+    await db.transaction(async (tx) => {
+      await tx.update(tasks).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(tasks.id, task.id));
+      await tx.insert(taskEvents).values({ taskId: task.id, actorId: me.id, source: "app", kind: "deleted", newValue: "Deleted the AI-created task" });
+    });
+    pushToSheetLater(me.id);
+    refresh(taskId);
+    redirect("/tasks?deleted=1");
+  }
+  refresh(taskId);
 }
 
 /** Edit, reschedule or hand over (change the assignee). */

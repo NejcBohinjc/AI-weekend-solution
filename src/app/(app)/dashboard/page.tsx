@@ -1,4 +1,4 @@
-import { and, count, eq, ne } from "drizzle-orm";
+import { and, count, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import Link from "next/link";
 import { TierBadge } from "@/components/badges";
 import { WeekProgress } from "@/components/hours";
@@ -33,7 +33,14 @@ export default async function DashboardPage() {
   const [week, meetings, [openTasks]] = await Promise.all([
     memberWeek(member.id, weekStartOf(now), now),
     myMeetings(member.id),
-    db.select({ n: count() }).from(tasks).where(and(eq(tasks.assigneeId, member.id), ne(tasks.status, "done"))),
+    db
+      .select({
+        // Unconfirmed AI tasks are not counted as the member's tasks until they confirm them.
+        n: count(sql`case when ${or(eq(tasks.createdByAi, false), isNotNull(tasks.aiConfirmedAt))} then 1 end`),
+        review: count(sql`case when ${and(eq(tasks.createdByAi, true), isNull(tasks.aiConfirmedAt))} then 1 end`),
+      })
+      .from(tasks)
+      .where(and(eq(tasks.assigneeId, member.id), ne(tasks.status, "done"), isNull(tasks.deletedAt))),
   ]);
   const confirmed = meetings.filter((r) => r.meeting.status === "confirmed");
   const happening = confirmed.filter((r) => meetingPhase(r.meeting, now) === "open");
@@ -64,6 +71,7 @@ export default async function DashboardPage() {
           <span className="font-semibold">
             {openTasks.n} open {openTasks.n === 1 ? "task" : "tasks"}
           </span>
+          {openTasks.review > 0 && <span className="text-sm font-medium text-violet">{openTasks.review} from AI to review</span>}
         </Link>
         <Link href="/tasks/new" className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
           New task

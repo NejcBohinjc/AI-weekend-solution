@@ -2,20 +2,20 @@ import { aliasedTable, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { after } from "next/server";
-import { DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
+import { AiBadge, DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
 import { secondaryButtonClass } from "@/components/ui";
 import { db } from "@/db";
-import { members, taskEvents, tasks } from "@/db/schema";
+import { meetings, members, taskEvents, tasks } from "@/db/schema";
 import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
 import { FIELD_LABELS } from "@/lib/tasks/constants";
-import { canEditTask } from "@/lib/tasks/permissions";
+import { canConfirmAiTask, canDeleteAiTask, canEditTask } from "@/lib/tasks/permissions";
 import { sheetState } from "@/lib/tasks/sheet-state";
 import { activeMembers } from "@/lib/tasks/queries";
 import { normalizeType, todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { runTasksSyncQuietly } from "@/lib/tasks/sheet-sync";
 import { tasksSyncStatus } from "@/lib/tasks/sync-status";
-import { finishTaskAction, updateTaskAction } from "../actions";
+import { confirmAiTaskAction, deleteAiTaskAction, finishTaskAction, updateTaskAction } from "../actions";
 import { SyncStatus } from "../sync-status";
 import { TaskForm } from "../task-form";
 
@@ -27,12 +27,21 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
 
   const actor = aliasedTable(members, "actor");
   const creator = aliasedTable(members, "creator");
+  const triggerer = aliasedTable(members, "triggerer");
   const [[row], events, memberList, syncStatus] = await Promise.all([
     db
-      .select({ task: tasks, assigneeName: members.name, creatorName: creator.name })
+      .select({
+        task: tasks,
+        assigneeName: members.name,
+        creatorName: creator.name,
+        triggeredByName: triggerer.name,
+        meeting: { id: meetings.id, title: meetings.title, startsAt: meetings.startsAt },
+      })
       .from(tasks)
       .leftJoin(members, eq(tasks.assigneeId, members.id))
       .leftJoin(creator, eq(tasks.createdById, creator.id))
+      .leftJoin(triggerer, eq(tasks.triggeredById, triggerer.id))
+      .leftJoin(meetings, eq(tasks.sourceMeetingId, meetings.id))
       .where(eq(tasks.id, id))
       .limit(1),
     db
@@ -44,7 +53,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
     activeMembers(),
     tasksSyncStatus(),
   ]);
-  if (!row) notFound();
+  if (!row || row.task.deletedAt) notFound();
   const { task } = row;
   const editable = canEditTask(me, task);
   const inSheet = sheetState(task);
@@ -79,12 +88,51 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
         <h1 className="text-2xl font-bold tracking-tight">{task.title}</h1>
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <StatusBadge status={task.status} />
+          {task.createdByAi && <AiBadge confirmed={!!task.aiConfirmedAt} />}
           {task.type && <TypeBadge type={task.type} />}
           {task.dueDate && <DueDate date={task.dueDate} today={todayInLjubljana()} done={task.status === "done"} />}
           <span className="text-muted">{row.assigneeName ?? "Unassigned"}</span>
           {row.creatorName && <span className="text-xs text-subtle">created by {row.creatorName}</span>}
           {inSheet === "removed" && <span className="text-xs text-warning">no longer in the sheet (its row was deleted there)</span>}
         </p>
+        {task.createdByAi && (
+          <div className="flex flex-col gap-1.5 rounded-xl border border-violet-line bg-violet-bg p-4 text-sm text-fg-2" data-testid="ai-provenance">
+            <p>
+              <span className="font-semibold text-violet">Created by AI</span> from{" "}
+              {row.meeting?.id ? (
+                <Link href={`/meetings/${row.meeting.id}`} className="font-medium text-link underline underline-offset-2">
+                  {row.meeting.title}
+                </Link>
+              ) : (
+                "a meeting"
+              )}
+              {row.meeting?.startsAt && ` on ${row.meeting.startsAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: TIMEZONE })}`}
+              {row.triggeredByName && `, triggered by ${row.triggeredByName}`}.
+              {task.aiConfirmedAt && " Confirmed by the assignee."}
+            </p>
+            {task.sourceQuote && (
+              <blockquote className="border-l-2 border-violet-line pl-3 italic text-muted">“{task.sourceQuote}”</blockquote>
+            )}
+          </div>
+        )}
+        {(canConfirmAiTask(me, task) || (task.createdByAi && !task.aiConfirmedAt && canDeleteAiTask(me, task))) && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface p-4" data-testid="ai-review">
+            <p className="w-full text-sm font-semibold">Review this AI-created task</p>
+            <p className="w-full text-sm text-muted">Check the title, person and date. Confirm it, change it below (or hand it to someone else), or delete it.</p>
+            {canConfirmAiTask(me, task) && (
+              <form action={confirmAiTaskAction.bind(null, task.id)}>
+                <button type="submit" className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
+                  Confirm
+                </button>
+              </form>
+            )}
+            <form action={deleteAiTaskAction.bind(null, task.id)}>
+              <button type="submit" className={`${secondaryButtonClass} text-danger`}>
+                Delete
+              </button>
+            </form>
+          </div>
+        )}
         {editable && task.status !== "done" && (
           <form action={finishTaskAction.bind(null, task.id)}>
             <button type="submit" className={secondaryButtonClass}>
@@ -137,9 +185,21 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
           {events.map(({ event: e, actorName }) => (
             <li key={e.id}>
               <span className="text-subtle">{fmt(e.createdAt)} · </span>
-              <span className="font-medium">{e.source === "sheet_sync" ? `Sheet sync${actorName ? ` (${actorName})` : ""}` : actorName}</span>
+              <span className="font-medium">
+                {e.source === "sheet_sync"
+                  ? `Sheet sync${actorName ? ` (${actorName})` : ""}`
+                  : e.source === "ai"
+                    ? `AI${actorName ? ` (triggered by ${actorName})` : ""}`
+                    : actorName}
+              </span>
+              {e.source === "ai" && (
+                <>
+                  {" "}
+                  <AiBadge confirmed={false} />
+                </>
+              )}
               {": "}
-              {e.kind === "created"
+              {e.kind === "created" || e.kind === "confirmed" || e.kind === "deleted"
                 ? e.newValue
                 : e.kind === "conflict"
                   ? `${fieldLabel(e.field)} was changed in the sheet to “${e.oldValue ?? "empty"}” and here to “${e.newValue ?? "empty"}”; kept “${e.newValue ?? "empty"}”`
