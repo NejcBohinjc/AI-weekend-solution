@@ -1,4 +1,6 @@
-import { boolean, date, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, date, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { SHEET_STATUSES, TIME_ENTRY_SOURCES } from "../lib/hours/constants";
 import { TASK_STATUSES } from "../lib/tasks/constants";
 import { TIERS } from "../lib/tiers"; // relative: drizzle-kit does not resolve the @/ alias
 
@@ -121,3 +123,36 @@ export const taskSyncs = pgTable("task_syncs", {
   report: jsonb("report").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Work hours. One row per stretch of work; ended_at is null while the timer runs.
+// The database is the source of truth; finished entries are mirrored to the "Ure dela" sheet tab
+// (see lib/hours/sheet-sync.ts). Deleted entries are kept (deleted_at) until their sheet row is removed.
+export const timeEntries = pgTable(
+  "time_entries",
+  {
+    id: serial("id").primaryKey(),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    source: text("source", { enum: TIME_ENTRY_SOURCES }).notNull(),
+    // Who created or last changed the entry, when it was not the member (an admin).
+    editedById: integer("edited_by_id").references(() => members.id, { onDelete: "set null" }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    sheetStatus: text("sheet_status", { enum: SHEET_STATUSES }).notNull().default("pending"),
+    sheetError: text("sheet_error"),
+    sheetSyncedAt: timestamp("sheet_synced_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // At most one running timer per member, so a double tap on Start cannot create two.
+    uniqueIndex("time_entries_running_idx").on(t.memberId).where(sql`${t.endedAt} is null and ${t.deletedAt} is null`),
+    index("time_entries_member_idx").on(t.memberId, t.startedAt),
+    index("time_entries_sheet_idx").on(t.sheetStatus),
+    check("time_entries_end_after_start", sql`${t.endedAt} is null or ${t.endedAt} > ${t.startedAt}`),
+  ],
+);
+
+export type TimeEntry = typeof timeEntries.$inferSelect;

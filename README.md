@@ -34,11 +34,17 @@ Security details: passwords hashed with argon2id (min 10 characters); sessions s
 Tasks are imported read-only from a Google Sheet (tab `List1` by default). Setup:
 
 1. In Google Cloud, enable the **Google Sheets API** and create a **service account**; create a JSON key for it.
-2. Share the spreadsheet with the service account's email as **Viewer**.
+2. Share the spreadsheet with the service account's email as **Editor** (the tasks tab is only read; work hours are written to their own tab, see below).
 3. Set `GOOGLE_SHEET_ID` (from the sheet URL), `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (the key's `private_key`, with `\n` for newlines). Optional: `GOOGLE_SHEET_TASKS_TAB`.
 4. As an admin, open **Tasks** and click **Sync from Google Sheets**. The report lists what was created, updated, skipped and left unassigned.
 
 Running the sync again never creates duplicates, and fields an admin changed in the app are not overwritten. Mapping tests: `npm test`.
+
+## Work hours
+
+Members press **Start** when they begin and **Stop** when they finish (on **Hours** or the dashboard), or add time by hand. They see their week against their tier's commitment and their recent weeks. Admins see on **Admin → Hours** who is behind this week and who is working now, and can open any member to see and correct their hours.
+
+Every finished entry is also written to the tab `Ure dela` of the same Google Sheet (columns oseba, dan začetka, ura začetka, dan konca, ura konca, id), so the sheet must be shared with the service account as **Editor**. The app is the source of truth; make corrections in the app, not in the sheet. Set `GOOGLE_SHEET_HOURS_TAB` if the tab has another name. To make sure the app cannot change anything else, protect the other tabs (**Data → Protect sheets and ranges**) so the service account cannot edit them.
 
 ## Licence
 

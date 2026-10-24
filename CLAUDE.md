@@ -45,13 +45,22 @@ Import `data/meetings.ics` into a Google Calendar called "Sandbox", make it publ
 
 ## Google Sheets task import
 
-Read-only, via the Sheets API with a service account (scope `spreadsheets.readonly`). **Never write to the sheet.** Code: `src/lib/tasks/` (`google-sheets.ts` reads, `sheet-mapping.ts` maps, `sheet-sync.ts` upserts).
+Read-only, via the Sheets API with a service account (scope `spreadsheets.readonly`). **Never write to the tasks tab or any other tab**; the only tab the app writes is the hours tab (next section). Code: `src/lib/tasks/` (`google-sheets.ts` reads, `sheet-mapping.ts` maps, `sheet-sync.ts` upserts).
 
 - Reads only the tab `GOOGLE_SHEET_TASKS_TAB` (default `List1`). Never import the Users tab or List4. Never read the Geslo column: we fetch row 1, then only the five mapped columns.
 - Columns by header (trimmed, case/diacritic-insensitive): `task` → title, `status` → todo/in_progress/done (English + Slovenian variants; unknown → todo, reported), `nosilec` → assignee by first name, full name, email or email prefix (only on exactly one match, else unassigned with raw value kept), `tip taska` → lowercase type label, `deadline` → due date (dd.mm.yyyy, d.m. = next upcoming, yyyy-mm-dd, Sheets serials; Europe/Ljubljana).
 - Row key: normalised title + occurrence number (`plakat#1`, `plakat#2`). Survives row inserts/sorting; renaming a task in the sheet creates a new task and flags the old one "no longer in sheet" (never deleted).
 - Admin edits in the app lock that field (`tasks.locked_fields`); syncs never overwrite locked fields. Every create/change goes to `task_events`.
 - Sync is manual (admin button on `/tasks`), report stored in `task_syncs`. No scheduled sync yet.
+
+## Work hours (timer) and the "Ure dela" tab
+
+Clockify-style: Start/Stop on `/hours` and the dashboard, plus manual entries. Code: `src/lib/hours/` (`time.ts` pure helpers with tests, `queries.ts`, `sheet-sync.ts`), pages in `src/app/(app)/hours/` and `src/app/(app)/admin/hours/`.
+
+- **The database is the source of truth** (`time_entries`, `ended_at` null = timer running, one running timer per member by a partial unique index). Weeks run Monday-Sunday in Europe/Ljubljana; totals clip entries to the week.
+- **The sheet is a one-way mirror.** When a timer stops (or an entry is added/changed/deleted) the entry is marked `sheet_status = pending` and `after()` runs `syncHoursSheet()`: it writes the row `oseba (full name) | dan začetka | ura začetka | dan konca | ura konca | id` to tab `GOOGLE_SHEET_HOURS_TAB` (default `Ure dela`), updating the row whose column F has the entry id or appending one, and removing the row of a deleted entry. Idempotent, one run at a time (advisory lock). Failures stay pending; admins retry on `/admin/hours`. The app never reads hours back from the sheet: corrections are made in the app.
+- Writing needs scope `spreadsheets` and the service account as **Editor**. Only `sheet-sync.ts` uses that scope, and every range it builds is inside the hours tab.
+- Rules: timers under 1 minute are discarded; a timer running over 12 h asks for the real end time; entries are 1 min to 24 h and may not overlap. Members add and change their own entries from this week; admins change any entry and add hours for anyone. Seed entries (`source = seed`, from `hours.xlsx`, five per week Mon-Fri) are never written to the sheet.
 
 ## Proposed stack (change in one line here if we switch)
 
@@ -62,7 +71,7 @@ Read-only, via the Sheets API with a service account (scope `spreadsheets.readon
 
 ## Environment variables (names only, document each in the infra page)
 
-`DATABASE_URL`, `APP_URL` (public base URL, used in setup links), `DEMO_MODE` (`true` only for the sandbox demo: seed sets every member's password to `DEMO_PASSWORD` and `/login` shows demo-account buttons), `DEMO_PASSWORD` (min 10 chars), `GOOGLE_CALENDAR_ID`, `GOOGLE_API_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_TASKS_TAB` (default `List1`), `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (PEM with `\n` for newlines; the sheet must be shared with the service account as Viewer).
+`DATABASE_URL`, `APP_URL` (public base URL, used in setup links), `DEMO_MODE` (`true` only for the sandbox demo: seed sets every member's password to `DEMO_PASSWORD` and `/login` shows demo-account buttons), `DEMO_PASSWORD` (min 10 chars), `GOOGLE_CALENDAR_ID`, `GOOGLE_API_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_TASKS_TAB` (default `List1`), `GOOGLE_SHEET_HOURS_TAB` (default `Ure dela`), `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (PEM with `\n` for newlines; the sheet must be shared with the service account as Editor, because hours are written to it).
 Optional (AI): `ANTHROPIC_API_KEY`. Optional (Slack extras): `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`.
 
 ## Build order (finish each step before the next; commit and push after each)

@@ -1,11 +1,12 @@
 // Loads sandbox data from data/ into the database. Safe to re-run (upserts by email).
 import "dotenv/config";
 import ExcelJS from "exceljs";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../src/db";
-import { members, TIERS, type Tier } from "../src/db/schema";
+import { members, timeEntries, TIERS, type Tier } from "../src/db/schema";
 import { hashPassword } from "../src/lib/auth/password";
 import { PASSWORD_MIN_LENGTH } from "../src/lib/auth/password-rules";
+import { addDays, ljubljanaToUtc } from "../src/lib/hours/time";
 
 async function readSheet(path: string): Promise<Record<string, unknown>[]> {
   const wb = new ExcelJS.Workbook();
@@ -66,8 +67,40 @@ async function seedMembers() {
   console.log(passwordHash ? "passwords: all set to DEMO_PASSWORD (demo mode)" : "passwords: none set (not demo mode)");
 }
 
+// hours.xlsx has weekly totals only. Each total becomes five entries, Monday to Friday, so the
+// history looks like real days. They are marked "seed" and never written to the Google Sheet.
+// Re-running replaces the seed entries and leaves everything members logged themselves alone.
+const SEED_DAYS = 5;
+
+async function seedHours() {
+  const rows = await readSheet("data/hours.xlsx");
+  const ids = new Map((await db.select({ id: members.id, email: members.email }).from(members)).map((m) => [m.email, m.id]));
+  const values: (typeof timeEntries.$inferInsert)[] = [];
+  for (const r of rows) {
+    const memberId = ids.get(String(r.email).toLowerCase());
+    if (!memberId) throw new Error(`hours.xlsx: no member with email ${r.email}`);
+    const weekStart = (r.week_start as Date).toISOString().slice(0, 10);
+    const totalMinutes = Math.round(Number(r.hours) * 60);
+    for (let day = 0; day < SEED_DAYS; day++) {
+      const minutes = Math.floor(totalMinutes / SEED_DAYS) + (day < totalMinutes % SEED_DAYS ? 1 : 0);
+      if (!minutes) continue;
+      // Start at 08:00, or earlier for long days so the entry ends before midnight.
+      const startMinute = Math.min(8 * 60, 23 * 60 + 30 - minutes);
+      const time = `${String(Math.floor(startMinute / 60)).padStart(2, "0")}:${String(startMinute % 60).padStart(2, "0")}`;
+      const startedAt = ljubljanaToUtc(addDays(weekStart, day), time);
+      values.push({ memberId, startedAt, endedAt: new Date(startedAt.getTime() + minutes * 60_000), source: "seed", sheetStatus: "skip" });
+    }
+  }
+  await db.transaction(async (tx) => {
+    await tx.delete(timeEntries).where(eq(timeEntries.source, "seed"));
+    await tx.insert(timeEntries).values(values);
+  });
+  console.log(`hours: ${rows.length} weekly totals -> ${values.length} entries`);
+}
+
 async function main() {
   await seedMembers();
+  await seedHours();
   process.exit(0);
 }
 

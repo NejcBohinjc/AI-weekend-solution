@@ -11,7 +11,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
     "create-admin": "tsx scripts/create-admin.ts",
-    "test": "tsx --test src/lib/tasks/sheet-mapping.test.ts"
+    "test": "tsx --test src/lib/tasks/sheet-mapping.test.ts src/lib/hours/time.test.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",
