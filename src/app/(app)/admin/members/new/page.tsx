@@ -16,7 +16,7 @@ export default async function NewMemberPage() {
       <p className="text-sm text-muted">You get a one-time setup link to send them. They choose their own password.</p>
       <MemberForm
         action={createMemberAction}
-        initial={{ name: "", email: "", tier: "", weeklyHours: "", departmentId: "", isAdmin: false }}
+        initial={{ name: "", email: "", tier: "", weeklyHours: "", departmentIds: [], isAdmin: false }}
         departments={departmentOptions}
         submitLabel="Add member"
       />

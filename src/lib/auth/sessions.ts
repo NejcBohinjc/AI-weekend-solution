@@ -1,5 +1,5 @@
 // Database-backed sessions. The cookie holds a random token; the database holds its hash.
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { members, sessions } from "@/db/schema";
 import { generateToken, hashToken } from "./tokens";
@@ -27,7 +27,14 @@ export async function createSession(memberId: number): Promise<{ token: string; 
   return { token, expiresAt };
 }
 
-export type SessionMember = Pick<typeof members.$inferSelect, "id" | "name" | "email" | "tier" | "weeklyHours" | "isAdmin" | "departmentId">;
+/** departmentIds: every department the member is in (possibly none). */
+export type SessionMember = Pick<typeof members.$inferSelect, "id" | "name" | "email" | "tier" | "weeklyHours" | "isAdmin"> & {
+  departmentIds: number[];
+};
+
+// Written out with table names: inside a subquery, drizzle's unqualified column names would bind to
+// the wrong table.
+const departmentIdsOfMember = sql<number[]>`coalesce((select array_agg("md"."department_id" order by "md"."department_id") from "member_departments" "md" where "md"."member_id" = "members"."id"), '{}'::int[])`;
 
 /**
  * Looks up a session and its member. Returns null if the session is unknown, expired,
@@ -47,7 +54,7 @@ export async function validateSessionToken(
         tier: members.tier,
         weeklyHours: members.weeklyHours,
         isAdmin: members.isAdmin,
-        departmentId: members.departmentId,
+        departmentIds: departmentIdsOfMember,
       },
     })
     .from(sessions)

@@ -12,6 +12,7 @@ import { weekStartOf } from "@/lib/hours/time";
 import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
 import { myMeetings } from "@/lib/meetings/queries";
 import { meetingPhase } from "@/lib/meetings/rules";
+import { myTasksCondition } from "@/lib/tasks/queries";
 import { TimerCard } from "../hours/timer-card";
 import { NowMeetingCard } from "../meetings/now-card";
 
@@ -43,10 +44,7 @@ export default async function DashboardPage() {
       .from(tasks)
       .where(
         and(
-          // Mine, or delegated to my department and not taken yet (as under My tasks).
-          member.departmentId
-            ? or(eq(tasks.assigneeId, member.id), and(isNull(tasks.assigneeId), eq(tasks.departmentId, member.departmentId)))
-            : eq(tasks.assigneeId, member.id),
+          myTasksCondition(member), // as under My tasks
           ne(tasks.status, "done"),
           isNull(tasks.deletedAt),
         ),

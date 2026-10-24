@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import Link from "next/link";
 import { after } from "next/server";
 import { AiBadge, DepartmentBadge, DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
@@ -7,6 +7,7 @@ import { departments, members, tasks, taskSyncs } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
 import { STATUS_LABELS, TASK_STATUSES, TASK_TYPES, type TaskStatus } from "@/lib/tasks/constants";
 import { canEditTask } from "@/lib/tasks/permissions";
+import { myTasksCondition } from "@/lib/tasks/queries";
 import { sheetState } from "@/lib/tasks/sheet-state";
 import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { runTasksSyncQuietly, type SyncReport } from "@/lib/tasks/sheet-sync";
@@ -28,14 +29,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const listedTypes = sql.join(TASK_TYPES.map((t) => sql`${t.toLowerCase()}`), sql`, `);
 
   const where: SQL[] = [isNull(tasks.deletedAt)];
-  // Mine: assigned to me, or delegated to my department and not yet taken by anyone.
-  if (view === "mine") {
-    where.push(
-      me.departmentId
-        ? or(eq(tasks.assigneeId, me.id), and(isNull(tasks.assigneeId), eq(tasks.departmentId, me.departmentId)))!
-        : eq(tasks.assigneeId, me.id),
-    );
-  }
+  if (view === "mine") where.push(myTasksCondition(me));
   if (status) where.push(eq(tasks.status, status));
   if (type === "none") where.push(isNull(tasks.type));
   else if (type === "other") where.push(isNotNull(tasks.type), sql`lower(${tasks.type}) not in (${listedTypes})`);
@@ -183,7 +177,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                   ) : t.departmentName ? (
                     <span className="flex items-center gap-1 text-xs text-muted">
                       <DepartmentBadge name={t.departmentName} />
-                      {t.departmentId === me.departmentId ? "your department" : "department"}
+                      {t.departmentId && me.departmentIds.includes(t.departmentId) ? "your department" : "department"}
                     </span>
                   ) : (
                     <span className="text-xs text-warning">

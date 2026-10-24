@@ -101,7 +101,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
           ) : row.departmentName ? (
             <span className="flex items-center gap-1.5 text-muted">
               <DepartmentBadge name={row.departmentName} />
-              whole department{task.departmentId === me.departmentId ? " (yours)" : ""}
+              whole department{task.departmentId && me.departmentIds.includes(task.departmentId) ? " (yours)" : ""}
             </span>
           ) : (
             <span className="text-muted">Unassigned</span>

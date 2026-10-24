@@ -1,15 +1,16 @@
-import { and, asc, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, asc, desc, gt, isNull } from "drizzle-orm";
 import Link from "next/link";
 import { AdminBadge, TierBadge } from "@/components/badges";
 import { DepartmentBadge } from "@/components/task-badges";
 import { db } from "@/db";
-import { departments, members, passwordTokens } from "@/db/schema";
+import { members, passwordTokens } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
+import { departmentNamesByMember } from "@/lib/departments";
 import { AccessStatus } from "./access-status";
 
 export default async function MembersPage() {
   await requireAdmin();
-  const [rows, pending] = await Promise.all([
+  const [rows, pending, departmentsOf] = await Promise.all([
     db
       .select({
         id: members.id,
@@ -18,17 +19,16 @@ export default async function MembersPage() {
         tier: members.tier,
         weeklyHours: members.weeklyHours,
         isAdmin: members.isAdmin,
-        departmentName: departments.name,
         active: members.active,
         passwordHash: members.passwordHash,
       })
       .from(members)
-      .leftJoin(departments, eq(members.departmentId, departments.id))
       .orderBy(desc(members.active), asc(members.name)),
     db
       .select({ memberId: passwordTokens.memberId })
       .from(passwordTokens)
       .where(and(isNull(passwordTokens.usedAt), gt(passwordTokens.expiresAt, new Date()))),
+    departmentNamesByMember(),
   ]);
   const pendingIds = new Set(pending.map((p) => p.memberId));
   const activeCount = rows.filter((r) => r.active).length;
@@ -63,7 +63,9 @@ export default async function MembersPage() {
               <span className="flex flex-wrap items-center gap-1.5">
                 {m.isAdmin && <AdminBadge />}
                 <TierBadge tier={m.tier} />
-                {m.departmentName && <DepartmentBadge name={`${m.departmentName} department`} />}
+                {(departmentsOf.get(m.id) ?? []).map((d) => (
+                  <DepartmentBadge key={d} name={`${d} department`} />
+                ))}
                 <span className="text-xs text-subtle">{m.weeklyHours} h/wk</span>
                 <AccessStatus active={m.active} hasPassword={!!m.passwordHash} linkPending={pendingIds.has(m.id)} />
               </span>

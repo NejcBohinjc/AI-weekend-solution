@@ -1,16 +1,16 @@
 import type { SessionMember } from "@/lib/auth";
 
-type Viewer = Pick<SessionMember, "id" | "isAdmin"> & { departmentId?: number | null };
+type Viewer = Pick<SessionMember, "id" | "isAdmin"> & { departmentIds?: number[] };
 type TaskRef = { assigneeId: number | null; createdById: number | null; triggeredById?: number | null; departmentId?: number | null };
 
-/** The task is delegated to the viewer's department (and not yet taken by one person). */
+/** The task is delegated to one of the viewer's departments (and not yet taken by one person). */
 export function isMyDepartmentTask(me: Viewer, task: TaskRef): boolean {
-  return task.assigneeId === null && task.departmentId != null && task.departmentId === me.departmentId;
+  return task.assigneeId === null && task.departmentId != null && (me.departmentIds ?? []).includes(task.departmentId);
 }
 
 /**
- * Admins edit every task; members edit tasks assigned to them, delegated to their department, or
- * created by them (for AI tasks: who ran the AI).
+ * Admins edit every task; members edit tasks assigned to them, delegated to one of their departments,
+ * or created by them (for AI tasks: who ran the AI).
  */
 export function canEditTask(me: Viewer, task: TaskRef): boolean {
   return (

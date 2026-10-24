@@ -27,7 +27,8 @@ import { TIERS } from "../lib/tiers"; // relative: drizzle-kit does not resolve 
 export { TIER_HOURS, TIERS, type Tier } from "../lib/tiers";
 
 // Departments (Core, Voice, Tech to start; admins add more on /admin/departments). A member belongs to
-// at most one; a task can be delegated to a whole department instead of one person.
+// any number of them (member_departments) or none; a department named like a tier ("Core") is only for
+// members of that tier. A task can be delegated to a whole department instead of one person.
 export const departments = pgTable("departments", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
@@ -46,12 +47,24 @@ export const members = pgTable("members", {
   active: boolean("active").notNull().default(true),
   passwordHash: text("password_hash"), // argon2id; null until the member sets one
   series: text("series").array().notNull().default([]),
-  departmentId: integer("department_id").references(() => departments.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type Member = typeof members.$inferSelect;
+
+export const memberDepartments = pgTable(
+  "member_departments",
+  {
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    departmentId: integer("department_id")
+      .notNull()
+      .references(() => departments.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.memberId, t.departmentId] }), index("member_departments_department_idx").on(t.departmentId)],
+);
 
 // The id is the SHA-256 hash of the cookie token, so a database leak does not leak sessions.
 export const sessions = pgTable(

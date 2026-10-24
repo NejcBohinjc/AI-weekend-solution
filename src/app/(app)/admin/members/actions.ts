@@ -1,16 +1,18 @@
 "use server";
 
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db";
-import { departments, members, passwordTokens, TIER_HOURS, TIERS } from "@/db/schema";
+import { departments, memberDepartments, members, passwordTokens, TIER_HOURS, TIERS } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { invalidateMemberSessions } from "@/lib/auth/sessions";
 import { createSetupLink } from "@/lib/auth/setup-links";
+import { departmentTierProblem } from "@/lib/department-rules";
 
-export type MemberValues = { name: string; email: string; tier: string; weeklyHours: string; departmentId: string; isAdmin: boolean };
+/** departmentIds: the ticked departments (any number, or none). */
+export type MemberValues = { name: string; email: string; tier: string; weeklyHours: string; departmentIds: string[]; isAdmin: boolean };
 type Field = keyof MemberValues;
 export type MemberFormState = {
   errors?: Partial<Record<Field, string>>;
@@ -24,7 +26,7 @@ const memberSchema = z.object({
   email: z.string().trim().toLowerCase().max(254).pipe(z.email("Enter a valid email address.")),
   tier: z.enum(TIERS, "Pick a tier."),
   weeklyHours: z.string().trim().regex(/^\d{0,3}$/, "Enter a whole number of hours."),
-  departmentId: z.string().regex(/^\d*$/, "Pick a department."),
+  departmentIds: z.array(z.string().regex(/^\d+$/, "Pick departments from the list.")),
   isAdmin: z.boolean(),
 });
 
@@ -34,7 +36,7 @@ function readValues(formData: FormData): MemberValues {
     email: String(formData.get("email") ?? ""),
     tier: String(formData.get("tier") ?? ""),
     weeklyHours: String(formData.get("weeklyHours") ?? ""),
-    departmentId: String(formData.get("departmentId") ?? ""),
+    departmentIds: formData.getAll("departmentIds").map(String),
     isAdmin: formData.get("isAdmin") === "on",
   };
 }
@@ -47,14 +49,16 @@ async function parseMember(formData: FormData, excludeId?: number) {
     for (const issue of parsed.error.issues) errors[issue.path[0] as Field] ??= issue.message;
     return { values, errors };
   }
-  const { weeklyHours, departmentId: rawDepartment, ...rest } = parsed.data;
+  const { weeklyHours, departmentIds: rawDepartments, ...rest } = parsed.data;
   const hours = weeklyHours === "" ? TIER_HOURS[rest.tier] : Number(weeklyHours);
   if (hours > 168) return { values, errors: { weeklyHours: "A week has 168 hours." } };
-  const departmentId = rawDepartment ? Number(rawDepartment) : null;
-  if (departmentId !== null) {
-    const [d] = await db.select({ id: departments.id }).from(departments).where(eq(departments.id, departmentId)).limit(1);
-    if (!d) return { values, errors: { departmentId: "That department no longer exists." } };
-  }
+  const departmentIds = [...new Set(rawDepartments.map(Number))];
+  const chosen = departmentIds.length
+    ? await db.select({ id: departments.id, name: departments.name }).from(departments).where(inArray(departments.id, departmentIds))
+    : [];
+  if (chosen.length !== departmentIds.length) return { values, errors: { departmentIds: "A department no longer exists. Reload the page." } };
+  const tierProblem = departmentTierProblem(chosen, rest.tier);
+  if (tierProblem) return { values, errors: { departmentIds: tierProblem } };
 
   const [clash] = await db
     .select({ id: members.id })
@@ -63,7 +67,15 @@ async function parseMember(formData: FormData, excludeId?: number) {
     .limit(1);
   if (clash) return { values, errors: { email: "Another member already uses this email." } };
 
-  return { data: { ...rest, weeklyHours: hours, departmentId } };
+  return { data: { ...rest, weeklyHours: hours }, departmentIds };
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Replaces a member's departments with exactly these. */
+async function setDepartments(tx: Tx, memberId: number, departmentIds: number[]) {
+  await tx.delete(memberDepartments).where(eq(memberDepartments.memberId, memberId));
+  if (departmentIds.length) await tx.insert(memberDepartments).values(departmentIds.map((departmentId) => ({ memberId, departmentId })));
 }
 
 export async function createMemberAction(_prev: MemberFormState, formData: FormData): Promise<MemberFormState> {
@@ -71,7 +83,11 @@ export async function createMemberAction(_prev: MemberFormState, formData: FormD
   const result = await parseMember(formData);
   if (!result.data) return { errors: result.errors, values: result.values };
 
-  const [member] = await db.insert(members).values(result.data).returning({ id: members.id, name: members.name });
+  const member = await db.transaction(async (tx) => {
+    const [m] = await tx.insert(members).values(result.data).returning({ id: members.id, name: members.name });
+    await setDepartments(tx, m.id, result.departmentIds);
+    return m;
+  });
   const link = await createSetupLink(member.id);
   revalidatePath("/admin/members");
   return { created: { id: member.id, name: member.name, url: link.url, expiresAt: link.expiresAt.toISOString() } };
@@ -85,11 +101,15 @@ export async function updateMemberAction(id: number, _prev: MemberFormState, for
     return { values: readValues(formData), errors: { isAdmin: "You cannot remove your own admin role. Ask another admin." } };
   }
 
-  await db
-    .update(members)
-    .set({ ...result.data, updatedAt: new Date() })
-    .where(eq(members.id, id));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(members)
+      .set({ ...result.data, updatedAt: new Date() })
+      .where(eq(members.id, id));
+    await setDepartments(tx, id, result.departmentIds);
+  });
   revalidatePath("/admin/members");
+  revalidatePath("/admin/departments");
   redirect(`/admin/members/${id}?saved=1`);
 }
 
