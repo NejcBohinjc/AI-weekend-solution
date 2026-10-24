@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { TASK_STATUSES } from "./constants";
 import { test } from "node:test";
-import { buildRowKeys, findColumns, mapStatus, matchAssignee, normalizeType, parseDeadline } from "./sheet-mapping";
+import { buildRowKeys, findColumns, formatStatus, mapStatus, matchAssignee, normalizeType, parseDeadline } from "./sheet-mapping";
 
 const TODAY = "2026-10-24";
 
@@ -14,6 +15,9 @@ test("finds columns by header name, case- and space-insensitive, in any order", 
 test("maps English and Slovenian statuses", () => {
   for (const s of ["to do", "To-Do", "TODO", "", "odprto", "ni začeto"]) assert.equal(mapStatus(s).status, "todo", s);
   for (const s of ["in progress", "In-Progress", "WIP", "v delu", "V teku"]) assert.equal(mapStatus(s).status, "in_progress", s);
+  for (const s of ["verifikacija", "Verifikacija ", "VERIFICATION", "v verifikaciji"]) {
+    assert.deepEqual(mapStatus(s), { status: "verification", recognised: true }, s);
+  }
   for (const s of ["done", "Done ", "completed", "narejeno", "Končano", "zaključeno", "opravljeno"]) assert.equal(mapStatus(s).status, "done", s);
   assert.deepEqual(mapStatus("blocked"), { status: "todo", recognised: false });
 });
@@ -80,4 +84,9 @@ test("row keys are stable and distinguish duplicate titles", () => {
   assert.deepEqual(buildRowKeys(["Plakat", "Objava na IG", " plakat "]), ["plakat#1", "objava na ig#1", "plakat#2"]);
   // Reordering other rows does not change a row's key.
   assert.deepEqual(buildRowKeys(["Objava na IG", "Plakat"]), ["objava na ig#1", "plakat#1"]);
+});
+
+test("every status the app writes to the sheet reads back as the same status", () => {
+  for (const status of TASK_STATUSES) assert.deepEqual(mapStatus(formatStatus(status)), { status, recognised: true }, status);
+  assert.equal(formatStatus("verification"), "verifikacija");
 });

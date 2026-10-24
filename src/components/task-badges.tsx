@@ -4,6 +4,7 @@ import { STATUS_LABELS, type TaskStatus } from "@/lib/tasks/constants";
 const STATUS_STYLES: Record<TaskStatus, string> = {
   todo: "bg-slate-100 text-slate-700 ring-slate-200",
   in_progress: "bg-blue-50 text-blue-700 ring-blue-200",
+  verification: "bg-amber-50 text-amber-800 ring-amber-200",
   done: "bg-emerald-50 text-emerald-700 ring-emerald-200",
 };
 

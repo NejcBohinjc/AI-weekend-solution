@@ -1,7 +1,13 @@
 // Shared task constants, safe to import from client components.
-export const TASK_STATUSES = ["todo", "in_progress", "done"] as const;
+// In workflow order. "verification": done by the assignee, waiting for someone to check it.
+export const TASK_STATUSES = ["todo", "in_progress", "verification", "done"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
-export const STATUS_LABELS: Record<TaskStatus, string> = { todo: "To do", in_progress: "In progress", done: "Done" };
+export const STATUS_LABELS: Record<TaskStatus, string> = {
+  todo: "To do",
+  in_progress: "In progress",
+  verification: "Verification",
+  done: "Done",
+};
 
 // Task fields an admin can edit. Editing one locks it against later sheet syncs.
 export const EDITABLE_FIELDS = ["status", "assigneeId", "type", "dueDate"] as const;
