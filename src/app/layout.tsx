@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { APP_NAME, APP_TAGLINE } from "@/lib/app";
+import { THEME_SCRIPT } from "@/lib/theme";
+import { themePref } from "@/lib/theme-server";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -10,12 +12,22 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#0f172a",
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8fafc" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0c" },
+  ],
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const pref = await themePref();
   return (
-    <html lang="en">
+    // An explicit choice is rendered by the server; "system" is resolved by THEME_SCRIPT before paint.
+    // suppressHydrationWarning: the script sets data-theme on <html> before React hydrates.
+    <html lang="en" data-theme-pref={pref} data-theme={pref === "system" ? undefined : pref} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className="min-h-dvh">{children}</body>
     </html>
   );

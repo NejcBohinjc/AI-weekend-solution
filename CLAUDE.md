@@ -96,6 +96,11 @@ Optional (AI): `ANTHROPIC_API_KEY`. Optional (Slack extras): `SLACK_BOT_TOKEN`, 
 7. Infra page (`docs/INFRASTRUCTURE.md`, one page: services, how they connect, env var names, deploy from zero), final README, demo script.
 8. Extras, in this order: gamification (streaks of weeks at target, attendance streaks, badges) > Slack reminders 3 days and 1 day before meetings > Slack activity signal (admin only) > Jarvis agent.
 
+## Theme (light / dark)
+
+- All colours are design tokens (CSS variables) in `src/app/globals.css`, light values on `:root`, dark on `[data-theme="dark"]`, exposed to Tailwind via `@theme inline` (`bg-surface`, `text-muted`, `border-line`, `bg-success-bg text-success`, ...). Never use raw palette classes (`bg-white`, `text-slate-600`, `bg-red-50`); add a token instead. Every text/background token pair passes WCAG AA (4.5:1) in both themes.
+- Choice System (default) / Light / Dark: `ThemeSwitch` in the header and on the login page, stored in the `theme` cookie. The root layout renders `data-theme` for an explicit choice; `THEME_SCRIPT` (`src/lib/theme.ts`, inline in `<head>`) resolves "system" from `prefers-color-scheme` before first paint and follows it live. `color-scheme` is set in CSS and the viewport meta so native controls match. Tailwind 4 `dark:` variant: `@custom-variant dark` on `[data-theme=dark]`.
+
 ## Working rules
 
 - Small steps. After each step: run it, check it in the browser, then commit.

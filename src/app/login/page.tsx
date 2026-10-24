@@ -3,6 +3,8 @@ import { db } from "@/db";
 import { members } from "@/db/schema";
 import { APP_NAME, APP_TAGLINE } from "@/lib/app";
 import { demoPassword } from "@/lib/env";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { themePref } from "@/lib/theme-server";
 import { LoginForm, type DemoConfig } from "./login-form";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +36,10 @@ export default async function LoginPage() {
       </header>
       <LoginForm demo={demo} />
       <p className="text-xs text-subtle">No password yet, or forgot it? Ask an admin for a setup link.</p>
+      <div className="flex items-center justify-between gap-3 text-xs text-subtle">
+        <span>Appearance</span>
+        <ThemeSwitch initial={await themePref()} showLabels />
+      </div>
     </main>
   );
 }

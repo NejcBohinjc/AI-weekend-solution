@@ -1,3 +1,5 @@
+import { ThemeSwitch } from "@/components/theme-switch";
+import { themePref } from "@/lib/theme-server";
 import { APP_NAME } from "@/lib/app";
 import { getSetupLinkMember } from "@/lib/auth/setup-links";
 import { InvalidLink, SetPasswordForm } from "./set-password-form";
@@ -20,6 +22,9 @@ export default async function SetPasswordPage({ searchParams }: { searchParams: 
         )}
       </header>
       {member && token ? <SetPasswordForm token={token} email={member.email} /> : <InvalidLink />}
+      <div className="flex justify-end">
+        <ThemeSwitch initial={await themePref()} />
+      </div>
     </main>
   );
 }

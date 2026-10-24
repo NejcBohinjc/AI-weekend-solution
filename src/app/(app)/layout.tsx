@@ -4,6 +4,8 @@ import { NavLinks, type NavItem } from "@/components/nav-links";
 import { APP_NAME } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
 import { logoutAction } from "@/lib/auth/actions";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { themePref } from "@/lib/theme-server";
 
 const MEMBER_NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard" },
@@ -34,6 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="ml-auto flex min-w-0 items-center gap-2">
             <span className="hidden truncate text-sm text-fg-2 sm:inline">{member.name}</span>
             {member.isAdmin && <AdminBadge />}
+            <ThemeSwitch initial={await themePref()} />
             <form action={logoutAction}>
               <button type="submit" className="whitespace-nowrap rounded-lg px-2.5 py-1 text-sm font-medium text-subtle hover:bg-surface-3 hover:text-fg">
                 Log out
