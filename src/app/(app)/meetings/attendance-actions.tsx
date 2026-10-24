@@ -19,7 +19,7 @@ type Props = {
 export function AttendanceActions({ action, current, note, can, lockedByAdmin }: Props) {
   const [state, formAction, pending] = useActionState(action, {} as AttendanceActionState);
 
-  if (lockedByAdmin) return <p className="text-sm text-slate-600">An admin recorded your attendance. Ask them if it needs changing.</p>;
+  if (lockedByAdmin) return <p className="text-sm text-muted">An admin recorded your attendance. Ask them if it needs changing.</p>;
   if (!can.checkIn && !can.excuse) return null;
 
   const checkedIn = current === "present" || current === "remote";
@@ -33,7 +33,7 @@ export function AttendanceActions({ action, current, note, can, lockedByAdmin }:
             value="present"
             disabled={pending}
             aria-pressed={current === "present"}
-            className={`rounded-xl px-4 py-4 text-base font-semibold shadow-sm transition disabled:opacity-60 ${current === "present" ? "bg-emerald-700 text-white ring-2 ring-emerald-300" : "bg-emerald-600 text-white hover:bg-emerald-700"}`}
+            className={`rounded-xl px-4 py-4 text-base font-semibold shadow-sm transition disabled:opacity-60 ${current === "present" ? "bg-success-solid text-on-primary ring-2 ring-success-line" : "bg-success-solid text-on-primary hover:bg-success-solid-hover"}`}
           >
             {current === "present" ? "✓ I'm here" : "I'm here"}
           </button>
@@ -43,7 +43,7 @@ export function AttendanceActions({ action, current, note, can, lockedByAdmin }:
             value="remote"
             disabled={pending}
             aria-pressed={current === "remote"}
-            className={`rounded-xl px-4 py-4 text-base font-semibold shadow-sm transition disabled:opacity-60 ${current === "remote" ? "bg-sky-700 text-white ring-2 ring-sky-300" : "bg-sky-600 text-white hover:bg-sky-700"}`}
+            className={`rounded-xl px-4 py-4 text-base font-semibold shadow-sm transition disabled:opacity-60 ${current === "remote" ? "bg-info-solid text-on-primary ring-2 ring-info-line" : "bg-info-solid text-on-primary hover:bg-info-solid"}`}
           >
             {current === "remote" ? "✓ Remote" : "Joining remotely"}
           </button>
@@ -51,7 +51,7 @@ export function AttendanceActions({ action, current, note, can, lockedByAdmin }:
       )}
 
       {can.excuse && current !== "excused" && !checkedIn && (
-        <details className="rounded-xl border border-slate-200 bg-white px-4 py-3" open={state.error !== undefined && !can.checkIn}>
+        <details className="rounded-xl border border-line bg-surface px-4 py-3" open={state.error !== undefined && !can.checkIn}>
           <summary className="cursor-pointer text-sm font-medium">Can&apos;t come? Send an excuse</summary>
           <form action={formAction} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="intent" value="excused" />
@@ -64,7 +64,7 @@ export function AttendanceActions({ action, current, note, can, lockedByAdmin }:
       )}
 
       {current === "excused" && (
-        <p className="text-sm text-slate-700">
+        <p className="text-sm text-fg-2">
           You sent an excuse{note ? `: “${note}”` : "."}
         </p>
       )}
@@ -72,7 +72,7 @@ export function AttendanceActions({ action, current, note, can, lockedByAdmin }:
       {(checkedIn || current === "excused") && (
         <form action={formAction}>
           <input type="hidden" name="intent" value="clear" />
-          <button type="submit" disabled={pending} className="text-sm font-medium text-slate-600 underline-offset-2 hover:underline">
+          <button type="submit" disabled={pending} className="text-sm font-medium text-muted underline-offset-2 hover:underline">
             {current === "excused" ? "Take back my excuse" : "Undo check-in"}
           </button>
         </form>
@@ -84,7 +84,7 @@ export function AttendanceActions({ action, current, note, can, lockedByAdmin }:
         </p>
       )}
       {state.done && !pending && (
-        <p role="status" className="text-sm text-emerald-700">
+        <p role="status" className="text-sm text-success">
           {state.done}
         </p>
       )}

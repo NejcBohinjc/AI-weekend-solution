@@ -71,7 +71,7 @@ export function TaskForm({ action, initial, members, submitLabel }: Props) {
         </p>
       )}
       {state.saved && !pending && (
-        <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <p role="status" className="rounded-xl bg-success-bg px-4 py-3 text-sm text-success">
           Saved. It goes to the sheet in a moment.
         </p>
       )}

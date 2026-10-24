@@ -10,13 +10,13 @@ type Props = { email: string; emailEnabled: boolean; minutesBefore: number[]; se
 export function ReminderSettingsForm({ email, emailEnabled, minutesBefore, sending }: Props) {
   const [state, formAction, pending] = useActionState(saveReminderSettingsAction, {} as ReminderSettingsState);
   return (
-    <form action={formAction} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4" aria-label="Reminder settings">
+    <form action={formAction} className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4" aria-label="Reminder settings">
       <label className="flex items-center gap-2 font-medium">
         <input type="checkbox" name="emailEnabled" defaultChecked={emailEnabled} className="size-4" />
         Email me before my meetings
       </label>
       <fieldset className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-        <legend className="mb-1 text-sm text-slate-600">When</legend>
+        <legend className="mb-1 text-sm text-muted">When</legend>
         {REMINDER_OPTIONS.map((o) => (
           <label key={o.minutes} className="flex items-center gap-1.5">
             <input type="checkbox" name="minutesBefore" value={o.minutes} defaultChecked={minutesBefore.includes(o.minutes)} className="size-4" />
@@ -24,7 +24,7 @@ export function ReminderSettingsForm({ email, emailEnabled, minutesBefore, sendi
           </label>
         ))}
       </fieldset>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-subtle">
         Reminders go to {email}. No reminder comes for a meeting you sent an excuse for.
         {!sending && " Email sending is not set up yet, so reminders are only recorded for now."}
       </p>
@@ -33,7 +33,7 @@ export function ReminderSettingsForm({ email, emailEnabled, minutesBefore, sendi
           {pending ? "Saving…" : "Save reminders"}
         </button>
         {state.saved && !pending && (
-          <span role="status" className="text-sm text-emerald-700">
+          <span role="status" className="text-sm text-success">
             Saved.
           </span>
         )}

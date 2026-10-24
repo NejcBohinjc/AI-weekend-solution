@@ -77,17 +77,17 @@ export function SyncStatus({ initial, awaitSync = false, hideError = false }: { 
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" data-testid="sync-status">
-      <span className={status.ok === false && !running ? "text-red-700" : "text-slate-500"} suppressHydrationWarning>
+      <span className={status.ok === false && !running ? "text-danger" : "text-subtle"} suppressHydrationWarning>
         {label}
       </span>
       <form action={syncNow}>
-        <button type="submit" disabled={running} className="font-medium text-slate-900 underline underline-offset-2 disabled:text-slate-400 disabled:no-underline">
+        <button type="submit" disabled={running} className="font-medium text-fg underline underline-offset-2 disabled:text-subtle disabled:no-underline">
           Sync now
         </button>
       </form>
-      {result?.ok && !syncing && <span className="text-slate-500">{result.summary}</span>}
-      {result?.ran === false && !running && <span className="text-slate-500">Another sync is running; showing it when done.</span>}
-      {!hideError && status.error && status.ok === false && !running && <span className="w-full text-xs text-red-700">{status.error}</span>}
+      {result?.ok && !syncing && <span className="text-subtle">{result.summary}</span>}
+      {result?.ran === false && !running && <span className="text-subtle">Another sync is running; showing it when done.</span>}
+      {!hideError && status.error && status.ok === false && !running && <span className="w-full text-xs text-danger">{status.error}</span>}
     </div>
   );
 }

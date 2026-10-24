@@ -22,12 +22,12 @@ export default async function NewEntryPage({ searchParams }: { searchParams: Pro
 
   return (
     <section className="flex max-w-md flex-col gap-4">
-      <Link href={returnTo} className="text-sm text-slate-500 hover:text-slate-900">
+      <Link href={returnTo} className="text-sm text-subtle hover:text-fg">
         ← Hours
       </Link>
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Add time{forMember ? ` for ${forMember.name}` : ""}</h1>
-        <p className="text-sm text-slate-600">For when you forgot to start the timer.</p>
+        <p className="text-sm text-muted">For when you forgot to start the timer.</p>
       </div>
       <EntryForm
         action={saveEntryAction.bind(null, null, forMember?.id ?? null)}

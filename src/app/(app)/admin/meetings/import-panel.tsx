@@ -23,11 +23,11 @@ export function ImportPanel({ last, lastBy, auto }: { last: ImportReport | null;
 
   const uploadForm = (
     <form action={fileAction} className="flex flex-wrap items-center gap-2">
-      <input type="file" name="file" accept=".ics,text/calendar" required className="max-w-full text-sm file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium" />
+      <input type="file" name="file" accept=".ics,text/calendar" required className="max-w-full text-sm file:mr-2 file:rounded-lg file:border-0 file:bg-surface-3 file:px-3 file:py-2 file:text-sm file:font-medium" />
       <button type="submit" disabled={importing} className={secondaryButtonClass}>
         {importing ? "Importing…" : "Import .ics file"}
       </button>
-      <label className="flex basis-full items-center gap-1.5 text-xs text-slate-600">
+      <label className="flex basis-full items-center gap-1.5 text-xs text-muted">
         <input type="checkbox" name="wholeCalendar" defaultChecked={!auto} className="size-3.5" />
         This is the whole calendar: hide upcoming meetings that are not in it
       </label>
@@ -35,16 +35,16 @@ export function ImportPanel({ last, lastBy, auto }: { last: ImportReport | null;
   );
 
   return (
-    <section aria-label="Calendar import" className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4">
+    <section aria-label="Calendar import" className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
       {auto ? (
         <>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="font-semibold">Google Calendar</h2>
-              <p className="text-xs text-slate-500" data-testid="calendar-sync-status">
+              <p className="text-xs text-subtle" data-testid="calendar-sync-status">
                 Pulled automatically every {auto.minutes} minutes when someone opens the app, and by the scheduled job.{" "}
                 {auto.last ? (
-                  <span className={auto.last.ok ? "" : "font-medium text-red-700"}>
+                  <span className={auto.last.ok ? "" : "font-medium text-danger"}>
                     Last pull {when(auto.last.at)}
                     {auto.last.ok ? "." : ` failed: ${auto.last.error}`}
                   </span>
@@ -61,7 +61,7 @@ export function ImportPanel({ last, lastBy, auto }: { last: ImportReport | null;
             </form>
           </div>
           <details className="text-sm">
-            <summary className="cursor-pointer text-slate-600">Import an .ics file instead</summary>
+            <summary className="cursor-pointer text-muted">Import an .ics file instead</summary>
             <div className="mt-2">{uploadForm}</div>
           </details>
         </>
@@ -69,7 +69,7 @@ export function ImportPanel({ last, lastBy, auto }: { last: ImportReport | null;
         <>
           <div>
             <h2 className="font-semibold">Calendar</h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-subtle">
               Not connected to Google Calendar, so meetings are imported from a file. To pull them automatically, set MEETINGS_ICS_URL
               to the calendar&apos;s secret iCal address. Read-only: the calendar is never changed.
             </p>
@@ -79,7 +79,7 @@ export function ImportPanel({ last, lastBy, auto }: { last: ImportReport | null;
       )}
       {report && (
         <>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-subtle">
             {fresh ? "Just now" : `Last import ${when(report.at)}${lastBy ? ` by ${lastBy}` : ""}`} ({report.source === "url" ? "Google Calendar" : report.source}):
           </p>
           <ImportReportView report={report} />
@@ -92,7 +92,7 @@ export function ImportPanel({ last, lastBy, auto }: { last: ImportReport | null;
 function ImportReportView({ report }: { report: ImportReport }) {
   if (!report.ok) {
     return (
-      <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+      <p role="alert" className="rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger">
         Import failed: {report.error}
       </p>
     );
@@ -116,14 +116,14 @@ function ImportReportView({ report }: { report: ImportReport }) {
         {report.relinked > 0 && <span title="Same title and start time, new UID in the calendar">{report.relinked} matched to existing meetings</span>}
       </p>
       {report.unknownEmails.length > 0 && (
-        <details className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900" open>
+        <details className="rounded-lg bg-warning-bg px-3 py-2 text-warning" open>
           <summary className="cursor-pointer font-medium">Invitees who are not members ({report.unknownEmails.length})</summary>
           <p className="mt-1">{report.unknownEmails.map((u) => `${u.email} (${u.meetings})`).join(", ")}</p>
           <p className="mt-1 text-xs">Add them on Admin → Members with the same email, then import again.</p>
         </details>
       )}
       {report.removed.length > 0 && (
-        <details className="rounded-lg bg-slate-50 px-3 py-2">
+        <details className="rounded-lg bg-surface-2 px-3 py-2">
           <summary className="cursor-pointer font-medium">No longer in the calendar ({report.removed.length}), hidden</summary>
           <ul className="mt-1 list-disc pl-5">
             {report.removed.map((r, i) => (

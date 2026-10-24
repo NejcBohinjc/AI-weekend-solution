@@ -30,10 +30,10 @@ export default async function LoginPage() {
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-8 px-4 py-10">
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-bold tracking-tight">{APP_NAME}</h1>
-        <p className="text-slate-600">{APP_TAGLINE}</p>
+        <p className="text-muted">{APP_TAGLINE}</p>
       </header>
       <LoginForm demo={demo} />
-      <p className="text-xs text-slate-500">No password yet, or forgot it? Ask an admin for a setup link.</p>
+      <p className="text-xs text-subtle">No password yet, or forgot it? Ask an admin for a setup link.</p>
     </main>
   );
 }

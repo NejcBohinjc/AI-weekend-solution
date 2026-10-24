@@ -43,17 +43,17 @@ export default async function EditMemberPage({
   return (
     <section className="flex max-w-lg flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <Link href="/admin/members" className="text-sm text-slate-500 hover:text-slate-900">
+        <Link href="/admin/members" className="text-sm text-subtle hover:text-fg">
           ← Members
         </Link>
         <h1 className="text-2xl font-bold tracking-tight">{member.name}</h1>
         {saved && NOTICES[saved] && (
-          <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <p role="status" className="rounded-xl bg-success-bg px-4 py-3 text-sm text-success">
             {NOTICES[saved]}
           </p>
         )}
         {error === "self-deactivate" && (
-          <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p role="alert" className="rounded-xl bg-danger-bg px-4 py-3 text-sm text-danger">
             You cannot deactivate yourself. Ask another admin.
           </p>
         )}
@@ -72,14 +72,14 @@ export default async function EditMemberPage({
         isSelf={isSelf}
       />
 
-      <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-semibold">Access</h2>
           <AccessStatus active={member.active} hasPassword={!!member.passwordHash} linkPending={!!pendingLink} />
         </div>
         {member.active && (
           <>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-muted">
               {member.passwordHash ? "Has a password." : "Has no password yet."}
               {pendingLink &&
                 ` An unused link expires ${pendingLink.expiresAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE })}.`}{" "}
@@ -89,15 +89,15 @@ export default async function EditMemberPage({
           </>
         )}
         {!isSelf && (
-          <form action={setActiveAction.bind(null, member.id, !member.active)} className="border-t border-slate-100 pt-4">
-            <p className="mb-3 text-sm text-slate-600">
+          <form action={setActiveAction.bind(null, member.id, !member.active)} className="border-t border-line pt-4">
+            <p className="mb-3 text-sm text-muted">
               {member.active
                 ? "Deactivating signs them out everywhere and blocks sign-in. Their history is kept."
                 : "This member is deactivated and cannot sign in."}
             </p>
             <button
               type="submit"
-              className={member.active ? `${secondaryButtonClass} text-red-700` : secondaryButtonClass}
+              className={member.active ? `${secondaryButtonClass} text-danger` : secondaryButtonClass}
             >
               {member.active ? "Deactivate member" : "Reactivate member"}
             </button>

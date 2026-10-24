@@ -23,7 +23,7 @@ export default async function HoursPage({ searchParams }: { searchParams: Promis
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Hours</h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted">
             {isThisWeek ? "This week" : "Week of"} {formatWeek(week)} · your commitment is {me.weeklyHours} h a week
           </p>
         </div>

@@ -12,7 +12,7 @@ export default async function NewTaskPage() {
   const memberList = await activeMembers();
   return (
     <section className="flex max-w-2xl flex-col gap-4">
-      <Link href="/tasks" className="text-sm text-slate-500 hover:text-slate-900">
+      <Link href="/tasks" className="text-sm text-subtle hover:text-fg">
         ← Tasks
       </Link>
       <h1 className="text-2xl font-bold tracking-tight">New task</h1>

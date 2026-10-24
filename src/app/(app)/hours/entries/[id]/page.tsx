@@ -34,12 +34,12 @@ export default async function EditEntryPage({
 
   return (
     <section className="flex max-w-md flex-col gap-4">
-      <Link href={returnTo} className="text-sm text-slate-500 hover:text-slate-900">
+      <Link href={returnTo} className="text-sm text-subtle hover:text-fg">
         ← Hours
       </Link>
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Edit hours{entry.memberId !== me.id ? ` · ${row.name}` : ""}</h1>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-muted">
           {formatDay(start.date)}, {start.time}–{end.time} ({formatDuration(entry.endedAt!.getTime() - entry.startedAt.getTime())})
           {entry.source === "seed" && " · imported history, not written to the sheet"}
         </p>
@@ -52,9 +52,9 @@ export default async function EditEntryPage({
         minDate={me.isAdmin ? undefined : thisWeek}
         maxDate={ljubljanaParts(new Date()).date}
       />
-      <form action={deleteEntryAction.bind(null, entry.id)} className="border-t border-slate-200 pt-4">
+      <form action={deleteEntryAction.bind(null, entry.id)} className="border-t border-line pt-4">
         <input type="hidden" name="returnTo" value={returnTo} />
-        <button type="submit" className="text-sm font-medium text-red-700 hover:underline">
+        <button type="submit" className="text-sm font-medium text-danger hover:underline">
           Delete this entry
         </button>
       </form>

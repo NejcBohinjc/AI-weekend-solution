@@ -11,10 +11,10 @@ export default async function SetPasswordPage({ searchParams }: { searchParams: 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-8 px-4 py-10">
       <header className="flex flex-col gap-1">
-        <p className="text-sm font-semibold text-slate-500">{APP_NAME}</p>
+        <p className="text-sm font-semibold text-subtle">{APP_NAME}</p>
         <h1 className="text-2xl font-bold tracking-tight">Set your password</h1>
         {member && (
-          <p className="text-slate-600">
+          <p className="text-muted">
             For <strong>{member.name}</strong> ({member.email}).
           </p>
         )}

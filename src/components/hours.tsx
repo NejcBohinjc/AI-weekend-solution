@@ -10,28 +10,28 @@ export function WeekProgress({ totalMs, targetHours, label = "This week" }: { to
       <div className="flex items-baseline justify-between gap-2 text-sm">
         <span className="font-medium">{label}</span>
         <span className="tabular-nums">
-          <strong className="text-base">{formatHours(totalMs)}</strong> / {targetHours} h <span className="text-slate-500">· {pct}%</span>
+          <strong className="text-base">{formatHours(totalMs)}</strong> / {targetHours} h <span className="text-subtle">· {pct}%</span>
         </span>
       </div>
       <div
-        className="h-2.5 overflow-hidden rounded-full bg-slate-100"
+        className="h-2.5 overflow-hidden rounded-full bg-surface-3"
         role="progressbar"
         aria-valuenow={pct}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={`${label}: ${pct}% of ${targetHours} hours`}
       >
-        <div className={`h-full rounded-full ${pct >= 100 ? "bg-emerald-500" : "bg-slate-900"}`} style={{ width: `${pct}%` }} />
+        <div className={`h-full rounded-full ${pct >= 100 ? "bg-success-solid" : "bg-primary"}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
 }
 
 const PACE: Record<Pace, { label: string; className: string }> = {
-  met: { label: "Target met", className: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
-  on_track: { label: "On track", className: "bg-slate-100 text-slate-700 ring-slate-200" },
-  behind: { label: "Behind", className: "bg-red-50 text-red-700 ring-red-200" },
-  below: { label: "Below target", className: "bg-amber-50 text-amber-800 ring-amber-200" },
+  met: { label: "Target met", className: "bg-success-bg text-success ring-success-line" },
+  on_track: { label: "On track", className: "bg-surface-3 text-fg-2 ring-line" },
+  behind: { label: "Behind", className: "bg-danger-bg text-danger ring-danger-line" },
+  below: { label: "Below target", className: "bg-warning-bg text-warning ring-warning-line" },
 };
 
 export function PaceBadge({ pace }: { pace: Pace }) {
@@ -55,7 +55,7 @@ export function EntryList({
   now: Date;
 }) {
   if (!entries.length) {
-    return <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">No hours logged in this week.</p>;
+    return <p className="rounded-xl border border-dashed border-line-strong bg-surface px-4 py-6 text-center text-sm text-subtle">No hours logged in this week.</p>;
   }
   const days = new Map<string, TimeEntry[]>();
   for (const e of entries) {
@@ -68,12 +68,12 @@ export function EntryList({
       {[...days].map(([day, list]) => {
         const dayMs = list.reduce((s, e) => s + ((e.endedAt ?? now).getTime() - e.startedAt.getTime()), 0);
         return (
-          <li key={day} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex justify-between bg-slate-50 px-4 py-2 text-sm">
+          <li key={day} className="overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
+            <div className="flex justify-between bg-surface-2 px-4 py-2 text-sm">
               <span className="font-semibold">{formatDay(day)}</span>
-              <span className="tabular-nums text-slate-600">{formatDuration(dayMs)}</span>
+              <span className="tabular-nums text-muted">{formatDuration(dayMs)}</span>
             </div>
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-line">
               {list.map((e) => (
                 <EntryRow key={e.id} entry={e} viewer={viewer} editable={canEditEntry(viewer, e, thisWeekStart)} returnTo={returnTo} now={now} />
               ))}
@@ -104,19 +104,19 @@ function EntryRow({ entry: e, viewer, editable, returnTo, now }: { entry: TimeEn
           {end ? (
             <>
               {end.time}
-              {nextDay && <span className="text-slate-500"> (next day)</span>}
+              {nextDay && <span className="text-subtle"> (next day)</span>}
             </>
           ) : (
-            <span className="font-medium text-emerald-700">now</span>
+            <span className="font-medium text-success">now</span>
           )}
         </span>
-        {notes.length > 0 && <span className="text-xs text-slate-500">{notes.join(" · ")}</span>}
+        {notes.length > 0 && <span className="text-xs text-subtle">{notes.join(" · ")}</span>}
       </span>
-      <span className={`tabular-nums ${e.endedAt ? "" : "text-emerald-700"}`}>{formatDuration((e.endedAt ?? now).getTime() - e.startedAt.getTime())}</span>
+      <span className={`tabular-nums ${e.endedAt ? "" : "text-success"}`}>{formatDuration((e.endedAt ?? now).getTime() - e.startedAt.getTime())}</span>
       {editable && (
         <Link
           href={`/hours/entries/${e.id}?returnTo=${encodeURIComponent(returnTo)}`}
-          className="rounded-lg px-2 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+          className="rounded-lg px-2 py-1 text-xs font-medium text-muted ring-1 ring-line hover:bg-surface-2"
         >
           Edit
         </Link>
@@ -138,7 +138,7 @@ export function WeekHistory({
   hrefFor: (week: string) => string;
 }) {
   return (
-    <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="week-history">
+    <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm" data-testid="week-history">
       {weeks.map(({ week, totalMs }) => {
         const pct = targetHours > 0 ? Math.round((totalMs / 3_600_000 / targetHours) * 100) : 0;
         return (
@@ -146,12 +146,12 @@ export function WeekHistory({
             <Link
               href={hrefFor(week)}
               aria-current={week === selected ? "true" : undefined}
-              className={`flex items-center justify-between gap-3 px-4 py-2.5 text-sm hover:bg-slate-50 ${week === selected ? "bg-slate-50 font-semibold" : ""}`}
+              className={`flex items-center justify-between gap-3 px-4 py-2.5 text-sm hover:bg-surface-2 ${week === selected ? "bg-surface-2 font-semibold" : ""}`}
             >
               <span>{formatWeek(week)}</span>
               <span className="tabular-nums">
                 {formatHours(totalMs)} / {targetHours} h{" "}
-                <span className={pct >= 100 ? "text-emerald-700" : pct < 50 ? "text-red-700" : "text-slate-500"}>({pct}%)</span>
+                <span className={pct >= 100 ? "text-success" : pct < 50 ? "text-danger" : "text-subtle"}>({pct}%)</span>
               </span>
             </Link>
           </li>

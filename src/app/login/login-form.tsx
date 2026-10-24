@@ -48,9 +48,9 @@ export function LoginForm({ demo }: { demo: DemoConfig | null }) {
       </form>
 
       {demo && (
-        <section aria-label="Demo accounts" className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4">
-          <h2 className="text-sm font-semibold text-amber-900">Demo accounts</h2>
-          <p className="mt-0.5 text-xs text-amber-800">Sandbox data only. Fills in the form; press Sign in.</p>
+        <section aria-label="Demo accounts" className="rounded-xl border border-dashed border-warning-line bg-warning-bg p-4">
+          <h2 className="text-sm font-semibold text-warning">Demo accounts</h2>
+          <p className="mt-0.5 text-xs text-warning">Sandbox data only. Fills in the form; press Sign in.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {demo.accounts.map((a) => (
               <button key={a.email} type="button" onClick={() => fillDemo(a)} className={secondaryButtonClass}>

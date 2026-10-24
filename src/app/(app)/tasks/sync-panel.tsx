@@ -9,13 +9,13 @@ export function SyncReportPanel({ report, by }: { report: Partial<SyncReport> & 
   const when = new Date(report.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE });
   const list = <T,>(items: T[] | undefined) => items ?? [];
   return (
-    <details className="rounded-xl border border-slate-200 bg-white p-4 text-sm" open={!report.ok} data-testid="sync-report">
+    <details className="rounded-xl border border-line bg-surface p-4 text-sm" open={!report.ok} data-testid="sync-report">
       <summary className="cursor-pointer font-semibold">
-        Sync report <span className="font-normal text-slate-500">· {when}{by ? ` by ${by}` : ""} · admins only</span>
+        Sync report <span className="font-normal text-subtle">· {when}{by ? ` by ${by}` : ""} · admins only</span>
       </summary>
       <div className="mt-3 flex flex-col gap-2">
         {!report.ok ? (
-          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-red-700">
+          <p role="alert" className="rounded-lg bg-danger-bg px-3 py-2 text-danger">
             Sync failed: {report.error}
           </p>
         ) : (
@@ -26,13 +26,13 @@ export function SyncReportPanel({ report, by }: { report: Partial<SyncReport> & 
             <Count n={list(report.exported).length} label="updated in sheet" />
             <Count n={list(report.conflicts).length} label="conflicts" />
             <Count n={report.unchanged ?? 0} label="unchanged" />
-            <span className="text-slate-500">
+            <span className="text-subtle">
               {report.rowsRead ?? 0} rows read from “{report.tab}”
             </span>
           </p>
         )}
         {list(report.missingColumns).length > 0 && (
-          <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">
+          <p className="rounded-lg bg-warning-bg px-3 py-2 text-warning">
             Columns not found in the sheet: {list(report.missingColumns).join(", ")}. Those fields are kept in the app only.
           </p>
         )}
@@ -63,11 +63,11 @@ function Count({ n, label }: { n: number; label: string }) {
 function Details({ title, items, open }: { title: string; items: string[]; open?: boolean }) {
   if (!items.length) return null;
   return (
-    <details className="rounded-lg bg-slate-50 px-3 py-2" open={open}>
+    <details className="rounded-lg bg-surface-2 px-3 py-2" open={open}>
       <summary className="cursor-pointer font-medium">
         {title} ({items.length})
       </summary>
-      <ul className="mt-1 list-disc pl-5 text-slate-700">
+      <ul className="mt-1 list-disc pl-5 text-fg-2">
         {items.map((item, i) => (
           <li key={i}>{item}</li>
         ))}

@@ -11,11 +11,11 @@ export function SheetPanel({ tab, pending, failed, lastError }: { tab: string; p
   const error = result ? result.error : lastError;
 
   return (
-    <section aria-label="Google Sheets" className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4">
+    <section aria-label="Google Sheets" className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold">Google Sheets · “{tab}”</h2>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-subtle">
             {result
               ? `Sent ${result.synced} ${result.synced === 1 ? "entry" : "entries"}${result.failed ? `, ${result.failed} failed` : ""}.`
               : pending
@@ -33,7 +33,7 @@ export function SheetPanel({ tab, pending, failed, lastError }: { tab: string; p
         )}
       </div>
       {error && (
-        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p role="alert" className="rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger">
           <span className="font-semibold">Last error: </span>
           {error}
         </p>

@@ -79,21 +79,21 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{view === "mine" ? "My tasks" : "All tasks"}</h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted">
             {rows.length} {rows.length === 1 ? "task" : "tasks"}, {open} open
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/tasks/new" className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-700">
+          <Link href="/tasks/new" className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
             New task
           </Link>
-          <nav aria-label="Task view" className="flex rounded-xl bg-slate-100 p-1 text-sm font-medium">
+          <nav aria-label="Task view" className="flex rounded-xl bg-surface-3 p-1 text-sm font-medium">
             {(["mine", "all"] as const).map((v) => (
               <Link
                 key={v}
                 href={href({ view: v })}
                 aria-current={view === v ? "page" : undefined}
-                className={`rounded-lg px-3 py-1.5 ${view === v ? "bg-white shadow-sm" : "text-slate-600"}`}
+                className={`rounded-lg px-3 py-1.5 ${view === v ? "bg-surface shadow-sm" : "text-muted"}`}
               >
                 {v === "mine" ? "My tasks" : "All tasks"}
               </Link>
@@ -135,29 +135,29 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       </div>
 
       {rows.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
+        <p className="rounded-xl border border-dashed border-line-strong bg-surface px-4 py-8 text-center text-sm text-subtle">
           {view === "mine" ? "No tasks assigned to you" : "No tasks"}
           {type || status ? " with these filters." : "."}
         </p>
       ) : (
-        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="task-list">
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm" data-testid="task-list">
           {rows.map((t) => (
             <li key={t.id} className="flex items-center">
-              <Link href={`/tasks/${t.id}`} className="flex min-w-0 flex-1 flex-col gap-1.5 px-4 py-3 hover:bg-slate-50">
-                <span className={`font-medium ${t.status === "done" ? "text-slate-500 line-through" : ""}`}>{t.title}</span>
+              <Link href={`/tasks/${t.id}`} className="flex min-w-0 flex-1 flex-col gap-1.5 px-4 py-3 hover:bg-surface-2">
+                <span className={`font-medium ${t.status === "done" ? "text-subtle line-through" : ""}`}>{t.title}</span>
                 <span className="flex flex-wrap items-center gap-2">
                   <StatusBadge status={t.status} />
                   {t.type && <TypeBadge type={t.type} />}
                   {t.dueDate && <DueDate date={t.dueDate} today={today} done={t.status === "done"} />}
-                  <span className="text-xs text-slate-600">
+                  <span className="text-xs text-muted">
                     {t.assigneeName ?? (
-                      <span className="text-amber-700">
+                      <span className="text-warning">
                         Unassigned{t.assigneeRaw && me.isAdmin ? ` (sheet: “${t.assigneeRaw}”)` : ""}
                       </span>
                     )}
                   </span>
-                  {!t.inSheet && me.isAdmin && <span className="text-xs text-slate-400">no longer in sheet</span>}
-                  {pendingInSheet.has(t.id) && <span className="text-xs text-amber-700">not in the sheet yet</span>}
+                  {!t.inSheet && me.isAdmin && <span className="text-xs text-subtle">no longer in sheet</span>}
+                  {pendingInSheet.has(t.id) && <span className="text-xs text-warning">not in the sheet yet</span>}
                 </span>
               </Link>
               {t.status !== "done" && canEditTask(me, t) && (
@@ -166,7 +166,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                     type="submit"
                     aria-label={`Mark “${t.title}” as done`}
                     title="Mark as done"
-                    className="flex size-9 items-center justify-center rounded-full border border-slate-300 text-slate-500 hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
+                    className="flex size-9 items-center justify-center rounded-full border border-line-strong text-subtle hover:border-success hover:bg-success-bg hover:text-success"
                   >
                     ✓
                   </button>
@@ -183,7 +183,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 overflow-x-auto">
-      <span className="w-12 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
+      <span className="w-12 shrink-0 text-xs font-semibold uppercase tracking-wide text-subtle">{label}</span>
       {children}
     </div>
   );
@@ -194,7 +194,7 @@ function Chip({ href, active, children }: { href: string; active: boolean; child
     <Link
       href={href}
       aria-current={active ? "true" : undefined}
-      className={`shrink-0 rounded-full px-3 py-1 ${active ? "bg-slate-900 text-white" : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"}`}
+      className={`shrink-0 rounded-full px-3 py-1 ${active ? "bg-primary text-on-primary" : "bg-surface text-fg-2 ring-1 ring-line hover:bg-surface-2"}`}
     >
       {children}
     </Link>

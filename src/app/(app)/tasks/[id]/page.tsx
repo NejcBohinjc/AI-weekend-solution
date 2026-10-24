@@ -55,20 +55,20 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
     <section className="flex max-w-2xl flex-col gap-6">
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Link href="/tasks" className="text-sm text-slate-500 hover:text-slate-900">
+          <Link href="/tasks" className="text-sm text-subtle hover:text-fg">
             ← Tasks
           </Link>
           <SyncStatus initial={syncStatus} awaitSync={inSheet === "pending"} hideError={inSheet === "pending"} />
         </div>
         {created && (
-          <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <p role="status" className="rounded-xl bg-success-bg px-4 py-3 text-sm text-success">
             Task created.
           </p>
         )}
         {inSheet === "pending" && (
           <p
             role={syncStatus.ok === false ? "alert" : "status"}
-            className={`rounded-xl px-4 py-3 text-sm ${syncStatus.ok === false ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-700"}`}
+            className={`rounded-xl px-4 py-3 text-sm ${syncStatus.ok === false ? "bg-danger-bg text-danger" : "bg-surface-3 text-fg-2"}`}
             data-testid="sheet-state"
           >
             {syncStatus.ok === false && syncStatus.error
@@ -81,9 +81,9 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
           <StatusBadge status={task.status} />
           {task.type && <TypeBadge type={task.type} />}
           {task.dueDate && <DueDate date={task.dueDate} today={todayInLjubljana()} done={task.status === "done"} />}
-          <span className="text-slate-600">{row.assigneeName ?? "Unassigned"}</span>
-          {row.creatorName && <span className="text-xs text-slate-400">created by {row.creatorName}</span>}
-          {inSheet === "removed" && <span className="text-xs text-amber-700">no longer in the sheet (its row was deleted there)</span>}
+          <span className="text-muted">{row.assigneeName ?? "Unassigned"}</span>
+          {row.creatorName && <span className="text-xs text-subtle">created by {row.creatorName}</span>}
+          {inSheet === "removed" && <span className="text-xs text-warning">no longer in the sheet (its row was deleted there)</span>}
         </p>
         {editable && task.status !== "done" && (
           <form action={finishTaskAction.bind(null, task.id)}>
@@ -95,17 +95,17 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
       </div>
 
       {me.isAdmin && (task.statusRaw || task.assigneeRaw || task.deadlineRaw) && (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-white p-4 text-sm">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-xl border border-line bg-surface p-4 text-sm">
           <dt className="col-span-2 mb-1 font-semibold">
-            In the sheet{task.sheetRow ? `, row ${task.sheetRow}` : ""} <span className="font-normal text-slate-500">· as last read · admins only</span>
+            In the sheet{task.sheetRow ? `, row ${task.sheetRow}` : ""} <span className="font-normal text-subtle">· as last read · admins only</span>
           </dt>
-          <dt className="text-slate-500">status</dt>
+          <dt className="text-subtle">status</dt>
           <dd>{task.statusRaw ?? "—"}</dd>
-          <dt className="text-slate-500">nosilec</dt>
+          <dt className="text-subtle">nosilec</dt>
           <dd>{task.assigneeRaw ?? "—"}</dd>
-          <dt className="text-slate-500">tip taska</dt>
+          <dt className="text-subtle">tip taska</dt>
           <dd>{task.typeRaw ?? "—"}</dd>
-          <dt className="text-slate-500">deadline</dt>
+          <dt className="text-subtle">deadline</dt>
           <dd>{task.deadlineRaw ?? "—"}</dd>
         </dl>
       )}
@@ -128,15 +128,15 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
           />
         </div>
       ) : (
-        <p className="text-sm text-slate-500">Only the assignee, the person who created it, or an admin can change this task.</p>
+        <p className="text-sm text-subtle">Only the assignee, the person who created it, or an admin can change this task.</p>
       )}
 
       <div className="flex flex-col gap-2">
         <h2 className="font-semibold">History</h2>
-        <ol className="flex flex-col gap-2 border-l-2 border-slate-200 pl-4 text-sm" data-testid="task-history">
+        <ol className="flex flex-col gap-2 border-l-2 border-line pl-4 text-sm" data-testid="task-history">
           {events.map(({ event: e, actorName }) => (
             <li key={e.id}>
-              <span className="text-slate-500">{fmt(e.createdAt)} · </span>
+              <span className="text-subtle">{fmt(e.createdAt)} · </span>
               <span className="font-medium">{e.source === "sheet_sync" ? `Sheet sync${actorName ? ` (${actorName})` : ""}` : actorName}</span>
               {": "}
               {e.kind === "created"

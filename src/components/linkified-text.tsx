@@ -6,7 +6,7 @@ export function LinkifiedText({ text, className = "" }: { text: string; classNam
     <p className={`whitespace-pre-line break-words ${className}`}>
       {splitLinks(text).map((part, i) =>
         part.href ? (
-          <a key={i} href={part.href} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900">
+          <a key={i} href={part.href} target="_blank" rel="noopener noreferrer" className="font-medium text-link underline underline-offset-2 hover:text-link-hover">
             {part.text}
           </a>
         ) : (
