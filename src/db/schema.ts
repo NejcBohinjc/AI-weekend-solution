@@ -20,6 +20,8 @@ import {
   DEFAULT_REMINDER_MINUTES,
   EMAIL_STATUSES,
   MEETING_STATUSES,
+  RECORDING_SOURCES,
+  RECORDING_STATUSES,
 } from "../lib/meetings/constants";
 import { TASK_STATUSES } from "../lib/tasks/constants";
 import { TIERS } from "../lib/tiers"; // relative: drizzle-kit does not resolve the @/ alias
@@ -358,6 +360,32 @@ export const meetingReminders = pgTable(
 );
 
 // One row per calendar import (file upload, calendar URL or seed), with the report.
+// Audio/video recordings of meetings: recorded in the browser during an in-person meeting, or uploaded
+// by an admin afterwards. The file itself is in object storage (lib/storage.ts) under storage_key;
+// only the meeting's invitees and admins can play it. Kept for transcription later.
+export const meetingRecordings = pgTable(
+  "meeting_recordings",
+  {
+    id: serial("id").primaryKey(),
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    uploadedById: integer("uploaded_by_id").references(() => members.id, { onDelete: "set null" }),
+    source: text("source", { enum: RECORDING_SOURCES }).notNull(),
+    status: text("status", { enum: RECORDING_STATUSES }).notNull().default("uploading"),
+    storageKey: text("storage_key").notNull().unique(),
+    fileName: text("file_name"),
+    contentType: text("content_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    durationSeconds: integer("duration_seconds"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+  },
+  (t) => [index("meeting_recordings_meeting_idx").on(t.meetingId)],
+);
+
+export type MeetingRecording = typeof meetingRecordings.$inferSelect;
+
 export const meetingImports = pgTable("meeting_imports", {
   id: serial("id").primaryKey(),
   actorId: integer("actor_id").references(() => members.id, { onDelete: "set null" }),

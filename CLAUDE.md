@@ -90,6 +90,7 @@ Clockify-style: Start/Stop on `/hours` and the dashboard, plus manual entries. C
 ## Environment variables (names only, document each in the infra page)
 
 `DATABASE_URL`, `DATABASE_MIGRATION_URL` (optional; used by deploy migrations instead of a transaction-pooler `DATABASE_URL`), `APP_URL` (public base URL, used in setup links), `DEMO_MODE` (`true` only for the sandbox demo: seed sets every member's password to `DEMO_PASSWORD` and `/login` shows demo-account buttons), `DEMO_PASSWORD` (min 10 chars), `MEETINGS_ICS_URL` (the calendar's secret iCal address; meetings are pulled automatically every 15 min), `CRON_SECRET` (protects `/api/cron/reminders`), `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `MAIL_REDIRECT_TO` (optional), `GOOGLE_CALENDAR_ID`, `GOOGLE_API_KEY` (both unused since meetings come from the iCal export), `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_TASKS_TAB` (default `List1`), `GOOGLE_SHEET_HOURS_TAB` (default `Ure dela`), `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (PEM with `\n` for newlines; the sheet must be shared with the service account as Editor, because hours are written to it).
+Optional (recordings): `RECORDINGS_S3_ENDPOINT` (empty for AWS S3), `RECORDINGS_S3_REGION` (default `auto`), `RECORDINGS_S3_BUCKET`, `RECORDINGS_S3_ACCESS_KEY_ID`, `RECORDINGS_S3_SECRET_ACCESS_KEY`.
 Optional (AI): `ANTHROPIC_API_KEY` (turns on "Create tasks from notes"; server-side only), `ANTHROPIC_MODEL` (default `claude-sonnet-5-5`). Optional (Slack extras): `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`.
 
 ## Build order (finish each step before the next; commit and push after each)
@@ -102,6 +103,14 @@ Optional (AI): `ANTHROPIC_API_KEY` (turns on "Create tasks from notes"; server-s
 6. Admin analytics: hours compliance by tier, attendance rate by series and member, weekly trends, a "drifting members" list (e.g. under 50% of target hours, or repeated unexcused absences), task throughput.
 7. Infra page (`docs/INFRASTRUCTURE.md`, one page: services, how they connect, env var names, deploy from zero), final README, demo script.
 8. Extras, in this order: gamification (streaks of weeks at target, attendance streaks, badges) > Slack reminders 3 days and 1 day before meetings > Slack activity signal (admin only) > Jarvis agent.
+
+## Meeting recordings
+
+- Code: `src/lib/meetings/recordings.ts` (pure rules and formats, tested in `recordings.test.ts`), `src/lib/storage.ts` (server-only), `src/app/(app)/meetings/` (`recording-actions.ts`, `recordings-section.tsx` on the meeting page, `meeting-recorder.tsx`, `recording-upload-form.tsx`, `upload-recording.ts`), `src/app/api/recordings/[id]/{upload,file}` (local storage only). Table `meeting_recordings` (`source` recorded/uploaded, `status` uploading → ready).
+- **Record in the room:** invitees and admins, from 15 min before the start to the end, not cancelled. MediaRecorder, MP4 preferred (about 100 kbps in Chrome, which ignores the bitrate for MP4; recorded WebM is 48 kbps but has no duration, so players cannot seek; Firefox only records WebM), pause/resume, screen wake lock, leave-page warning; saving is accepted until 12 h after the end. If saving fails, Try again or download (nothing is lost).
+- **Upload:** admins only, for a meeting that is over, is not cancelled and has no ready recording; audio/* or MP4/WebM/MOV video, max 500 MB (`MAX_RECORDING_BYTES`). Admins delete recordings and remove uploads stuck over 1 h. `/admin/meetings` past view shows "recorded" / "no recording".
+- **Storage:** the server inserts the row (`uploading`) and returns a presigned PUT; the browser uploads straight to the S3-compatible bucket (Vercel caps request bodies at 4.5 MB); the finish action checks the stored size and marks it `ready`. Players get presigned GETs (1 h). Without `RECORDINGS_S3_*`: development stores under `.data/recordings` (gitignored) via the API routes with Range support; production stores nothing (recorder offers download only, upload hidden, admin note).
+- Played only by the meeting's invitees and admins. Transcription and tasks from recordings are not built yet (planned on top of `meeting_recordings`).
 
 ## Meeting notes → AI tasks
 

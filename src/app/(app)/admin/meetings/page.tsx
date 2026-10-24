@@ -1,6 +1,9 @@
+import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { meetingWhen, SeriesBadge } from "@/components/meetings";
 import { TIMEZONE } from "@/lib/app";
+import { db } from "@/db";
+import { meetingRecordings } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { emailSettings } from "@/lib/email";
 import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
@@ -18,13 +21,15 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
   const sp = await searchParams;
   const view = sp.view === "past" ? "past" : "upcoming";
   const now = new Date();
-  const [all, last, emails, bySeries, lastPull] = await Promise.all([
+  const [all, last, emails, bySeries, lastPull, withRecording] = await Promise.all([
     meetingsWithCounts(now),
     lastMeetingImport(),
     recentEmails(),
     attendanceBySeries(now),
     lastCalendarSync(),
+    db.selectDistinct({ id: meetingRecordings.meetingId }).from(meetingRecordings).where(eq(meetingRecordings.status, "ready")),
   ]);
+  const recorded = new Set(withRecording.map((r) => r.id));
   const auto = calendarUrl()
     ? { minutes: CALENDAR_SYNC_MINUTES, last: lastPull && { at: lastPull.at.toISOString(), ok: lastPull.ok, error: lastPull.error } }
     : null;
@@ -116,6 +121,9 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
                       ? `${c.present} present · ${c.remote} remote · ${c.excused} excused · ${c.unexcused} unexcused`
                       : `${c.invited} invited · ${c.excused} excused${c.present + c.remote ? ` · ${c.present + c.remote} checked in` : ""}`}
                   </span>
+                  {view === "past" && m.status === "confirmed" && (
+                    <span className={recorded.has(m.id) ? "text-subtle" : "text-warning"}>{recorded.has(m.id) ? "recorded" : "no recording"}</span>
+                  )}
                 </span>
               </Link>
             </li>

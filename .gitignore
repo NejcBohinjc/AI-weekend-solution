@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# meeting recordings stored locally in development (lib/storage.ts)
+/.data/

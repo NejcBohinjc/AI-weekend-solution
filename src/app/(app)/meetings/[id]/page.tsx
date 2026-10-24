@@ -17,6 +17,7 @@ import { adminMarkRestPresentAction, adminSetAttendanceAction, setMyAttendanceAc
 import { AttendanceActions } from "../attendance-actions";
 import { addNoteAction, createTasksFromNotesAction } from "../notes-actions";
 import { AddNotesSection, CreateTasksButton } from "../notes-ui";
+import { RecordingsSection } from "../recordings-section";
 
 export default async function MeetingPage({ params }: { params: Promise<{ id: string }> }) {
   const [me, { id: rawId }] = await Promise.all([requireMember(), params]);
@@ -95,6 +96,8 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
           )}
         </div>
       )}
+
+      <RecordingsSection meeting={meeting} me={me} invited={!!mine} now={now} />
 
       {/* Notes: this page is only shown to the meeting's invitees and admins. */}
       <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="meeting-notes">
