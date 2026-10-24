@@ -1,8 +1,8 @@
 // Scheduled job, called every 5 minutes by a scheduler (Vercel Cron, cron-job.org, ...) with
-// "Authorization: Bearer <CRON_SECRET>". Refreshes meetings from MEETINGS_ICS_URL (at most hourly)
-// and sends the meeting reminders that are due.
+// "Authorization: Bearer <CRON_SECRET>". Pulls meetings from MEETINGS_ICS_URL when the last pull is
+// older than 15 minutes, and sends the meeting reminders that are due.
 import { NextResponse, type NextRequest } from "next/server";
-import { importFromCalendarUrlIfStale } from "@/lib/meetings/import";
+import { syncCalendarIfStale } from "@/lib/meetings/import";
 import { sendDueReminders } from "@/lib/meetings/reminders";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const calendar = await importFromCalendarUrlIfStale(60);
+  const calendar = await syncCalendarIfStale();
   const reminders = await sendDueReminders();
   return NextResponse.json({
     calendar: calendar ? { ok: calendar.ok, error: calendar.error, meetings: calendar.meetings } : "not due",

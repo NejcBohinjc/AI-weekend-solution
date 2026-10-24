@@ -6,43 +6,85 @@ import { TIMEZONE } from "@/lib/app";
 import type { ImportReport } from "@/lib/meetings/import";
 import { importFromUrlAction, importIcsFileAction } from "./actions";
 
-/** Import meetings from an .ics file, or from the calendar's iCal address when MEETINGS_ICS_URL is set. */
-export function ImportPanel({ last, lastBy, hasUrl }: { last: ImportReport | null; lastBy: string | null; hasUrl: boolean }) {
+type AutoSync = { minutes: number; last: { at: string; ok: boolean; error: string | null } | null };
+
+const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE });
+
+/**
+ * With MEETINGS_ICS_URL set (`auto`), meetings are pulled from Google Calendar automatically and this
+ * shows how that is going, with "Sync now". Without it, admins import an .ics file. Either way the
+ * file upload stays available.
+ */
+export function ImportPanel({ last, lastBy, auto }: { last: ImportReport | null; lastBy: string | null; auto: AutoSync | null }) {
   const [fileReport, fileAction, importing] = useActionState(importIcsFileAction, null as ImportReport | null);
   const [urlReport, urlAction, syncing] = useActionState(importFromUrlAction, null as ImportReport | null);
   const report = [fileReport, urlReport].filter(Boolean).sort((a, b) => b!.at.localeCompare(a!.at))[0] ?? last;
   const fresh = report !== last;
-  const when = report && new Date(report.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE });
+
+  const uploadForm = (
+    <form action={fileAction} className="flex flex-wrap items-center gap-2">
+      <input type="file" name="file" accept=".ics,text/calendar" required className="max-w-full text-sm file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium" />
+      <button type="submit" disabled={importing} className={secondaryButtonClass}>
+        {importing ? "Importing…" : "Import .ics file"}
+      </button>
+      <label className="flex basis-full items-center gap-1.5 text-xs text-slate-600">
+        <input type="checkbox" name="wholeCalendar" defaultChecked={!auto} className="size-3.5" />
+        This is the whole calendar: hide upcoming meetings that are not in it
+      </label>
+    </form>
+  );
 
   return (
     <section aria-label="Calendar import" className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4">
-      <div>
-        <h2 className="font-semibold">Calendar</h2>
-        <p className="text-xs text-slate-500">
-          {report ? `${fresh ? "Imported" : "Last import"} ${when}${!fresh && lastBy ? ` by ${lastBy}` : ""} (${report.source}). ` : "Never imported. "}
-          Read-only: the calendar is never changed. Invitees are matched to members by email.
-        </p>
-      </div>
-      <div className="flex flex-wrap items-end gap-3">
-        <form action={fileAction} className="flex flex-wrap items-center gap-2">
-          <input type="file" name="file" accept=".ics,text/calendar" required className="max-w-full text-sm file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium" />
-          <button type="submit" disabled={importing} className={secondaryButtonClass}>
-            {importing ? "Importing…" : "Import .ics file"}
-          </button>
-          <label className="flex basis-full items-center gap-1.5 text-xs text-slate-600">
-            <input type="checkbox" name="wholeCalendar" defaultChecked className="size-3.5" />
-            This is the whole calendar: hide upcoming meetings that are not in it
-          </label>
-        </form>
-        {hasUrl && (
-          <form action={urlAction}>
-            <button type="submit" disabled={syncing} className={secondaryButtonClass}>
-              {syncing ? "Syncing…" : "Sync from Google Calendar"}
-            </button>
-          </form>
-        )}
-      </div>
-      {report && <ImportReportView report={report} />}
+      {auto ? (
+        <>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Google Calendar</h2>
+              <p className="text-xs text-slate-500" data-testid="calendar-sync-status">
+                Pulled automatically every {auto.minutes} minutes when someone opens the app, and by the scheduled job.{" "}
+                {auto.last ? (
+                  <span className={auto.last.ok ? "" : "font-medium text-red-700"}>
+                    Last pull {when(auto.last.at)}
+                    {auto.last.ok ? "." : ` failed: ${auto.last.error}`}
+                  </span>
+                ) : (
+                  "Not pulled yet."
+                )}{" "}
+                Read-only: the calendar is never changed.
+              </p>
+            </div>
+            <form action={urlAction}>
+              <button type="submit" disabled={syncing} className={secondaryButtonClass}>
+                {syncing ? "Syncing…" : "Sync now"}
+              </button>
+            </form>
+          </div>
+          <details className="text-sm">
+            <summary className="cursor-pointer text-slate-600">Import an .ics file instead</summary>
+            <div className="mt-2">{uploadForm}</div>
+          </details>
+        </>
+      ) : (
+        <>
+          <div>
+            <h2 className="font-semibold">Calendar</h2>
+            <p className="text-xs text-slate-500">
+              Not connected to Google Calendar, so meetings are imported from a file. To pull them automatically, set MEETINGS_ICS_URL
+              to the calendar&apos;s secret iCal address. Read-only: the calendar is never changed.
+            </p>
+          </div>
+          {uploadForm}
+        </>
+      )}
+      {report && (
+        <>
+          <p className="text-xs text-slate-500">
+            {fresh ? "Just now" : `Last import ${when(report.at)}${lastBy ? ` by ${lastBy}` : ""}`} ({report.source === "url" ? "Google Calendar" : report.source}):
+          </p>
+          <ImportReportView report={report} />
+        </>
+      )}
     </section>
   );
 }
@@ -71,6 +113,7 @@ function ImportReportView({ report }: { report: ImportReport }) {
           <strong className="tabular-nums">{report.invites}</strong> invitations
         </span>
         {report.cancelled > 0 && <span>{report.cancelled} cancelled</span>}
+        {report.relinked > 0 && <span title="Same title and start time, new UID in the calendar">{report.relinked} matched to existing meetings</span>}
       </p>
       {report.unknownEmails.length > 0 && (
         <details className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900" open>

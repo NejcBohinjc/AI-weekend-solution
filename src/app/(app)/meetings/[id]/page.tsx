@@ -5,6 +5,7 @@ import { AttendanceBadge, meetingWhen, SeriesBadge } from "@/components/meetings
 import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
 import { ATTENDANCE_STATES, STATE_LABELS } from "@/lib/meetings/constants";
+import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
 import { meetingAttendees, meetingById } from "@/lib/meetings/queries";
 import { attendanceSummary, effectiveState, meetingPhase, memberActions } from "@/lib/meetings/rules";
 import { adminMarkRestPresentAction, adminSetAttendanceAction, setMyAttendanceAction } from "../actions";
@@ -12,6 +13,7 @@ import { AttendanceActions } from "../attendance-actions";
 
 export default async function MeetingPage({ params }: { params: Promise<{ id: string }> }) {
   const [me, { id: rawId }] = await Promise.all([requireMember(), params]);
+  syncCalendarInBackground();
   const id = Number(rawId);
   if (!Number.isInteger(id)) notFound();
   const [meeting, attendees] = await Promise.all([meetingById(id), meetingAttendees(id)]);

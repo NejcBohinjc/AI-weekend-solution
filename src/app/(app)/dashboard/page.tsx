@@ -6,6 +6,7 @@ import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
 import { memberWeek } from "@/lib/hours/queries";
 import { weekStartOf } from "@/lib/hours/time";
+import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
 import { myMeetings } from "@/lib/meetings/queries";
 import { meetingPhase } from "@/lib/meetings/rules";
 import { TimerCard } from "../hours/timer-card";
@@ -20,6 +21,7 @@ function greeting(now: Date) {
 
 export default async function DashboardPage() {
   const member = await requireMember();
+  syncCalendarInBackground();
   const firstName = member.name.split(" ")[0];
   const now = new Date();
   const [week, meetings] = await Promise.all([memberWeek(member.id, weekStartOf(now), now), myMeetings(member.id)]);

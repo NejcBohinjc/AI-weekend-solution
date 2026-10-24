@@ -3,7 +3,8 @@ import { meetingWhen, SeriesBadge } from "@/components/meetings";
 import { TIMEZONE } from "@/lib/app";
 import { requireAdmin } from "@/lib/auth";
 import { emailSettings } from "@/lib/email";
-import { calendarUrl } from "@/lib/meetings/import";
+import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
+import { CALENDAR_SYNC_MINUTES, calendarUrl, lastCalendarSync } from "@/lib/meetings/import";
 import { attendanceBySeries, lastMeetingImport, meetingsWithCounts, recentEmails } from "@/lib/meetings/queries";
 import { attendanceSummary, meetingPhase } from "@/lib/meetings/rules";
 import { ImportPanel } from "./import-panel";
@@ -13,10 +14,20 @@ type Search = { view?: string; series?: string };
 
 export default async function AdminMeetingsPage({ searchParams }: { searchParams: Promise<Search> }) {
   await requireAdmin();
+  syncCalendarInBackground();
   const sp = await searchParams;
   const view = sp.view === "past" ? "past" : "upcoming";
   const now = new Date();
-  const [all, last, emails, bySeries] = await Promise.all([meetingsWithCounts(now), lastMeetingImport(), recentEmails(), attendanceBySeries(now)]);
+  const [all, last, emails, bySeries, lastPull] = await Promise.all([
+    meetingsWithCounts(now),
+    lastMeetingImport(),
+    recentEmails(),
+    attendanceBySeries(now),
+    lastCalendarSync(),
+  ]);
+  const auto = calendarUrl()
+    ? { minutes: CALENDAR_SYNC_MINUTES, last: lastPull && { at: lastPull.at.toISOString(), ok: lastPull.ok, error: lastPull.error } }
+    : null;
   const seriesList = [...new Set(all.map((m) => m.meeting.series))].sort();
   const series = sp.series && seriesList.includes(sp.series) ? sp.series : undefined;
   const shown = all
@@ -47,7 +58,7 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <ImportPanel last={last?.report ?? null} lastBy={last?.by ?? null} hasUrl={Boolean(calendarUrl())} />
+        <ImportPanel last={last?.report ?? null} lastBy={last?.by ?? null} auto={auto} />
         <RemindersPanel sending={mail.sending} from={mail.from} redirectTo={mail.redirectTo}>
           {emails.length > 0 && (
             <ul className="divide-y divide-slate-100 text-xs" data-testid="email-log">

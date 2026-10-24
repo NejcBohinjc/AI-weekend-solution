@@ -2,11 +2,11 @@
 //   npm run reminders              one run
 //   npm run reminders -- --watch   every minute until stopped (Ctrl+C)
 import "dotenv/config";
-import { importFromCalendarUrlIfStale } from "../src/lib/meetings/import";
+import { syncCalendarIfStale } from "../src/lib/meetings/import";
 import { sendDueReminders } from "../src/lib/meetings/reminders";
 
 async function runOnce() {
-  const calendar = await importFromCalendarUrlIfStale(60);
+  const calendar = await syncCalendarIfStale();
   if (calendar) console.log(`calendar: ${calendar.ok ? `${calendar.meetings} meetings` : calendar.error}`);
   const r = await sendDueReminders();
   const time = new Date().toLocaleTimeString("en-GB");

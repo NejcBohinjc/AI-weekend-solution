@@ -1,6 +1,7 @@
 import { MeetingRow } from "@/components/meetings";
 import { requireMember } from "@/lib/auth";
 import { emailSettings } from "@/lib/email";
+import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
 import { myMeetings, reminderSettingsFor } from "@/lib/meetings/queries";
 import { attendanceSummary, effectiveState, meetingPhase } from "@/lib/meetings/rules";
 import { NowMeetingCard } from "./now-card";
@@ -8,6 +9,7 @@ import { ReminderSettingsForm } from "./reminder-settings-form";
 
 export default async function MeetingsPage() {
   const me = await requireMember();
+  syncCalendarInBackground();
   const now = new Date();
   const [rows, settings] = await Promise.all([myMeetings(me.id), reminderSettingsFor(me.id)]);
   const list = rows.map((r) => ({ ...r, phase: meetingPhase(r.meeting, now), effective: effectiveState(r.state, r.meeting, now) }));

@@ -2,7 +2,7 @@
 // invitees (matched to members by email) are replaced, and attendance is never touched. When the
 // import is the whole calendar (the calendar address always is; a file upload says so), a future
 // meeting missing from it is marked "removed" (hidden, not deleted).
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { meetingImports, meetingInvites, meetingReminders, meetings, members, type Meeting } from "@/db/schema";
 import type { MeetingStatus } from "./constants";
@@ -20,6 +20,8 @@ export type ImportReport = {
   updated: number;
   unchanged: number;
   cancelled: number;
+  /** Meetings matched by title and start because the calendar gave them a new UID. */
+  relinked: number;
   invites: number;
   removed: { title: string; startsAt: string }[];
   unknownEmails: { email: string; meetings: number }[];
@@ -43,6 +45,7 @@ function emptyReport(source: ImportSource): ImportReport {
     updated: 0,
     unchanged: 0,
     cancelled: 0,
+    relinked: 0,
     invites: 0,
     removed: [],
     unknownEmails: [],
@@ -80,15 +83,25 @@ export async function importMeetings(
   await db.transaction(async (tx) => {
     // One import at a time.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext('meetings_import'))`);
-    const existing = new Map((await tx.select().from(meetings)).map((m) => [m.uid, m]));
-    const seen = new Set<string>();
+    const rows = await tx.select().from(meetings);
+    const existing = new Map(rows.map((m) => [m.uid, m]));
+    // The same meeting can come back under another UID (Google Calendar gives events new UIDs when
+    // an .ics file is imported into it). Matched by title and start, it keeps its attendance history.
+    const incoming = new Set(parsed.map((p) => p.uid));
+    const byTitleAndStart = new Map(rows.filter((m) => !incoming.has(m.uid)).map((m) => [`${m.title}|${m.startsAt.toISOString()}`, m]));
+    const seen = new Set<number>(); // meeting ids in this import
 
     for (const p of parsed) {
-      seen.add(p.uid);
       const status: MeetingStatus = p.cancelled ? "cancelled" : "confirmed";
       if (p.cancelled) report.cancelled++;
       const values = { title: p.title, series: p.series, startsAt: p.startsAt, endsAt: p.endsAt, location: p.location, status };
-      const old = existing.get(p.uid);
+      let old = existing.get(p.uid);
+      const twin = old ? undefined : byTitleAndStart.get(`${p.title}|${p.startsAt.toISOString()}`);
+      if (twin && !seen.has(twin.id)) {
+        await tx.update(meetings).set({ uid: p.uid }).where(eq(meetings.id, twin.id));
+        old = { ...twin, uid: p.uid };
+        report.relinked++;
+      }
       let id: number;
       if (!old) {
         [{ id }] = await tx.insert(meetings).values({ uid: p.uid, ...values }).returning({ id: meetings.id });
@@ -105,6 +118,8 @@ export async function importMeetings(
         }
       }
 
+      seen.add(id);
+
       const invited = [...new Set(p.emails.map((e) => memberIds.get(e)).filter((x): x is number => x !== undefined))];
       for (const e of p.emails) if (!memberIds.has(e)) unknown.set(e, (unknown.get(e) ?? 0) + 1);
       await tx.delete(meetingInvites).where(eq(meetingInvites.meetingId, id));
@@ -113,7 +128,7 @@ export async function importMeetings(
     }
 
     // Future meetings no longer in the calendar: hidden and no reminders, but kept with their history.
-    const gone = wholeCalendar ? [...existing.values()].filter((m) => !seen.has(m.uid) && m.startsAt > now && m.status !== "removed") : [];
+    const gone = wholeCalendar ? rows.filter((m) => !seen.has(m.id) && m.startsAt > now && m.status !== "removed") : [];
     if (gone.length) {
       await tx.update(meetings).set({ status: "removed", updatedAt: new Date() }).where(inArray(meetings.id, gone.map((m) => m.id)));
       report.removed = gone.map((m) => ({ title: m.title, startsAt: m.startsAt.toISOString() }));
@@ -164,15 +179,35 @@ export async function importFromCalendarUrl(actorId: number | null): Promise<Imp
   }
 }
 
-/** For the scheduled job: imports from the calendar address when the last successful import is older than `maxAgeMinutes`. */
-export async function importFromCalendarUrlIfStale(maxAgeMinutes: number): Promise<ImportReport | null> {
-  if (!calendarUrl()) return null;
+/** How often meetings are pulled from MEETINGS_ICS_URL. */
+export const CALENDAR_SYNC_MINUTES = 15;
+
+/** The latest attempt to pull from the calendar address, successful or not. */
+export async function lastCalendarSync(): Promise<{ at: Date; ok: boolean; error: string | null } | null> {
   const [last] = await db
-    .select({ at: meetingImports.createdAt })
+    .select({ at: meetingImports.createdAt, ok: meetingImports.ok, report: meetingImports.report })
     .from(meetingImports)
-    .where(and(eq(meetingImports.source, "url"), eq(meetingImports.ok, true)))
-    .orderBy(sql`${meetingImports.createdAt} desc`)
+    .where(eq(meetingImports.source, "url"))
+    .orderBy(desc(meetingImports.id))
     .limit(1);
-  if (last && Date.now() - last.at.getTime() < maxAgeMinutes * 60_000) return null;
-  return importFromCalendarUrl(null);
+  return last ? { at: last.at, ok: last.ok, error: (last.report as ImportReport).error ?? null } : null;
+}
+
+// One pull at a time per server process, so a burst of page views downloads the calendar once.
+let pulling: Promise<ImportReport | null> | null = null;
+
+/**
+ * Pulls the calendar when the last attempt (successful or not, so a broken address is not retried on
+ * every request) is older than `maxAgeMinutes`. Called on page views and by the scheduled job.
+ */
+export function syncCalendarIfStale(maxAgeMinutes = CALENDAR_SYNC_MINUTES): Promise<ImportReport | null> {
+  if (!calendarUrl()) return Promise.resolve(null);
+  pulling ??= (async () => {
+    const last = await lastCalendarSync();
+    if (last && Date.now() - last.at.getTime() < maxAgeMinutes * 60_000) return null;
+    return importFromCalendarUrl(null);
+  })().finally(() => {
+    pulling = null;
+  });
+  return pulling;
 }
