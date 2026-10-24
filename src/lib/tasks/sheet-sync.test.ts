@@ -1,5 +1,5 @@
 // Database test for the two-way tasks sync, with Google replaced by an in-memory fake.
-// It empties the tasks table, so it only runs against a local database (localhost DATABASE_URL).
+// It empties the tasks table, so it only runs on the *_test database that npm test sets up.
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
@@ -7,10 +7,10 @@ import { eq, inArray } from "drizzle-orm";
 import { closeDb, db } from "@/db";
 import { members, syncState, taskEvents, tasks, taskSyncs } from "@/db/schema";
 import { FakeSheets } from "@/lib/google/fake-sheets";
+import { testDatabaseSkip } from "@/lib/test-db";
 import { runTasksSync, syncTasks, TASKS_SYNC } from "./sheet-sync";
 
 const TAB = "List1";
-const local = /@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL ?? "");
 const sheets = new FakeSheets();
 const sync = () => syncTasks({ actorId: null, api: sheets, sheetId: "test", today: "2026-10-24" });
 const rows = () => sheets.rows(TAB);
@@ -18,12 +18,21 @@ const rowOf = (title: string) => rows().find((r) => r[0] === title)!;
 const taskBy = async (title: string) => (await db.select().from(tasks).where(eq(tasks.title, title)))[0];
 let ids: Record<string, number> = {};
 
-describe("two-way tasks sync", { skip: !local && "needs a local DATABASE_URL (it empties the tasks table)" }, () => {
+describe("two-way tasks sync", { skip: testDatabaseSkip() }, () => {
   before(async () => {
     delete process.env.GOOGLE_SHEET_TASKS_TAB;
     await db.delete(tasks);
     await db.delete(taskSyncs);
     await db.delete(syncState).where(eq(syncState.name, TASKS_SYNC));
+    // The members the sheet rows name; the test database starts empty.
+    await db
+      .insert(members)
+      .values([
+        { name: "Žiga Krajnc", email: "ziga.krajnc@sandbox.example", tier: "Core", weeklyHours: 70 },
+        { name: "Ana Kovač", email: "ana.kovac@sandbox.example", tier: "Core", weeklyHours: 70 },
+        { name: "Eva Vidmar", email: "eva.vidmar@sandbox.example", tier: "Impact", weeklyHours: 10 },
+      ])
+      .onConflictDoNothing({ target: members.email });
     const people = await db
       .select({ id: members.id, email: members.email })
       .from(members)

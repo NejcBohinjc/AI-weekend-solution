@@ -5,6 +5,7 @@ import {
   formatDuration,
   formatHours,
   formatWeek,
+  fromFirstWeekWithHours,
   fromLocalInput,
   hoursReturnPath,
   isWeekStart,
@@ -107,6 +108,17 @@ test("members edit their own finished entries from this week; admins edit any fi
   assert.equal(canEditEntry(member, { ...entry, source: "seed" }, week), false);
   assert.equal(canEditEntry(member, { ...entry, endedAt: null }, week), false);
   assert.equal(canEditEntry(admin, { ...entry, startedAt: new Date("2026-09-15T07:00:00Z"), source: "seed" }, week), true);
+});
+
+test("recent weeks start at the first week with hours", () => {
+  const w = (week: string, h: number) => ({ week, totalMs: h * H });
+  // Newest first: this week is empty so far, data started two weeks ago, nothing before.
+  assert.deepEqual(
+    fromFirstWeekWithHours([w("2026-10-19", 0), w("2026-10-12", 5), w("2026-10-05", 0), w("2026-09-28", 3), w("2026-09-21", 0), w("2026-09-14", 0)]).map((x) => x.week),
+    ["2026-10-19", "2026-10-12", "2026-10-05", "2026-09-28"], // an empty week between weeks with hours stays
+  );
+  assert.deepEqual(fromFirstWeekWithHours([w("2026-10-19", 0), w("2026-10-12", 0)]).map((x) => x.week), ["2026-10-19"]);
+  assert.deepEqual(fromFirstWeekWithHours([]), []);
 });
 
 test("only returns to our own hours pages", () => {

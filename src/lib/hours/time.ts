@@ -154,6 +154,18 @@ export function sheetRow(name: string, startedAt: Date, endedAt: Date, id: numbe
   return [plainText(name), s.date, s.time, e.date, e.time, id];
 }
 
+/**
+ * Recent weeks (newest first) without the empty weeks before the first week that has hours, so a
+ * member who started recently doesn't see a row of 0% weeks. The newest week always stays.
+ */
+export function fromFirstWeekWithHours<T extends { totalMs: number }>(weeks: T[]): T[] {
+  let last = 0;
+  weeks.forEach((w, i) => {
+    if (w.totalMs > 0) last = i;
+  });
+  return weeks.slice(0, last + 1);
+}
+
 // ---------- Rules ----------
 
 /** Where to go back to after saving an entry: only our own hours pages, never another site. */

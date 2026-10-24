@@ -1,7 +1,16 @@
 // Building blocks shared by the member hours page, the dashboard and the admin hours pages.
 import Link from "next/link";
 import type { TimeEntry } from "@/db/schema";
-import { canEditEntry, formatDuration, formatHours, formatDay, formatWeek, ljubljanaParts, type Pace } from "@/lib/hours/time";
+import {
+  canEditEntry,
+  formatDay,
+  formatDuration,
+  formatHours,
+  formatWeek,
+  fromFirstWeekWithHours,
+  ljubljanaParts,
+  type Pace,
+} from "@/lib/hours/time";
 
 export function WeekProgress({ totalMs, targetHours, label = "This week" }: { totalMs: number; targetHours: number; label?: string }) {
   const pct = targetHours > 0 ? Math.min(100, Math.round((totalMs / 3_600_000 / targetHours) * 100)) : 0;
@@ -139,7 +148,7 @@ export function WeekHistory({
 }) {
   return (
     <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm" data-testid="week-history">
-      {weeks.map(({ week, totalMs }) => {
+      {fromFirstWeekWithHours(weeks).map(({ week, totalMs }) => {
         const pct = targetHours > 0 ? Math.round((totalMs / 3_600_000 / targetHours) * 100) : 0;
         return (
           <li key={week}>

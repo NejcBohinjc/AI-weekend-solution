@@ -118,6 +118,7 @@ Optional (AI): `ANTHROPIC_API_KEY` (turns on "Create tasks from notes"; server-s
 ## Working rules
 
 - Small steps. After each step: run it, check it in the browser, then commit.
+- `npm test` (`scripts/test.mjs`) runs database tests only on a `*_test` database (created next to the local one, or `TEST_DATABASE_URL`) with Google/email/calendar blanked; DB tests must use `testDatabaseSkip()` from `src/lib/test-db.ts` and create the rows they need. Never point tests or a local app at the production database or production Google Sheet (local `GOOGLE_SHEET_ID` = a copy).
 - Keep the UI fast and plain. Mobile-friendly: members log hours and clock in from a phone.
 - Prefer boring, well-known solutions. Rebuildability is scored.
 - Keep the repo public and generic. Add an open-source licence (MIT) in the repo root.

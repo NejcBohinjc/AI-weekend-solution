@@ -1,4 +1,4 @@
-// Database test (needs DATABASE_URL, e.g. the local docker Postgres): Stop saves the entry, and the
+// Database test (runs on the *_test database that npm test sets up): Stop saves the entry, and the
 // sheet write puts it in the "Ure dela" tab. Google is replaced by an in-memory fake.
 import "dotenv/config";
 import assert from "node:assert/strict";
@@ -11,6 +11,7 @@ import { entriesBetween, hoursSheetQueue } from "./queries";
 import { syncHoursSheet } from "./sheet-sync";
 import { stopTimer } from "./timer";
 import { weekBounds, weekStartOf } from "./time";
+import { testDatabaseSkip } from "@/lib/test-db";
 
 const TAB = "Ure dela";
 let memberId: number;
@@ -23,7 +24,7 @@ async function startTimerAgo(seconds: number): Promise<number> {
   return row.id;
 }
 
-describe("Stop and the hours sheet", { skip: !process.env.DATABASE_URL && "DATABASE_URL not set" }, () => {
+describe("Stop and the hours sheet", { skip: testDatabaseSkip() }, () => {
   before(async () => {
     delete process.env.GOOGLE_SHEET_HOURS_TAB;
     const [m] = await db

@@ -20,6 +20,9 @@ npm run dev                   # http://localhost:3000
 For the local Postgres from `docker-compose.yml`:
 `DATABASE_URL=postgres://shapers:shapers@localhost:5433/shapers`, and `APP_URL=http://localhost:3000`.
 
+- **Tests:** `npm test` runs every test. Database tests use their own database (`shapers_test`, created and migrated automatically next to the local one, or `TEST_DATABASE_URL`), never the one in `DATABASE_URL`, and Google, email and the calendar are switched off for them.
+- **Google Sheet for development:** never point a local copy of the app at the sheet production uses: the app syncs tasks both ways and writes hours, so local test data would end up in the real sheet. Make a copy (File → Make a copy, keep it shared with the service account as Editor) and put the copy's ID in your local `GOOGLE_SHEET_ID`.
+
 ## Deploy on Vercel
 
 1. Create a Postgres database (Neon or Supabase) and import the GitHub repository in Vercel.
