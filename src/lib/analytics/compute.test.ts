@@ -38,17 +38,15 @@ const data: Data = {
     // Bor: no answers -> unexcused for the past meetings
   ],
   tasks: [
-    { id: 100, assigneeId: 1, createdAt: at("2026-10-26T09:00:00Z"), createdByAi: false, aiConfirmedAt: null, deletedAt: null },
-    { id: 101, assigneeId: 3, createdAt: at("2026-10-26T09:00:00Z"), createdByAi: true, aiConfirmedAt: null, deletedAt: null }, // unconfirmed AI
-    { id: 102, assigneeId: 3, createdAt: at("2026-10-19T09:00:00Z"), createdByAi: true, aiConfirmedAt: at("2026-10-20T09:00:00Z"), deletedAt: null },
-    { id: 103, assigneeId: 1, createdAt: at("2026-10-19T09:00:00Z"), createdByAi: false, aiConfirmedAt: null, deletedAt: at("2026-10-27T09:00:00Z") },
-  ],
-  doneEvents: [
-    { taskId: 100, at: at("2026-10-27T09:00:00Z") },
-    { taskId: 100, at: at("2026-10-27T10:00:00Z") }, // reopened and done again: counted once
-    { taskId: 101, at: at("2026-10-27T09:00:00Z") }, // unconfirmed AI: not counted
-    { taskId: 102, at: at("2026-10-21T09:00:00Z") },
-    { taskId: 103, at: at("2026-10-21T09:00:00Z") }, // deleted: not counted
+    // Done this week (it was done, reopened and done again: counted once, at the latest time).
+    { id: 100, assigneeId: 1, status: "done", createdAt: at("2026-10-26T09:00:00Z"), completedAt: at("2026-10-27T10:00:00Z"), createdByAi: false, aiConfirmedAt: null, deletedAt: null },
+    // Unconfirmed AI task, done: not counted.
+    { id: 101, assigneeId: 3, status: "done", createdAt: at("2026-10-26T09:00:00Z"), completedAt: at("2026-10-27T09:00:00Z"), createdByAi: true, aiConfirmedAt: null, deletedAt: null },
+    { id: 102, assigneeId: 3, status: "done", createdAt: at("2026-10-19T09:00:00Z"), completedAt: at("2026-10-21T09:00:00Z"), createdByAi: true, aiConfirmedAt: at("2026-10-20T09:00:00Z"), deletedAt: null },
+    // Deleted: not counted.
+    { id: 103, assigneeId: 1, status: "done", createdAt: at("2026-10-19T09:00:00Z"), completedAt: at("2026-10-21T09:00:00Z"), createdByAi: false, aiConfirmedAt: null, deletedAt: at("2026-10-27T09:00:00Z") },
+    // Done last week, then reopened: completed_at cleared, no longer counted anywhere.
+    { id: 104, assigneeId: 2, status: "in_progress", createdAt: at("2026-10-19T09:00:00Z"), completedAt: null, createdByAi: false, aiConfirmedAt: null, deletedAt: null },
   ],
   taskActivity: [{ memberId: 2, at: at("2026-10-27T09:00:00Z") }],
 };
@@ -91,7 +89,8 @@ test("tasks: finished per member and created vs finished per week, AI as its own
   assert.deepEqual(a.finishedPerMember.map((r) => [r.name, r.n]), [["Ana", 1], ["Cene", 1]]);
   assert.ok(a.anyAi);
   assert.deepEqual(a.tasksPerWeek.at(-1), { week: "2026-10-26", created: 1, aiCreated: 1, finished: 1 });
-  assert.deepEqual(a.tasksPerWeek.at(-2), { week: "2026-10-19", created: 0, aiCreated: 1, finished: 1 }, "deleted task 103 is not counted");
+  assert.deepEqual(a.tasksPerWeek.at(-2), { week: "2026-10-19", created: 1, aiCreated: 1, finished: 1 }, "deleted task 103 is not counted; reopened 104 is not finished");
+  assert.ok(!a.finishedPerMember.some((r) => r.name === "Bor"), "a reopened task no longer counts for its assignee");
 });
 
 test("drifting: under 50% for 2+ weeks, or 2+ unexcused in the last 6 meetings", () => {

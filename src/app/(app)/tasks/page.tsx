@@ -11,7 +11,7 @@ import { sheetState } from "@/lib/tasks/sheet-state";
 import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { runTasksSyncQuietly, type SyncReport } from "@/lib/tasks/sheet-sync";
 import { tasksSyncStatus } from "@/lib/tasks/sync-status";
-import { finishTaskAction } from "./actions";
+import { DoneToggle } from "./done-toggle";
 import { SyncReportPanel } from "./sync-panel";
 import { SyncStatus } from "./sync-status";
 
@@ -179,17 +179,10 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                   {pendingInSheet.has(t.id) && <span className="text-xs text-warning">not in the sheet yet</span>}
                 </span>
               </Link>
-              {t.status !== "done" && canEditTask(me, t) && (
-                <form action={finishTaskAction.bind(null, t.id)} className="pr-3">
-                  <button
-                    type="submit"
-                    aria-label={`Mark “${t.title}” as done`}
-                    title="Mark as done"
-                    className="flex size-9 items-center justify-center rounded-full border border-line-strong text-subtle hover:border-success hover:bg-success-bg hover:text-success"
-                  >
-                    ✓
-                  </button>
-                </form>
+              {canEditTask(me, t) && (
+                <div className="pr-3">
+                  <DoneToggle taskId={t.id} title={t.title} done={t.status === "done"} />
+                </div>
               )}
             </li>
           ))}

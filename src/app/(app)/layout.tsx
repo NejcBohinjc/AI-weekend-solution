@@ -5,6 +5,7 @@ import { APP_NAME } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
 import { logoutAction } from "@/lib/auth/actions";
 import { ThemeSwitch } from "@/components/theme-switch";
+import { UndoToastProvider } from "@/components/undo-toast";
 import { themePref } from "@/lib/theme-server";
 
 const MEMBER_NAV: NavItem[] = [
@@ -57,7 +58,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           )}
         </nav>
       </header>
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">{children}</main>
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+        <UndoToastProvider>{children}</UndoToastProvider>
+      </main>
     </div>
   );
 }

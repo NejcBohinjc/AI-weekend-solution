@@ -12,7 +12,10 @@ import { weekStartOf } from "@/lib/hours/time";
 import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
 import { myMeetings } from "@/lib/meetings/queries";
 import { meetingPhase } from "@/lib/meetings/rules";
+import { DueDate } from "@/components/task-badges";
+import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { TimerCard } from "../hours/timer-card";
+import { DoneToggle } from "../tasks/done-toggle";
 import { NowMeetingCard } from "../meetings/now-card";
 
 function greeting(now: Date) {
@@ -30,7 +33,7 @@ export default async function DashboardPage() {
   syncCalendarInBackground();
   const firstName = member.name.split(" ")[0];
   const now = new Date();
-  const [week, meetings, [openTasks]] = await Promise.all([
+  const [week, meetings, [openTasks], myOpen] = await Promise.all([
     memberWeek(member.id, weekStartOf(now), now),
     myMeetings(member.id),
     db
@@ -41,6 +44,13 @@ export default async function DashboardPage() {
       })
       .from(tasks)
       .where(and(eq(tasks.assigneeId, member.id), ne(tasks.status, "done"), isNull(tasks.deletedAt))),
+    // My open tasks, soonest due first, for one-tap ticking here.
+    db
+      .select({ id: tasks.id, title: tasks.title, status: tasks.status, dueDate: tasks.dueDate })
+      .from(tasks)
+      .where(and(eq(tasks.assigneeId, member.id), ne(tasks.status, "done"), isNull(tasks.deletedAt)))
+      .orderBy(sql`${tasks.dueDate} asc nulls last`, tasks.title)
+      .limit(5),
   ]);
   const confirmed = meetings.filter((r) => r.meeting.status === "confirmed");
   const happening = confirmed.filter((r) => meetingPhase(r.meeting, now) === "open");
@@ -65,17 +75,32 @@ export default async function DashboardPage() {
           Your hours →
         </Link>
       </div>
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface p-4" data-testid="tasks-card">
-        <Link href="/tasks" className="flex flex-col hover:text-fg-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-subtle">Your tasks</span>
-          <span className="font-semibold">
-            {openTasks.n} open {openTasks.n === 1 ? "task" : "tasks"}
-          </span>
-          {openTasks.review > 0 && <span className="text-sm font-medium text-violet">{openTasks.review} from AI to review</span>}
-        </Link>
-        <Link href="/tasks/new" className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
-          New task
-        </Link>
+      <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4" data-testid="tasks-card">
+        <div className="flex items-center justify-between gap-3">
+          <Link href="/tasks" className="flex flex-col hover:text-fg-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-subtle">Your tasks</span>
+            <span className="font-semibold">
+              {openTasks.n} open {openTasks.n === 1 ? "task" : "tasks"}
+            </span>
+            {openTasks.review > 0 && <span className="text-sm font-medium text-violet">{openTasks.review} from AI to review</span>}
+          </Link>
+          <Link href="/tasks/new" className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
+            New task
+          </Link>
+        </div>
+        {myOpen.length > 0 && (
+          <ul className="divide-y divide-line border-t border-line" aria-label="My open tasks">
+            {myOpen.map((t) => (
+              <li key={t.id} className="flex items-center gap-3 py-2">
+                <DoneToggle taskId={t.id} title={t.title} done={false} />
+                <Link href={`/tasks/${t.id}`} className="min-w-0 flex-1 truncate text-sm hover:underline">
+                  {t.title}
+                </Link>
+                {t.dueDate && <DueDate date={t.dueDate} today={todayInLjubljana()} done={false} />}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       {next && (
         <Link href={`/meetings/${next.meeting.id}`} className="flex flex-col gap-1 rounded-xl border border-line bg-surface p-4 hover:bg-surface-2" data-testid="next-meeting">

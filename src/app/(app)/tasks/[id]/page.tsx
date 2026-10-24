@@ -15,7 +15,8 @@ import { activeMembers } from "@/lib/tasks/queries";
 import { normalizeType, todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { runTasksSyncQuietly } from "@/lib/tasks/sheet-sync";
 import { tasksSyncStatus } from "@/lib/tasks/sync-status";
-import { confirmAiTaskAction, deleteAiTaskAction, finishTaskAction, updateTaskAction } from "../actions";
+import { confirmAiTaskAction, deleteAiTaskAction, updateTaskAction } from "../actions";
+import { DoneToggle } from "../done-toggle";
 import { SyncStatus } from "../sync-status";
 import { TaskForm } from "../task-form";
 
@@ -133,12 +134,13 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
             </form>
           </div>
         )}
-        {editable && task.status !== "done" && (
-          <form action={finishTaskAction.bind(null, task.id)}>
-            <button type="submit" className={secondaryButtonClass}>
-              ✓ Mark as done
-            </button>
-          </form>
+        {editable && (
+          <div className="flex flex-wrap items-center gap-3">
+            <DoneToggle taskId={task.id} title={task.title} done={task.status === "done"} variant="button" />
+            {task.status === "done" && task.completedAt && (
+              <span className="text-xs text-subtle">Done on {fmt(task.completedAt)}</span>
+            )}
+          </div>
         )}
       </div>
 
@@ -201,7 +203,9 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
               {": "}
               {e.kind === "created" || e.kind === "confirmed" || e.kind === "deleted"
                 ? e.newValue
-                : e.kind === "conflict"
+                : e.kind === "reopened"
+                  ? `Reopened (${e.oldValue ?? "Done"} → ${e.newValue ?? "empty"})`
+                  : e.kind === "conflict"
                   ? `${fieldLabel(e.field)} was changed in the sheet to “${e.oldValue ?? "empty"}” and here to “${e.newValue ?? "empty"}”; kept “${e.newValue ?? "empty"}”`
                   : `${fieldLabel(e.field)}: ${e.oldValue ?? "empty"} → ${e.newValue ?? "empty"}`}
             </li>

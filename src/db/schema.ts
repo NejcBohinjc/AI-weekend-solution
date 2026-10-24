@@ -117,6 +117,10 @@ export const tasks = pgTable(
     aiModel: text("ai_model"),
     triggeredById: integer("triggered_by_id").references(() => members.id, { onDelete: "set null" }),
     aiConfirmedAt: timestamp("ai_confirmed_at", { withTimezone: true }),
+    // When the task was last marked done (cleared when it is reopened), and the status it had before,
+    // so unticking puts it back. Set by every path that changes the status (app and sheet sync).
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    statusBeforeDone: text("status_before_done", { enum: TASK_STATUSES }),
     // Soft delete (AI tasks): hidden everywhere; the sync removes its sheet row.
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     // Legacy (read-only import): fields an admin changed in the app. Only used to migrate to the two-way sync.
@@ -149,7 +153,7 @@ export const taskEvents = pgTable(
       .references(() => tasks.id, { onDelete: "cascade" }),
     actorId: integer("actor_id").references(() => members.id, { onDelete: "set null" }),
     source: text("source", { enum: ["app", "sheet_sync", "ai"] }).notNull(),
-    kind: text("kind", { enum: ["created", "updated", "conflict", "confirmed", "deleted"] }).notNull(),
+    kind: text("kind", { enum: ["created", "updated", "conflict", "confirmed", "deleted", "reopened"] }).notNull(),
     field: text("field"),
     oldValue: text("old_value"),
     newValue: text("new_value"),

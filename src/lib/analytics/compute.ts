@@ -1,7 +1,8 @@
 // Admin analytics, computed from plain rows (loaded in load.ts). Pure, so it is unit-tested
 // (compute.test.ts). Definitions match the rest of the app: weekPace() for "on track", effectiveState()
 // for attendance (an unanswered past meeting counts as unexcused), attendanceSummary() for rates.
-// Unconfirmed AI-created tasks never count towards anyone's numbers.
+// Unconfirmed AI-created tasks never count towards anyone's numbers. A finished task counts once, at its
+// current completion time (tasks.completed_at): reopened tasks drop out, done again counts once.
 import { addDays, overlapMs, weekBounds, weekPace, weekStartOf, type Pace } from "@/lib/hours/time";
 import type { AttendanceState } from "@/lib/meetings/constants";
 import { attendanceSummary, effectiveState } from "@/lib/meetings/rules";
@@ -19,9 +20,16 @@ export type Data = {
   meetings: { id: number; title: string; series: string; startsAt: Date; endsAt: Date; status: string }[];
   invites: { meetingId: number; memberId: number }[];
   attendance: { meetingId: number; memberId: number; state: AttendanceState }[];
-  tasks: { id: number; assigneeId: number | null; createdAt: Date; createdByAi: boolean; aiConfirmedAt: Date | null; deletedAt: Date | null }[];
-  /** Status changes to Done (task history), oldest first. */
-  doneEvents: { taskId: number; at: Date }[];
+  tasks: {
+    id: number;
+    assigneeId: number | null;
+    status: string;
+    createdAt: Date;
+    completedAt: Date | null;
+    createdByAi: boolean;
+    aiConfirmedAt: Date | null;
+    deletedAt: Date | null;
+  }[];
   /** Any task change by a member (for "active"). */
   taskActivity: { memberId: number; at: Date }[];
 };
@@ -101,10 +109,9 @@ export function computeAnalytics(d: Data, f: Filters) {
   const attendance30 = attendanceSummary(meetingsShown.filter((m) => past(m) && m.startsAt >= thirtyDaysAgo).flatMap((m) => invitedTo(m.id).map((id) => effective(m, id))));
 
   // ---- Tasks ----
-  const countable = new Map(d.tasks.filter((t) => !t.deletedAt && (!t.createdByAi || t.aiConfirmedAt)).map((t) => [t.id, t]));
-  const firstDone = new Map<number, Date>();
-  for (const e of d.doneEvents) if (!firstDone.has(e.taskId) && countable.has(e.taskId)) firstDone.set(e.taskId, e.at);
-  const finished = [...firstDone].map(([taskId, at]) => ({ at, assigneeId: countable.get(taskId)!.assigneeId }));
+  const finished = d.tasks
+    .filter((t) => t.status === "done" && t.completedAt && !t.deletedAt && (!t.createdByAi || t.aiConfirmedAt))
+    .map((t) => ({ at: t.completedAt!, assigneeId: t.assigneeId }));
   const inPeople = (assigneeId: number | null) => assigneeId !== null && ids.has(assigneeId);
 
   const finishedPerMember = people

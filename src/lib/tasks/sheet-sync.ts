@@ -22,6 +22,7 @@ import { members, taskEvents, tasks, taskSyncs, type Task, type TaskSheetSnapsho
 import { columnLetter, describeGoogleError, openTab, plainText, type Cell, type SheetsApi } from "@/lib/google/sheets";
 import { acquireSync, finishSync } from "@/lib/sync-state";
 import { STATUS_LABELS, type TaskStatus } from "./constants";
+import { completionFields, isReopen } from "./done";
 import {
   buildRowKeys,
   detectAssigneeStyle,
@@ -252,7 +253,8 @@ export async function syncTasks({
       if (sheetChanged && !appChanged) {
         (final as Record<Field, unknown>)[f] = s[f];
         fromSheet.push(f);
-        events.push({ taskId: task.id, actorId, source: "sheet_sync", kind: "updated", field: f, oldValue: show[f](task[f]), newValue: show[f](s[f]) });
+        const kind = f === "status" && isReopen(task.status, s.status) ? "reopened" : "updated";
+        events.push({ taskId: task.id, actorId, source: "sheet_sync", kind, field: f, oldValue: show[f](task[f]), newValue: show[f](s[f]) });
       } else if (appChanged && s[f] !== task[f] && writable(f)) {
         toSheet.push(f);
         if (sheetChanged) {
@@ -272,6 +274,8 @@ export async function syncTasks({
       taskId: task.id,
       set: {
         ...Object.fromEntries(fromSheet.map((f) => [f, final[f]])),
+        // Ticked or unticked in the sheet: completion time and earlier status as for a change in the app.
+        ...(fromSheet.includes("status") ? completionFields(task, final.status, new Date()) : null),
         ...raw,
         sheetKey: key,
         sheetSnapshot: snapshotNow,
