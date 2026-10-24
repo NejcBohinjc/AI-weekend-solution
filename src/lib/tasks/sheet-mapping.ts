@@ -1,6 +1,6 @@
 // Pure mapping from Google Sheets cell values to task fields. No I/O, so it is unit-tested.
 import { TIMEZONE } from "@/lib/app";
-import type { TaskStatus } from "./constants";
+import { TASK_TYPES, type TaskStatus } from "./constants";
 
 export type Cell = string | number | boolean | undefined | null;
 
@@ -121,10 +121,14 @@ export function formatAssignee(member: MemberRef, style: AssigneeStyle, members:
 
 // ---------- Type ----------
 
-/** "Tip taska" becomes a lowercase label, e.g. "Marketing " -> "marketing". */
+/**
+ * A task type: one of TASK_TYPES if it matches ignoring case and diacritics ("marketing " ->
+ * "Marketing"), otherwise the value as typed (trimmed). Empty means no type.
+ */
 export function normalizeType(raw: Cell): string | null {
-  const value = String(raw ?? "").replace(/\s+/g, " ").trim().toLowerCase();
-  return value || null;
+  const value = String(raw ?? "").replace(/\s+/g, " ").trim();
+  if (!value) return null;
+  return TASK_TYPES.find((t) => normalizeText(t) === normalizeText(value)) ?? value;
 }
 
 // ---------- Deadline ----------

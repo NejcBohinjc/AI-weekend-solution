@@ -56,6 +56,10 @@ describe("two-way tasks sync", { skip: !local && "needs a local DATABASE_URL (it
       assert.equal(rowOf(title)[6], t.sheetKey);
     }
     assert.equal((await taskBy("Plakat")).assigneeId, ids.ana);
+    // Types: "Marketing" / "marketing" become the listed "Marketing"; a type not in the list is kept as typed.
+    assert.equal((await taskBy("Objava na IG")).type, "Marketing");
+    assert.equal((await taskBy("Plakat")).type, "Marketing");
+    assert.equal((await taskBy("Najem dvorane")).type, "logistika");
   });
 
   test("never reads the Geslo column or any other tab, and leaves Geslo untouched", () => {

@@ -5,7 +5,7 @@ import { DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
 import { db } from "@/db";
 import { members, tasks, taskSyncs } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
-import { STATUS_LABELS, TASK_STATUSES, type TaskStatus } from "@/lib/tasks/constants";
+import { STATUS_LABELS, TASK_STATUSES, TASK_TYPES, type TaskStatus } from "@/lib/tasks/constants";
 import { canEditTask } from "@/lib/tasks/permissions";
 import { sheetState } from "@/lib/tasks/sheet-state";
 import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
@@ -23,14 +23,18 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   after(runTasksSyncQuietly);
   const view = sp.view === "all" ? "all" : "mine";
   const status = TASK_STATUSES.includes(sp.status as TaskStatus) ? (sp.status as TaskStatus) : undefined;
-  const type = sp.type || undefined;
+  // A type from TASK_TYPES, "none", or "other" (types typed freely in the sheet).
+  const type = sp.type === "none" || sp.type === "other" || (TASK_TYPES as readonly string[]).includes(sp.type ?? "") ? sp.type : undefined;
+  const listedTypes = sql.join(TASK_TYPES.map((t) => sql`${t.toLowerCase()}`), sql`, `);
 
   const where: SQL[] = [];
   if (view === "mine") where.push(eq(tasks.assigneeId, me.id));
   if (status) where.push(eq(tasks.status, status));
-  if (type) where.push(type === "none" ? isNull(tasks.type) : eq(tasks.type, type));
+  if (type === "none") where.push(isNull(tasks.type));
+  else if (type === "other") where.push(isNotNull(tasks.type), sql`lower(${tasks.type}) not in (${listedTypes})`);
+  else if (type) where.push(sql`lower(${tasks.type}) = ${type.toLowerCase()}`);
 
-  const [rows, types, lastSync, syncStatus] = await Promise.all([
+  const [rows, lastSync, syncStatus] = await Promise.all([
     db
       .select({
         id: tasks.id,
@@ -50,7 +54,6 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       .leftJoin(members, eq(tasks.assigneeId, members.id))
       .where(and(...where))
       .orderBy(sql`${tasks.status} = 'done'`, sql`${tasks.dueDate} asc nulls last`, asc(tasks.title)),
-    db.selectDistinct({ type: tasks.type }).from(tasks).where(isNotNull(tasks.type)).orderBy(asc(tasks.type)),
     me.isAdmin
       ? db
           .select({ report: taskSyncs.report, by: members.name })
@@ -107,13 +110,16 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           <Chip href={href({ type: "" })} active={!type}>
             Any
           </Chip>
-          {types.map((t) => (
-            <Chip key={t.type} href={href({ type: t.type! })} active={type === t.type}>
-              {t.type}
+          {TASK_TYPES.map((t) => (
+            <Chip key={t} href={href({ type: t })} active={type === t}>
+              {t}
             </Chip>
           ))}
           <Chip href={href({ type: "none" })} active={type === "none"}>
             No type
+          </Chip>
+          <Chip href={href({ type: "other" })} active={type === "other"}>
+            Other types
           </Chip>
         </FilterRow>
         <FilterRow label="Status">

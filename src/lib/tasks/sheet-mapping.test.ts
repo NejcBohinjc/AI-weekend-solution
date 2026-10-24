@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { TASK_STATUSES } from "./constants";
+import { TASK_STATUSES, TASK_TYPES } from "./constants";
 import { test } from "node:test";
 import { buildRowKeys, findColumns, formatStatus, mapStatus, matchAssignee, normalizeType, parseDeadline } from "./sheet-mapping";
 
@@ -45,9 +45,14 @@ test("leaves assignee empty unless exactly one member matches", () => {
   assert.deepEqual(matchAssignee("", members), { memberId: null });
 });
 
-test("normalises task type", () => {
-  assert.equal(normalizeType("  Marketing "), "marketing");
+test("task types: list types match ignoring case and diacritics, other types are kept as typed", () => {
+  assert.equal(normalizeType("  Marketing "), "Marketing");
+  assert.equal(normalizeType("marketing"), "Marketing");
+  assert.equal(normalizeType("EVENTS"), "Events");
+  assert.equal(normalizeType("Logistika  dvorane"), "Logistika dvorane");
   assert.equal(normalizeType(""), null);
+  assert.equal(normalizeType(undefined), null);
+  for (const t of TASK_TYPES) assert.equal(normalizeType(t), t, "every listed type maps to itself");
 });
 
 test("parses deadlines", () => {

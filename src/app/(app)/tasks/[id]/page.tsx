@@ -11,8 +11,8 @@ import { requireMember } from "@/lib/auth";
 import { FIELD_LABELS } from "@/lib/tasks/constants";
 import { canEditTask } from "@/lib/tasks/permissions";
 import { sheetState } from "@/lib/tasks/sheet-state";
-import { activeMembers, taskTypes } from "@/lib/tasks/queries";
-import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
+import { activeMembers } from "@/lib/tasks/queries";
+import { normalizeType, todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { runTasksSyncQuietly } from "@/lib/tasks/sheet-sync";
 import { tasksSyncStatus } from "@/lib/tasks/sync-status";
 import { finishTaskAction, updateTaskAction } from "../actions";
@@ -27,7 +27,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
 
   const actor = aliasedTable(members, "actor");
   const creator = aliasedTable(members, "creator");
-  const [[row], events, memberList, types, syncStatus] = await Promise.all([
+  const [[row], events, memberList, syncStatus] = await Promise.all([
     db
       .select({ task: tasks, assigneeName: members.name, creatorName: creator.name })
       .from(tasks)
@@ -42,7 +42,6 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
       .where(eq(taskEvents.taskId, id))
       .orderBy(desc(taskEvents.createdAt), desc(taskEvents.id)),
     activeMembers(),
-    taskTypes(),
     tasksSyncStatus(),
   ]);
   if (!row) notFound();
@@ -120,11 +119,11 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
               title: task.title,
               status: task.status,
               assigneeId: task.assigneeId ? String(task.assigneeId) : "",
-              type: task.type ?? "",
+              // "marketing" from the sheet shows as the list's "Marketing"; other values stay as they are.
+              type: normalizeType(task.type) ?? "",
               dueDate: task.dueDate ?? "",
             }}
             members={memberList}
-            types={types}
             submitLabel="Save task"
           />
         </div>

@@ -2,12 +2,15 @@
 //   npm run sheets:check                         configuration and access (tab names only, no cell values)
 //   npm run sheets:check -- --hours-entry <id>   also sends that finished time entry to the hours tab and
 //                                                confirms its row (by the id in column F)
+//   npm run sheets:check -- --task-types         also lists the "Tip taska" values of the tasks tab and the
+//                                                types in the database, most used first (to choose TASK_TYPES)
 import "dotenv/config";
-import { eq } from "drizzle-orm";
+import { count, desc, eq, isNotNull } from "drizzle-orm";
 import { closeDb, db } from "../src/db";
-import { timeEntries } from "../src/db/schema";
+import { tasks, timeEntries } from "../src/db/schema";
 import { hoursSheetTab, syncHoursSheet } from "../src/lib/hours/sheet-sync";
-import { describeGoogleError, openTab, sheetsApi, sheetsConfig } from "../src/lib/google/sheets";
+import { columnLetter, describeGoogleError, openTab, sheetsApi, sheetsConfig } from "../src/lib/google/sheets";
+import { findColumns } from "../src/lib/tasks/sheet-mapping";
 import { tasksSheetTab } from "../src/lib/tasks/sheet-sync";
 
 async function main(): Promise<number> {
@@ -35,6 +38,25 @@ async function main(): Promise<number> {
   } catch (err) {
     console.error(`\nCannot open the spreadsheet: ${describeGoogleError(err)}`);
     return 1;
+  }
+
+  if (process.argv.includes("--task-types")) {
+    // Only the header row and the "Tip taska" column are read.
+    const tab = openTab(tasksSheetTab());
+    const col = findColumns((await tab.get("1:1"))[0] ?? []).columns.type;
+    if (col === undefined) console.log(`\nNo "tip taska" column in “${tab.tab}”.`);
+    else {
+      const counts = new Map<string, number>();
+      for (const [v] of await tab.get(`${columnLetter(col)}2:${columnLetter(col)}`)) {
+        const value = String(v ?? "").replace(/\s+/g, " ").trim();
+        if (value) counts.set(value, (counts.get(value) ?? 0) + 1);
+      }
+      console.log(`\n"Tip taska" in “${tab.tab}”, most used first:`);
+      for (const [value, n] of [...counts].sort((a, b) => b[1] - a[1])) console.log(`  ${n}  ${value}`);
+    }
+    const inDb = await db.select({ type: tasks.type, n: count() }).from(tasks).where(isNotNull(tasks.type)).groupBy(tasks.type).orderBy(desc(count()));
+    console.log("\nTask types in the database, most used first:");
+    for (const r of inDb) console.log(`  ${r.n}  ${r.type}`);
   }
 
   const i = process.argv.indexOf("--hours-entry");

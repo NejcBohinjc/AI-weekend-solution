@@ -8,9 +8,8 @@ import { z } from "zod";
 import { db } from "@/db";
 import { members, taskEvents, tasks, type Task } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
-import { STATUS_LABELS, TASK_STATUSES } from "@/lib/tasks/constants";
+import { STATUS_LABELS, TASK_STATUSES, TASK_TYPES } from "@/lib/tasks/constants";
 import { canEditTask } from "@/lib/tasks/permissions";
-import { normalizeType } from "@/lib/tasks/sheet-mapping";
 import { runTasksSync } from "@/lib/tasks/sheet-sync";
 
 type Field = "title" | "status" | "assigneeId" | "type" | "dueDate";
@@ -44,10 +43,15 @@ function pushToSheetLater(actorId: number) {
   });
 }
 
-async function parse(formData: FormData): Promise<{ data: Pick<Task, Field> } | { error: string; values: TaskFormValues }> {
+/** `currentType`: the task's type now, accepted even if it is not in TASK_TYPES (typed in the sheet). */
+async function parse(formData: FormData, currentType: string | null = null): Promise<{ data: Pick<Task, Field> } | { error: string; values: TaskFormValues }> {
   const values = Object.fromEntries(FIELDS.map((f) => [f, String(formData.get(f) ?? "")])) as TaskFormValues;
   const parsed = schema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Please check the values.", values };
+  const type = parsed.data.type.trim() || null;
+  if (type !== null && !(TASK_TYPES as readonly string[]).includes(type) && type !== currentType) {
+    return { error: "Pick a type from the list.", values };
+  }
   const assigneeId = parsed.data.assigneeId ? Number(parsed.data.assigneeId) : null;
   if (assigneeId !== null) {
     const [m] = await db.select({ active: members.active }).from(members).where(eq(members.id, assigneeId)).limit(1);
@@ -58,7 +62,7 @@ async function parse(formData: FormData): Promise<{ data: Pick<Task, Field> } | 
       title: parsed.data.title.replace(/\s+/g, " "),
       status: parsed.data.status,
       assigneeId,
-      type: normalizeType(parsed.data.type),
+      type,
       dueDate: parsed.data.dueDate || null,
     },
   };
@@ -119,7 +123,7 @@ async function loadEditable(taskId: number) {
 export async function updateTaskAction(taskId: number, _prev: TaskFormState, formData: FormData): Promise<TaskFormState> {
   const { me, task } = await loadEditable(taskId);
   if (!task) return { error: "You can't edit this task." };
-  const result = await parse(formData);
+  const result = await parse(formData, task.type);
   if ("error" in result) return result;
   if (await applyChanges(task, result.data, me.id)) pushToSheetLater(me.id);
   refresh(taskId);
