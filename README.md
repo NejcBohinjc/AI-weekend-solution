@@ -29,6 +29,17 @@ For the local Postgres from `docker-compose.yml`:
 
 Security details: passwords hashed with argon2id (min 10 characters); sessions stored in Postgres (only token hashes), revoked on logout, password change and deactivation; failed sign-ins rate-limited per email (5) and per IP (20) per 15 minutes. All auth code is in `src/lib/auth/`.
 
+## Tasks from Google Sheets
+
+Tasks are imported read-only from a Google Sheet (tab `List1` by default). Setup:
+
+1. In Google Cloud, enable the **Google Sheets API** and create a **service account**; create a JSON key for it.
+2. Share the spreadsheet with the service account's email as **Viewer**.
+3. Set `GOOGLE_SHEET_ID` (from the sheet URL), `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (the key's `private_key`, with `\n` for newlines). Optional: `GOOGLE_SHEET_TASKS_TAB`.
+4. As an admin, open **Tasks** and click **Sync from Google Sheets**. The report lists what was created, updated, skipped and left unassigned.
+
+Running the sync again never creates duplicates, and fields an admin changed in the app are not overwritten. Mapping tests: `npm test`.
+
 ## Licence
 
 MIT, see `LICENSE`.

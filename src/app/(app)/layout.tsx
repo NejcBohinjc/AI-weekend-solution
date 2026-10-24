@@ -9,7 +9,7 @@ const MEMBER_NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/tasks", label: "Tasks" },
   { href: "/hours", label: "Hours" },
-  { href: "/attendance", label: "Attendance" },
+  { href: "/meetings", label: "Meetings" },
 ];
 
 const ADMIN_NAV: NavItem[] = [
@@ -17,7 +17,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/members", label: "Members" },
   { href: "/admin/tasks", label: "Board" },
   { href: "/admin/hours", label: "Hours" },
-  { href: "/admin/attendance", label: "Attendance" },
+  { href: "/admin/meetings", label: "Meetings" },
   { href: "/admin/analytics", label: "Analytics" },
 ];
 

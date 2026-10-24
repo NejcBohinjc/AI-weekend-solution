@@ -7,10 +7,10 @@ Team: 1-2 people. Coding with AI is expected. Full challenge text: `docs/BRIEF.m
 
 One web platform for a 20-person volunteer institute, replacing a Miro board, a manual attendance spreadsheet and untracked work hours. Three areas, each needs a **member view** and an **admin view**, plus a leader-level analytics view across all three:
 
-1. **Tasks.** Projects with tasks. Tasks are assignable to a person. A member sees all of *their* tasks across all projects in one place and can finish, reprioritise, reschedule or hand over a task. Admin sees all projects on one board, adds a project in one step, assigns tasks, sees who finished how many tasks and when. Keep task history (the Miro problem: "when a card moves, its history is gone").
+1. **Tasks.** Projects with tasks. Tasks are assignable to a person. A member sees all of *their* tasks across all projects in one place and can finish, reprioritise, reschedule or hand over a task. Admin sees all projects on one board, adds a project in one step, assigns tasks, sees who finished how many tasks and when. Keep task history (the Miro problem: "when a card moves, its history is gone"). Tasks are imported read-only from a Google Sheet (see "Google Sheets task import").
 2. **Hours.** Member logs hours in seconds and sees progress against their tier's weekly commitment. Admin sees who is behind this week and any member's history.
-3. **Attendance.** Member clocks in to a meeting in seconds and sees their history (present / remote / excused / unexcused). Admin records attendance for any meeting with minimal effort and sees everyone across all six meeting series.
-4. **Analytics (admin).** Hours, attendance and tasks per member, across tiers, series and time. Must be useful to a leader: who is active, who is drifting, how the organisation is doing.
+3. **Meetings** (UI name; routes `/meetings`, `/admin/meetings`; this area tracks meeting attendance). Member clocks in to a meeting in seconds and sees their history (present / remote / excused / unexcused). Admin records attendance for any meeting with minimal effort and sees everyone across all six meeting series.
+4. **Analytics (admin).** Hours, meeting attendance and tasks per member, across tiers, series and time. Must be useful to a leader: who is active, who is drifting, how the organisation is doing.
 
 ## How we are judged (decide trade-offs by this)
 
@@ -43,6 +43,16 @@ Extras (gamification, Slack, Jarvis agent) count **only after all three areas wo
 
 Import `data/meetings.ics` into a Google Calendar called "Sandbox", make it public, copy the Calendar ID, and read events with a Google API key (no OAuth needed). Cache events in the database so the app stays fast and works if the API is slow. Reading from Google is the source of truth; sync on a schedule and on demand.
 
+## Google Sheets task import
+
+Read-only, via the Sheets API with a service account (scope `spreadsheets.readonly`). **Never write to the sheet.** Code: `src/lib/tasks/` (`google-sheets.ts` reads, `sheet-mapping.ts` maps, `sheet-sync.ts` upserts).
+
+- Reads only the tab `GOOGLE_SHEET_TASKS_TAB` (default `List1`). Never import the Users tab or List4. Never read the Geslo column: we fetch row 1, then only the five mapped columns.
+- Columns by header (trimmed, case/diacritic-insensitive): `task` → title, `status` → todo/in_progress/done (English + Slovenian variants; unknown → todo, reported), `nosilec` → assignee by first name, full name or email prefix (only on exactly one match, else unassigned with raw value kept), `tip taska` → lowercase type label, `deadline` → due date (dd.mm.yyyy, d.m. = next upcoming, yyyy-mm-dd, Sheets serials; Europe/Ljubljana).
+- Row key: normalised title + occurrence number (`plakat#1`, `plakat#2`). Survives row inserts/sorting; renaming a task in the sheet creates a new task and flags the old one "no longer in sheet" (never deleted).
+- Admin edits in the app lock that field (`tasks.locked_fields`); syncs never overwrite locked fields. Every create/change goes to `task_events`.
+- Sync is manual (admin button on `/tasks`), report stored in `task_syncs`. No scheduled sync yet.
+
 ## Proposed stack (change in one line here if we switch)
 
 - Next.js (App Router, TypeScript) + Tailwind
@@ -52,7 +62,7 @@ Import `data/meetings.ics` into a Google Calendar called "Sandbox", make it publ
 
 ## Environment variables (names only, document each in the infra page)
 
-`DATABASE_URL`, `APP_URL` (public base URL, used in setup links), `DEMO_MODE` (`true` only for the sandbox demo: seed sets every member's password to `DEMO_PASSWORD` and `/login` shows demo-account buttons), `DEMO_PASSWORD` (min 10 chars), `GOOGLE_CALENDAR_ID`, `GOOGLE_API_KEY`.
+`DATABASE_URL`, `APP_URL` (public base URL, used in setup links), `DEMO_MODE` (`true` only for the sandbox demo: seed sets every member's password to `DEMO_PASSWORD` and `/login` shows demo-account buttons), `DEMO_PASSWORD` (min 10 chars), `GOOGLE_CALENDAR_ID`, `GOOGLE_API_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_TASKS_TAB` (default `List1`), `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (PEM with `\n` for newlines; the sheet must be shared with the service account as Viewer).
 Optional (AI): `ANTHROPIC_API_KEY`. Optional (Slack extras): `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`.
 
 ## Build order (finish each step before the next; commit and push after each)
@@ -60,7 +70,7 @@ Optional (AI): `ANTHROPIC_API_KEY`. Optional (Slack extras): `SLACK_BOT_TOKEN`, 
 1. Scaffold app, schema, migrations, seed script that loads everything in `data/`. Deploy an empty shell to a public URL early.
 2. Email/password login, member management (`/admin/members`), member/admin role handling, shared layout.
 3. Hours: quick log, weekly progress vs tier target, admin "behind this week" and per-member history.
-4. Attendance: calendar sync, member clock-in (only for a meeting that is happening now, with a sensible window), member history, admin fast recording (default everyone present, tap the exceptions), attendance table across all series.
+4. Meetings: calendar sync, member clock-in (only for a meeting that is happening now, with a sensible window), member history, admin fast recording (default everyone present, tap the exceptions), attendance table across all series.
 5. Tasks: projects, tasks with assignee/priority/due date, "my tasks" across projects, admin board, history of changes, finished-count per member.
 6. Admin analytics: hours compliance by tier, attendance rate by series and member, weekly trends, a "drifting members" list (e.g. under 50% of target hours, or repeated unexcused absences), task throughput.
 7. Infra page (`docs/INFRASTRUCTURE.md`, one page: services, how they connect, env var names, deploy from zero), final README, demo script.

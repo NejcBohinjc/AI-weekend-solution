@@ -15,6 +15,13 @@
       "when": 1792834210606,
       "tag": "0001_nasty_stellaris",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792835419900,
+      "tag": "0002_absent_blindfold",
+      "breakpoints": true
     }
   ]
 }

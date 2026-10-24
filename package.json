@@ -10,11 +10,13 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
-    "create-admin": "tsx scripts/create-admin.ts"
+    "create-admin": "tsx scripts/create-admin.ts",
+    "test": "tsx --test src/lib/tasks/sheet-mapping.test.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",
     "drizzle-orm": "^0.45.4",
+    "google-auth-library": "^9.15.1",
     "next": "15.5.28",
     "postgres": "^3.4.9",
     "react": "19.1.0",

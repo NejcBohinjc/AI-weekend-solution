@@ -1,0 +1,179 @@
+// Pure mapping from Google Sheets cell values to task fields. No I/O, so it is unit-tested.
+import { TIMEZONE } from "@/lib/app";
+import type { TaskStatus } from "./constants";
+
+export type Cell = string | number | boolean | undefined | null;
+
+/** Lowercase, no diacritics, single spaces. Used for headers, statuses, names and row keys. */
+export function normalizeText(value: Cell): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// ---------- Headers ----------
+
+export type SheetField = "title" | "status" | "assignee" | "type" | "deadline";
+
+// Header names as they appear in the sheet (compared after normalizeText).
+const HEADERS: Record<SheetField, string[]> = {
+  title: ["task"],
+  status: ["status"],
+  assignee: ["nosilec"],
+  type: ["tip taska"],
+  deadline: ["deadline"],
+};
+
+/** Finds each field's column index in the header row. Only these columns are ever read. */
+export function findColumns(headerRow: Cell[]): { columns: Partial<Record<SheetField, number>>; missing: SheetField[] } {
+  const normalized = headerRow.map(normalizeText);
+  const columns: Partial<Record<SheetField, number>> = {};
+  const missing: SheetField[] = [];
+  for (const field of Object.keys(HEADERS) as SheetField[]) {
+    const index = normalized.findIndex((h) => HEADERS[field].includes(h));
+    if (index >= 0) columns[field] = index;
+    else missing.push(field);
+  }
+  return { columns, missing };
+}
+
+// ---------- Status ----------
+
+const STATUS_WORDS: Record<TaskStatus, string[]> = {
+  todo: [
+    "to do", "todo", "open", "new", "not started", "backlog", "planned", "pending", "waiting",
+    "za narediti", "narediti", "odprto", "novo", "ni zaceto", "nezaceto", "ni se zaceto", "caka", "na cakanju", "planirano",
+  ],
+  in_progress: [
+    "in progress", "progress", "doing", "wip", "started", "ongoing", "in work", "working", "in review", "review",
+    "v delu", "v teku", "v izvajanju", "v procesu", "se dela", "delam", "zaceto", "v pregledu",
+  ],
+  done: [
+    "done", "complete", "completed", "finished", "closed", "resolved",
+    "narejeno", "koncano", "zakljuceno", "opravljeno", "dokoncano", "reseno", "izvedeno", "oddano",
+  ],
+};
+const STATUS_LOOKUP = new Map<string, TaskStatus>(
+  (Object.entries(STATUS_WORDS) as [TaskStatus, string[]][]).flatMap(([status, words]) => words.map((w) => [w, status])),
+);
+
+/** Maps a sheet status. Empty means to-do; anything unrecognised is to-do and flagged. */
+export function mapStatus(raw: Cell): { status: TaskStatus; recognised: boolean } {
+  const key = normalizeText(raw).replace(/[-_/]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!key) return { status: "todo", recognised: true };
+  const status = STATUS_LOOKUP.get(key) ?? STATUS_LOOKUP.get(key.replace(/ /g, ""));
+  return status ? { status, recognised: true } : { status: "todo", recognised: false };
+}
+
+// ---------- Assignee ----------
+
+export type MemberRef = { id: number; name: string; email: string };
+
+/** Matches "nosilec" by full name, first name or email prefix. Assigns only on exactly one match. */
+export function matchAssignee(raw: Cell, members: MemberRef[]): { memberId: number | null; reason?: string } {
+  const key = normalizeText(raw);
+  if (!key) return { memberId: null };
+  const matches = members.filter((m) => {
+    const name = normalizeText(m.name);
+    return key === name || key === name.split(" ")[0] || key === normalizeText(m.email.split("@")[0]);
+  });
+  if (matches.length === 1) return { memberId: matches[0].id };
+  if (matches.length === 0) return { memberId: null, reason: "no member matches" };
+  return { memberId: null, reason: `matches ${matches.length} members (${matches.map((m) => m.name).join(", ")})` };
+}
+
+// ---------- Type ----------
+
+/** "Tip taska" becomes a lowercase label, e.g. "Marketing " -> "marketing". */
+export function normalizeType(raw: Cell): string | null {
+  const value = String(raw ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+  return value || null;
+}
+
+// ---------- Deadline ----------
+
+const pad = (n: number) => String(n).padStart(2, "0");
+const isoDate = (y: number, m: number, d: number) => `${y}-${pad(m)}-${pad(d)}`;
+
+function validDate(y: number, m: number, d: number): string | null {
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d ? isoDate(y, m, d) : null;
+}
+
+/** Today's date in Europe/Ljubljana as yyyy-mm-dd. */
+export function todayInLjubljana(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+/**
+ * Parses a deadline into a yyyy-mm-dd date (Europe/Ljubljana).
+ * Accepts Sheets date serials, dd.mm.yyyy, dd.mm.yy, d.m. (no year: next upcoming date), yyyy-mm-dd,
+ * dd/mm/yyyy, and any of these followed by a time. Empty means no deadline.
+ */
+export function parseDeadline(raw: Cell, today: string): { date: string | null; error?: string } {
+  if (raw === undefined || raw === null || raw === "") return { date: null };
+
+  if (typeof raw === "number") {
+    // Sheets serial: days since 1899-12-30; the fraction is the time of day in the sheet's (Ljubljana) time.
+    if (!Number.isFinite(raw) || raw < 1) return { date: null, error: "not a date" };
+    const dt = new Date(Date.UTC(1899, 11, 30) + Math.floor(raw) * 86_400_000);
+    // A plain number like 12 is not a deadline; real serials for this decade are around 46000.
+    if (dt.getUTCFullYear() < 2000) return { date: null, error: "not a date" };
+    return { date: isoDate(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate()) };
+  }
+
+  const text = String(raw).trim();
+  if (!text) return { date: null };
+
+  // ISO date or local date-time: 2026-11-15, 2026-11-15 14:00, 2026-11-15T14:00
+  let m = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$/);
+  if (m) return orError(validDate(+m[1], +m[2], +m[3]));
+
+  // ISO date-time with an explicit zone: convert the instant to a Ljubljana date.
+  if (/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:?\d{2})$/.test(text)) {
+    const ms = Date.parse(text);
+    return Number.isNaN(ms) ? { date: null, error: "not a date" } : { date: todayInLjubljana(new Date(ms)) };
+  }
+
+  // dd.mm.yyyy, dd. mm. yyyy, dd.mm.yy, d.m., d.m, dd/mm/yyyy, each optionally followed by a time.
+  m = text.match(/^(\d{1,2})\s*[./]\s*(\d{1,2})\s*(?:[./]\s*(\d{4}|\d{2})?)?\s*\.?(?:\s+\d{1,2}[:.]\d{2}(?:\s*h)?)?$/i);
+  if (m) {
+    const day = +m[1];
+    const month = +m[2];
+    if (m[3]) {
+      const year = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+      return orError(validDate(year, month, day));
+    }
+    // No year: the next time this day comes around, counting today.
+    const thisYear = +today.slice(0, 4);
+    const candidate = validDate(thisYear, month, day);
+    if (candidate && candidate >= today) return { date: candidate };
+    return orError(validDate(thisYear + 1, month, day) ?? validDate(thisYear + 2, month, day));
+  }
+
+  return { date: null, error: "not a date" };
+}
+
+function orError(date: string | null): { date: string | null; error?: string } {
+  return date ? { date } : { date: null, error: "not a valid calendar date" };
+}
+
+// ---------- Row keys ----------
+
+/**
+ * Stable key per sheet row: normalised title + occurrence number among rows with the same title.
+ * Inserting, sorting or deleting other rows does not change a row's key (row numbers would).
+ * Renaming a task in the sheet gives it a new key, so it is imported as a new task.
+ */
+export function buildRowKeys(titles: string[]): string[] {
+  const seen = new Map<string, number>();
+  return titles.map((title) => {
+    const base = normalizeText(title);
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return `${base}#${n}`;
+  });
+}
