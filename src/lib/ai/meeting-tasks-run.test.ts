@@ -1,14 +1,15 @@
-// Database test (local DATABASE_URL only) for "Create tasks from notes" with a mocked API call.
+// Database test (runs on the *_test database that npm test sets up) for "Create tasks from notes",
+// with a mocked API call.
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { closeDb, db } from "@/db";
 import { aiTaskItems, aiTaskRuns, meetingInvites, meetingNotes, meetings, members, tasks } from "@/db/schema";
+import { testDatabaseSkip } from "@/lib/test-db";
 import type { ModelCall } from "./meeting-tasks";
 import { createTasksFromNote, hashNotes } from "./meeting-tasks-run";
 
-const local = /@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL ?? "");
 let meetingId: number;
 let zigaId: number;
 let calls = 0;
@@ -27,8 +28,16 @@ async function addNote(content: string) {
 }
 const aiTasks = () => db.select().from(tasks).where(and(eq(tasks.sourceMeetingId, meetingId), eq(tasks.createdByAi, true)));
 
-describe("create tasks from notes", { skip: !local && "needs a local DATABASE_URL" }, () => {
+describe("create tasks from notes", { skip: testDatabaseSkip() }, () => {
   before(async () => {
+    // The test database starts empty: add the members these tests use.
+    await db
+      .insert(members)
+      .values([
+        { name: "Žiga Krajnc", email: "ziga.krajnc@sandbox.example", tier: "Impact", weeklyHours: 10 },
+        { name: "Eva Vidmar", email: "eva.vidmar@sandbox.example", tier: "Impact", weeklyHours: 10 },
+      ])
+      .onConflictDoNothing({ target: members.email });
     [{ id: zigaId }] = await db.select({ id: members.id }).from(members).where(eq(members.email, "ziga.krajnc@sandbox.example"));
     [{ id: meetingId }] = await db
       .insert(meetings)

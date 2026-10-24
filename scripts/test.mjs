@@ -66,7 +66,9 @@ const files = readdirSync("src", { recursive: true })
   .filter((f) => f.endsWith(".test.ts"))
   .sort();
 try {
-  execSync(`npx tsx --test ${files.join(" ")}`, { env, stdio: "inherit" });
+  // One file at a time: the database tests share the test database (the tasks sync test empties
+  // the tasks table), so running them in parallel makes them fail at random.
+  execSync(`npx tsx --test --test-concurrency=1 ${files.join(" ")}`, { env, stdio: "inherit" });
 } catch {
   process.exit(1);
 }
