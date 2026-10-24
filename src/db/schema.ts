@@ -213,6 +213,8 @@ export const meetings = pgTable(
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
     location: text("location"),
+    // The calendar event's description for people to read (machine lines "Series:"/"Members:" removed).
+    description: text("description"),
     status: text("status", { enum: MEETING_STATUSES }).notNull().default("confirmed"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

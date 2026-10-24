@@ -1,5 +1,6 @@
 // Building blocks shared by the member and admin meeting pages and the dashboard.
 import Link from "next/link";
+import { LinkifiedText } from "./linkified-text";
 import type { Meeting } from "@/db/schema";
 import { formatDay, ljubljanaParts } from "@/lib/hours/time";
 import { STATE_LABELS, type AttendanceState } from "@/lib/meetings/constants";
@@ -45,6 +46,13 @@ export function MeetingRow({ meeting, state, href }: { meeting: Meeting; state?:
           {off ? <span className="text-xs font-medium text-slate-500">Cancelled</span> : state !== undefined && <AttendanceBadge state={state} />}
         </span>
       </Link>
+      {meeting.description && (
+        // Outside the link: a disclosure inside an <a> is not allowed and would navigate on tap.
+        <details className="px-4 pb-3 text-sm">
+          <summary className="cursor-pointer truncate text-slate-500">{meeting.description.split("\n")[0]}</summary>
+          <LinkifiedText text={meeting.description} className="mt-1 text-slate-700" />
+        </details>
+      )}
     </li>
   );
 }

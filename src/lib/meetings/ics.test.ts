@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parseIcs } from "./ics";
+import { displayDescription, parseIcs } from "./ics";
 
 const ALL = { from: new Date("2000-01-01T00:00:00Z"), to: new Date("2100-01-01T00:00:00Z") };
 
@@ -18,6 +18,7 @@ test("reads the sandbox calendar: 55 meetings, series and invitees from the desc
   assert.equal(first.location, "Institute, Ljubljana");
   assert.equal(first.emails.length, 20); // the folded "Members:" line, joined back together
   assert.ok(first.emails.includes("katja.lesjak@sandbox.example"));
+  assert.equal(first.description, null, "the sandbox description is only the Series/Members lines");
   const series = new Set(meetings.map((m) => m.series));
   assert.deepEqual([...series].sort(), ["Community", "Grants", "Shape Talks", "Shapers Tech", "Shapers Voice", "Summer School"]);
 });
@@ -123,4 +124,39 @@ END:VCALENDAR`;
   const floating = meetings.find((m) => m.uid === "x2");
   assert.equal(floating?.startsAt.toISOString(), "2026-07-20T16:00:00.000Z");
   assert.equal(floating?.endsAt.toISOString(), "2026-07-20T17:00:00.000Z"); // no end: one hour
+});
+
+function oneEvent(descriptionLines: string[]): string {
+  return [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "BEGIN:VEVENT", "UID:desc-1@sandbox.example",
+    "DTSTART:20261101T170000Z", "DTEND:20261101T180000Z", "SUMMARY:Grants meeting",
+    ...descriptionLines, "END:VEVENT", "END:VCALENDAR",
+  ].join("\r\n");
+}
+
+test("description: iCal escapes undone, line breaks kept, Series/Members lines hidden but still used", () => {
+  const ics = oneEvent([
+    "DESCRIPTION:Series: Grants\\nMembers: ana.kovac@sandbox.example\\, eva.vidmar@sandbox.example\\nAgenda\; budget\\, plan",
+    " \\n\\nJoin: https://meet.example.org/abc",
+  ]);
+  const [m] = parseIcs(ics, ALL).meetings;
+  assert.equal(m.series, "Grants");
+  assert.deepEqual(m.emails, ["ana.kovac@sandbox.example", "eva.vidmar@sandbox.example"]);
+  assert.equal(m.description, "Agenda; budget, plan\n\nJoin: https://meet.example.org/abc");
+});
+
+test("description: HTML from Google becomes plain text, links keep their address", () => {
+  const html =
+    'Hi <b>all</b>,<br>please read <a href="https://docs.example.org/x?a=1&amp;b=2">the doc</a>.<br><ul><li>One</li><li>Two &amp; three</li></ul><script>alert(1)</script>';
+  assert.equal(
+    displayDescription(html),
+    "Hi all,\nplease read the doc (https://docs.example.org/x?a=1&b=2).\n• One\n• Two & three",
+  );
+});
+
+test("description: leftover literal escapes from double-escaped exports are undone; empty means null", () => {
+  assert.equal(displayDescription("Line one\\nLine two\\, with comma\; and semicolon"), "Line one\nLine two, with comma; and semicolon");
+  assert.equal(displayDescription("Series: Community\nMembers: a@b.example"), null);
+  assert.equal(displayDescription(""), null);
+  assert.equal(displayDescription(undefined), null);
 });

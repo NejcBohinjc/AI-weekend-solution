@@ -43,6 +43,13 @@
       "when": 1792844485144,
       "tag": "0005_keen_mordo",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792847883029,
+      "tag": "0006_eminent_santa_claus",
+      "breakpoints": true
     }
   ]
 }

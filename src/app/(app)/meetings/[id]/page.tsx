@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { TierBadge } from "@/components/badges";
+import { LinkifiedText } from "@/components/linkified-text";
 import { AttendanceBadge, meetingWhen, SeriesBadge } from "@/components/meetings";
 import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
@@ -47,6 +48,13 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
           </p>
         )}
       </div>
+
+      {meeting.description && (
+        <div className="flex flex-col gap-1.5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="meeting-description">
+          <h2 className="text-sm font-semibold text-slate-500">From the calendar</h2>
+          <LinkifiedText text={meeting.description} className="text-sm text-slate-800" />
+        </div>
+      )}
 
       {mine && (
         <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="my-attendance">
