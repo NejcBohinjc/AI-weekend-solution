@@ -18,11 +18,12 @@ export const TASK_TYPES = ["Marketing", "Events", "Finance", "Content", "Other"]
 // Task fields an admin can edit. Editing one locks it against later sheet syncs.
 export const EDITABLE_FIELDS = ["status", "assigneeId", "type", "dueDate"] as const;
 export type EditableField = (typeof EDITABLE_FIELDS)[number];
-export const FIELD_LABELS: Record<EditableField | "title" | "departmentId", string> = {
+export const FIELD_LABELS: Record<EditableField | "title" | "departmentId" | "projectId", string> = {
   title: "Title",
   status: "Status",
   assigneeId: "Assignee",
   departmentId: "Department",
+  projectId: "Project",
   type: "Type",
   dueDate: "Due date",
 };

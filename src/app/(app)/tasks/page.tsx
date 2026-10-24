@@ -3,7 +3,7 @@ import Link from "next/link";
 import { after } from "next/server";
 import { AiBadge, DepartmentBadge, DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
 import { db } from "@/db";
-import { departments, members, tasks, taskSyncs } from "@/db/schema";
+import { departments, members, projects, tasks, taskSyncs } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
 import { STATUS_LABELS, TASK_STATUSES, TASK_TYPES, type TaskStatus } from "@/lib/tasks/constants";
 import { canEditTask } from "@/lib/tasks/permissions";
@@ -47,6 +47,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         assigneeId: tasks.assigneeId,
         departmentId: tasks.departmentId,
         departmentName: departments.name,
+        projectName: projects.name,
         createdById: tasks.createdById,
         assigneeName: members.name,
         inSheet: tasks.inSheet,
@@ -59,6 +60,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       .from(tasks)
       .leftJoin(members, eq(tasks.assigneeId, members.id))
       .leftJoin(departments, eq(tasks.departmentId, departments.id))
+      .leftJoin(projects, eq(tasks.projectId, projects.id))
       .where(and(...where))
       .orderBy(sql`${tasks.status} = 'done'`, sql`${tasks.dueDate} asc nulls last`, asc(tasks.title)),
     me.isAdmin
@@ -184,6 +186,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                       Unassigned{t.assigneeRaw && me.isAdmin ? ` (sheet: “${t.assigneeRaw}”)` : ""}
                     </span>
                   )}
+                  {t.projectName && <span className="text-xs text-subtle">in {t.projectName}</span>}
                   {!t.inSheet && me.isAdmin && <span className="text-xs text-subtle">no longer in sheet</span>}
                   {pendingInSheet.has(t.id) && <span className="text-xs text-warning">not in the sheet yet</span>}
                 </span>

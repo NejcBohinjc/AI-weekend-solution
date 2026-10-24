@@ -5,10 +5,11 @@ import { after } from "next/server";
 import { AiBadge, DepartmentBadge, DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
 import { secondaryButtonClass } from "@/components/ui";
 import { db } from "@/db";
-import { departments, meetings, members, taskEvents, tasks } from "@/db/schema";
+import { departments, meetings, members, projects, taskEvents, tasks } from "@/db/schema";
 import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
 import { departmentList } from "@/lib/departments";
+import { projectList } from "@/lib/projects/queries";
 import { FIELD_LABELS } from "@/lib/tasks/constants";
 import { ownerValue } from "@/lib/tasks/owner";
 import { canConfirmAiTask, canDeleteAiTask, canEditTask, canTakeTask } from "@/lib/tasks/permissions";
@@ -30,12 +31,13 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
   const actor = aliasedTable(members, "actor");
   const creator = aliasedTable(members, "creator");
   const triggerer = aliasedTable(members, "triggerer");
-  const [[row], events, memberList, syncStatus, departmentOptions] = await Promise.all([
+  const [[row], events, memberList, syncStatus, departmentOptions, projectOptions] = await Promise.all([
     db
       .select({
         task: tasks,
         assigneeName: members.name,
         departmentName: departments.name,
+        project: { id: projects.id, name: projects.name },
         creatorName: creator.name,
         triggeredByName: triggerer.name,
         meeting: { id: meetings.id, title: meetings.title, startsAt: meetings.startsAt },
@@ -43,6 +45,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
       .from(tasks)
       .leftJoin(members, eq(tasks.assigneeId, members.id))
       .leftJoin(departments, eq(tasks.departmentId, departments.id))
+      .leftJoin(projects, eq(tasks.projectId, projects.id))
       .leftJoin(creator, eq(tasks.createdById, creator.id))
       .leftJoin(triggerer, eq(tasks.triggeredById, triggerer.id))
       .leftJoin(meetings, eq(tasks.sourceMeetingId, meetings.id))
@@ -57,6 +60,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
     activeMembers(),
     tasksSyncStatus(),
     departmentList(),
+    projectList(),
   ]);
   if (!row || row.task.deletedAt) notFound();
   const { task } = row;
@@ -105,6 +109,11 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
             </span>
           ) : (
             <span className="text-muted">Unassigned</span>
+          )}
+          {row.project?.id && (
+            <Link href={`/projects?open=${row.project.id}`} className="text-xs font-medium text-link hover:underline">
+              in {row.project.name}
+            </Link>
           )}
           {row.creatorName && <span className="text-xs text-subtle">created by {row.creatorName}</span>}
           {inSheet === "removed" && <span className="text-xs text-warning">no longer in the sheet (its row was deleted there)</span>}
@@ -193,12 +202,14 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
               title: task.title,
               status: task.status,
               owner: ownerValue(task),
+              projectId: task.projectId ? String(task.projectId) : "",
               // "marketing" from the sheet shows as the list's "Marketing"; other values stay as they are.
               type: normalizeType(task.type) ?? "",
               dueDate: task.dueDate ?? "",
             }}
             members={memberList}
             departments={departmentOptions}
+            projects={projectOptions}
             submitLabel="Save task"
           />
         </div>

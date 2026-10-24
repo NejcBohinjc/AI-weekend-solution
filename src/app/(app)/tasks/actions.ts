@@ -6,24 +6,25 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
-import { departments, members, taskEvents, tasks, type Task } from "@/db/schema";
+import { departments, members, projects, taskEvents, tasks, type Task } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
 import { STATUS_LABELS, TASK_STATUSES, TASK_TYPES } from "@/lib/tasks/constants";
 import { parseOwner } from "@/lib/tasks/owner";
 import { canConfirmAiTask, canDeleteAiTask, canEditTask, canTakeTask } from "@/lib/tasks/permissions";
 import { runTasksSync } from "@/lib/tasks/sheet-sync";
 
-type Field = "title" | "status" | "assigneeId" | "departmentId" | "type" | "dueDate";
+type Field = "title" | "status" | "assigneeId" | "departmentId" | "projectId" | "type" | "dueDate";
 
 /** owner: "m:<member id>", "d:<department id>" or "" (see lib/tasks/owner.ts). */
-export type TaskFormValues = { title: string; status: string; owner: string; type: string; dueDate: string };
-const FORM_FIELDS = ["title", "status", "owner", "type", "dueDate"] as const;
+export type TaskFormValues = { title: string; status: string; owner: string; projectId: string; type: string; dueDate: string };
+const FORM_FIELDS = ["title", "status", "owner", "projectId", "type", "dueDate"] as const;
 export type TaskFormState = { error?: string; saved?: boolean; values?: TaskFormValues };
 
 const schema = z.object({
   title: z.string().trim().min(1, "Give the task a title.").max(200, "Use at most 200 characters."),
   status: z.enum(TASK_STATUSES),
   owner: z.string().max(20),
+  projectId: z.string().regex(/^\d*$/, "Pick a project from the list."),
   type: z.string().max(60),
   dueDate: z.union([z.literal(""), z.iso.date()]),
 });
@@ -32,6 +33,7 @@ function refresh(taskId?: number) {
   revalidatePath("/tasks");
   if (taskId) revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/dashboard");
+  revalidatePath("/projects");
 }
 
 /** Sends the change to the sheet right after the response (skipped if a sync is already running). */
@@ -64,11 +66,17 @@ async function parse(formData: FormData, currentType: string | null = null): Pro
     const [d] = await db.select({ id: departments.id }).from(departments).where(eq(departments.id, owner.departmentId)).limit(1);
     if (!d) return { error: "That department no longer exists.", values };
   }
+  const projectId = parsed.data.projectId ? Number(parsed.data.projectId) : null;
+  if (projectId !== null) {
+    const [p] = await db.select({ id: projects.id }).from(projects).where(eq(projects.id, projectId)).limit(1);
+    if (!p) return { error: "That project no longer exists.", values };
+  }
   return {
     data: {
       title: parsed.data.title.replace(/\s+/g, " "),
       status: parsed.data.status,
       ...owner,
+      projectId,
       type,
       dueDate: parsed.data.dueDate || null,
     },
@@ -93,11 +101,13 @@ export async function createTaskAction(_prev: TaskFormState, formData: FormData)
 async function applyChanges(task: Task, next: Partial<Pick<Task, Field>>, actorId: number): Promise<boolean> {
   const names = new Map((await db.select({ id: members.id, name: members.name }).from(members)).map((m) => [m.id, m.name]));
   const departmentNames = new Map((await db.select({ id: departments.id, name: departments.name }).from(departments)).map((d) => [d.id, d.name]));
+  const projectNames = new Map((await db.select({ id: projects.id, name: projects.name }).from(projects)).map((p) => [p.id, p.name]));
   const show = (f: Field, v: unknown): string | null => {
     if (v === null || v === undefined) return null;
     if (f === "status") return STATUS_LABELS[v as Task["status"]];
     if (f === "assigneeId") return names.get(v as number) ?? null;
     if (f === "departmentId") return departmentNames.get(v as number) ?? null;
+    if (f === "projectId") return projectNames.get(v as number) ?? null;
     return String(v);
   };
   const changed = (Object.keys(next) as Field[]).filter((f) => task[f] !== next[f]);

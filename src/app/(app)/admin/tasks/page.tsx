@@ -1,5 +1,6 @@
-import { Placeholder } from "@/components/placeholder";
+import { redirect } from "next/navigation";
 
+// The project board is /projects (for everyone; admins add and edit projects there).
 export default function AdminTasksPage() {
-  return <Placeholder title="Project board" description="All projects and tasks on one board, with assignment and history." />;
+  redirect("/projects");
 }

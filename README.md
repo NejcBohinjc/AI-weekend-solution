@@ -40,6 +40,10 @@ For the local Postgres from `docker-compose.yml`:
 
 Security details: passwords hashed with argon2id (min 10 characters); sessions stored in Postgres (only token hashes), revoked on logout, password change and deactivation; failed sign-ins rate-limited per email (5) and per IP (20) per 15 minutes. All auth code is in `src/lib/auth/`.
 
+## Projects
+
+**Projects** (in the menu) lists every project on one line with how many of its tasks are still unfinished; click a project to open the list of all its tasks, or add one to it. Admins add a project in one step at the top, and can rename it or delete it while it is empty. A task's project is set in the task form. Projects live only in the app (the Google Sheet has no project column). The seed adds 10 placeholder projects, marked as such, to rename.
+
 ## Tasks and the Google Sheet
 
 Every member can create tasks, and edit, hand over or finish the tasks assigned to them or created by them. A task can also be given to a whole **department** (Core, Voice and Tech to start; admins manage them on **Admin → Departments** and tick each member's departments on their page: any number, or none; the Core department is only for members of the Core tier): everyone in it sees it under My tasks and may finish it, and one of them presses **Take it** to make it theirs. In the sheet, write the department's name (e.g. `Tech`) in `nosilec`. Admins can edit all tasks. Every change is kept in the task's history.

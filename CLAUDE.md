@@ -52,6 +52,13 @@ Meetings are read from the Google Calendar's iCal (.ics) export, never written. 
 - Reminders: by email, default 1 day and 10 minutes before; each member picks from 1 week, 3 days, 1 day, 3 h, 1 h, 30 min, 10 min, or turns them off (`reminder_settings`). The scheduled job `GET /api/cron/reminders` (header `Authorization: Bearer CRON_SECRET`, every 5 min from any scheduler) sends what is due; `meeting_reminders` makes it idempotent; no reminder after the start or for an excused meeting. Locally: `npm run reminders -- --watch`.
 - Email: SMTP via nodemailer (`src/lib/email.ts`). Without `SMTP_HOST` nothing is sent, emails are only recorded in `email_log` (shown on `/admin/meetings`). `MAIL_REDIRECT_TO` sends every email to one address (demo/testing). Sandbox addresses do not exist, so never send to them for real.
 
+## Projects (`/projects`)
+
+- `projects` (name unique, optional description); `tasks.project_id` (at most one project, `set null` on delete). App-only: the sheet has no project column and the sync never touches `project_id`.
+- `/projects` (everyone, "Projects" in the menu; `/admin/tasks` redirects here): every project as a collapsed `<details>` row showing only how many tasks are unfinished; opening it lists all its tasks (unfinished first by due date, done last; `src/lib/projects/overview.ts`, tested) with "+ Add a task" (`/tasks/new?project=<id>`). Tasks without a project come last as "No project". `?open=<id>` opens one.
+- Admins add a project in one step (name + optional description), rename it, and delete it only while it has no tasks. Anyone who can edit a task sets its project in the task form; changes go to `task_events`.
+- Seed: 10 **placeholder** projects (description says so) until the real names arrive; existing names are kept.
+
 ## Google Sheets tasks sync (two-way)
 
 Via the Sheets API with a service account (scope `spreadsheets`, account shared as **Editor**). Code: `src/lib/google/sheets.ts` (client, one `SheetTab` per tab, exact Google errors, `fake-sheets.ts` for tests), `src/lib/tasks/` (`sheet-mapping.ts` maps, `sheet-sync.ts` syncs, tests in `sheet-sync.test.ts`).

@@ -10,11 +10,12 @@ type Props = {
   initial: TaskFormValues;
   members: { id: number; name: string }[];
   departments: { id: number; name: string }[];
+  projects: { id: number; name: string }[];
   submitLabel: string;
 };
 
 /** Create or edit a task. Changing who it is assigned to (a person or a whole department) hands it over. */
-export function TaskForm({ action, initial, members, departments, submitLabel }: Props) {
+export function TaskForm({ action, initial, members, departments, projects, submitLabel }: Props) {
   const [state, formAction, pending] = useActionState(action, {});
   const values = state.values ?? initial;
   const extraType = initial.type && !(TASK_TYPES as readonly string[]).includes(initial.type) ? initial.type : null;
@@ -47,6 +48,17 @@ export function TaskForm({ action, initial, members, departments, submitLabel }:
                 </option>
               ))}
             </optgroup>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>Project</span>
+          <select name="projectId" defaultValue={values.projectId} className={inputClass}>
+            <option value="">No project</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
           </select>
         </label>
         <label className="flex flex-col gap-1.5">

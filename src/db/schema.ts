@@ -108,6 +108,18 @@ export const loginAttempts = pgTable(
   (t) => [index("login_attempts_email_idx").on(t.email, t.createdAt), index("login_attempts_ip_idx").on(t.ip, t.createdAt)],
 );
 
+// Projects group tasks (app-only: the tasks tab of the sheet has no project column). Admins add,
+// rename and delete them on /projects; a task belongs to at most one.
+export const projects = pgTable("projects", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Project = typeof projects.$inferSelect;
+
 // Tasks. Imported tasks carry the raw sheet values so admins can see what the sheet said.
 export const tasks = pgTable(
   "tasks",
@@ -118,6 +130,7 @@ export const tasks = pgTable(
     assigneeId: integer("assignee_id").references(() => members.id, { onDelete: "set null" }),
     // Delegated to a whole department instead of one person (never both; see the check below).
     departmentId: integer("department_id").references(() => departments.id, { onDelete: "set null" }),
+    projectId: integer("project_id").references(() => projects.id, { onDelete: "set null" }),
     type: text("type"), // normalised label, e.g. "marketing"
     dueDate: date("due_date"), // calendar date in Europe/Ljubljana
     createdById: integer("created_by_id").references(() => members.id, { onDelete: "set null" }),
@@ -154,6 +167,7 @@ export const tasks = pgTable(
     uniqueIndex("tasks_source_key_idx").on(t.source, t.sourceKey),
     index("tasks_assignee_idx").on(t.assigneeId),
     index("tasks_department_idx").on(t.departmentId),
+    index("tasks_project_idx").on(t.projectId),
     check("tasks_one_owner", sql`${t.assigneeId} is null or ${t.departmentId} is null`),
   ],
 );
