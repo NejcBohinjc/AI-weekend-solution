@@ -136,6 +136,11 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
             </div>
           );
         })}
+        {aiEnabled() && notes.length > 0 && (
+          <Link href={`/meetings/ask?meeting=${meeting.id}`} className="self-start text-sm font-medium text-fg-2 underline-offset-2 hover:underline">
+            ✦ Ask a question about these notes
+          </Link>
+        )}
         <AddNotesSection action={addNoteAction.bind(null, meeting.id)} initiallyOpen={notes.length === 0} />
       </div>
 

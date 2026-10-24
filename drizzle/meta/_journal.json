@@ -78,6 +78,13 @@
       "when": 1792865894607,
       "tag": "0010_large_santa_claus",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792866538703,
+      "tag": "0011_round_liz_osborn",
+      "breakpoints": true
     }
   ]
 }

@@ -385,6 +385,25 @@ export const aiTaskRuns = pgTable(
   (t) => [index("ai_task_runs_meeting_idx").on(t.meetingId, t.notesHash), index("ai_task_runs_member_idx").on(t.triggeredById, t.createdAt)],
 );
 
+// One "Ask about a meeting" question: for the per-member rate limit and usage. The question and the
+// answer are not stored.
+export const aiQuestions = pgTable(
+  "ai_questions",
+  {
+    id: serial("id").primaryKey(),
+    memberId: integer("member_id").references(() => members.id, { onDelete: "set null" }),
+    meetingId: integer("meeting_id").references(() => meetings.id, { onDelete: "set null" }),
+    model: text("model"),
+    ok: boolean("ok").notNull(),
+    found: boolean("found"),
+    error: text("error"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ai_questions_member_idx").on(t.memberId, t.createdAt)],
+);
+
 // Every action item ever created for a meeting, by title + assignee. A rerun skips these, so
 // nothing is duplicated and a task deleted by its assignee is not recreated.
 export const aiTaskItems = pgTable(
