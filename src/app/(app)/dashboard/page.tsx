@@ -1,6 +1,6 @@
 import { TierBadge } from "@/components/badges";
 import { TIMEZONE } from "@/lib/app";
-import { getCurrentMember } from "@/lib/auth";
+import { requireMember } from "@/lib/auth";
 
 function greeting(now: Date) {
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: TIMEZONE }).format(now));
@@ -9,18 +9,12 @@ function greeting(now: Date) {
   return "Good evening";
 }
 
-export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ denied?: string }> }) {
-  const [member, { denied }] = await Promise.all([getCurrentMember(), searchParams]);
+export default async function DashboardPage() {
+  const member = await requireMember();
   const firstName = member.name.split(" ")[0];
 
   return (
     <section className="flex flex-col gap-4">
-      {denied === "admin" && (
-        <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          The admin section is only for admins. You are signed in as <strong>{member.name}</strong>, who is a member.
-          Use <strong>Switch user</strong> to sign in as an admin.
-        </p>
-      )}
       <h1 className="text-2xl font-bold tracking-tight">
         {greeting(new Date())}, {firstName}.
       </h1>

@@ -48,17 +48,17 @@ Import `data/meetings.ics` into a Google Calendar called "Sandbox", make it publ
 - Next.js (App Router, TypeScript) + Tailwind
 - Postgres (Neon or Supabase free tier) with Drizzle ORM and migrations
 - Deploy on Vercel (public URL)
-- Login: for the hackathon, pick-your-name-from-roster with a signed cookie; admin flag from the roster. Note the upgrade path (Google sign-in) in the infra page.
+- Login: email + password, own implementation in `src/lib/auth/` (argon2id via `@node-rs/argon2`, database sessions in an httpOnly/secure/sameSite=lax cookie, failed-login rate limit in Postgres: 5 per email, 20 per IP per 15 min). Only active members sign in; admin flag read from `members` on every request. No email service: admins generate one-time setup/reset links on `/admin/members` (hashed, single-use, 7 days). Bootstrap the first admin with `npm run create-admin -- <email> "<name>"`. Middleware runs on the Node.js runtime and checks the session in the database.
 
 ## Environment variables (names only, document each in the infra page)
 
-`DATABASE_URL`, `SESSION_SECRET`, `GOOGLE_CALENDAR_ID`, `GOOGLE_API_KEY`.
+`DATABASE_URL`, `APP_URL` (public base URL, used in setup links), `DEMO_MODE` (`true` only for the sandbox demo: seed sets every member's password to `DEMO_PASSWORD` and `/login` shows demo-account buttons), `DEMO_PASSWORD` (min 10 chars), `GOOGLE_CALENDAR_ID`, `GOOGLE_API_KEY`.
 Optional (AI): `ANTHROPIC_API_KEY`. Optional (Slack extras): `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`.
 
 ## Build order (finish each step before the next; commit and push after each)
 
 1. Scaffold app, schema, migrations, seed script that loads everything in `data/`. Deploy an empty shell to a public URL early.
-2. Pick-a-member login, member/admin role handling, shared layout.
+2. Email/password login, member management (`/admin/members`), member/admin role handling, shared layout.
 3. Hours: quick log, weekly progress vs tier target, admin "behind this week" and per-member history.
 4. Attendance: calendar sync, member clock-in (only for a meeting that is happening now, with a sensible window), member history, admin fast recording (default everyone present, tap the exceptions), attendance table across all series.
 5. Tasks: projects, tasks with assignee/priority/due date, "my tasks" across projects, admin board, history of changes, finished-count per member.

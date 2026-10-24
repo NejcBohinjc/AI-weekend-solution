@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AdminBadge } from "@/components/badges";
 import { NavLinks, type NavItem } from "@/components/nav-links";
 import { APP_NAME } from "@/lib/app";
-import { requireSession } from "@/lib/auth";
+import { requireMember } from "@/lib/auth";
 import { logoutAction } from "@/lib/auth/actions";
 
 const MEMBER_NAV: NavItem[] = [
@@ -14,6 +14,7 @@ const MEMBER_NAV: NavItem[] = [
 
 const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Overview" },
+  { href: "/admin/members", label: "Members" },
   { href: "/admin/tasks", label: "Board" },
   { href: "/admin/hours", label: "Hours" },
   { href: "/admin/attendance", label: "Attendance" },
@@ -21,7 +22,7 @@ const ADMIN_NAV: NavItem[] = [
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = await requireSession();
+  const member = await requireMember();
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -31,14 +32,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {APP_NAME}
           </Link>
           <div className="ml-auto flex min-w-0 items-center gap-2">
-            <span className="hidden truncate text-sm text-slate-700 sm:inline">{session.name}</span>
-            {session.isAdmin && <AdminBadge />}
-            <Link
-              href="/login"
-              className="whitespace-nowrap rounded-lg border border-slate-300 px-2.5 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100"
-            >
-              Switch user
-            </Link>
+            <span className="hidden truncate text-sm text-slate-700 sm:inline">{member.name}</span>
+            {member.isAdmin && <AdminBadge />}
             <form action={logoutAction}>
               <button type="submit" className="whitespace-nowrap rounded-lg px-2.5 py-1 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900">
                 Log out
@@ -51,7 +46,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="flex items-center gap-1 overflow-x-auto">
             <NavLinks items={MEMBER_NAV} />
           </div>
-          {session.isAdmin && (
+          {member.isAdmin && (
             <div className="flex items-center gap-1 overflow-x-auto border-t border-slate-100 pt-1 sm:ml-2 sm:border-t-0 sm:border-l sm:border-slate-200 sm:pt-0 sm:pl-3">
               <span className="shrink-0 pr-1 text-xs font-semibold uppercase tracking-wide text-amber-700">Admin</span>
               <NavLinks items={ADMIN_NAV} variant="admin" />

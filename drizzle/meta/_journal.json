@@ -8,6 +8,13 @@
       "when": 1792833043947,
       "tag": "0000_icy_silver_samurai",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792834210606,
+      "tag": "0001_nasty_stellaris",
+      "breakpoints": true
     }
   ]
 }

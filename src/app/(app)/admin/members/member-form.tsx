@@ -1,0 +1,133 @@
+"use client";
+
+import { useActionState, useState } from "react";
+import { errorClass, inputClass, labelClass, primaryButtonClass } from "@/components/ui";
+import { TIER_HOURS, TIERS, type Tier } from "@/lib/tiers";
+import type { MemberFormState, MemberValues } from "./actions";
+import { CopyLink } from "./copy-link";
+
+type Props = {
+  action: (prev: MemberFormState, formData: FormData) => Promise<MemberFormState>;
+  initial: MemberValues;
+  submitLabel: string;
+  isSelf?: boolean;
+};
+
+export function MemberForm({ action, initial, submitLabel, isSelf }: Props) {
+  const [state, formAction, pending] = useActionState(action, {});
+
+  if (state.created) {
+    return (
+      <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+        <p className="font-semibold text-emerald-900">{state.created.name} was added.</p>
+        <p className="text-sm text-emerald-900">Send them this link so they can set a password.</p>
+        <CopyLink url={state.created.url} expiresAt={state.created.expiresAt} />
+        <a href={`/admin/members/${state.created.id}`} className="self-start text-sm font-medium underline underline-offset-2">
+          Open member
+        </a>
+      </div>
+    );
+  }
+
+  // Remount with the submitted values after a failed submit (React resets uncontrolled forms).
+  const values = state.values ?? initial;
+  return (
+    <FormFields
+      key={JSON.stringify(values)}
+      values={values}
+      errors={state.errors ?? {}}
+      formAction={formAction}
+      pending={pending}
+      submitLabel={submitLabel}
+      isSelf={isSelf}
+    />
+  );
+}
+
+function FormFields({
+  values,
+  errors,
+  formAction,
+  pending,
+  submitLabel,
+  isSelf,
+}: {
+  values: MemberValues;
+  errors: NonNullable<MemberFormState["errors"]>;
+  formAction: (formData: FormData) => void;
+  pending: boolean;
+  submitLabel: string;
+  isSelf?: boolean;
+}) {
+  const [tier, setTier] = useState(values.tier || "");
+  const [hours, setHours] = useState(values.weeklyHours);
+
+  function changeTier(next: string) {
+    // Follow the tier's default hours unless the admin typed a custom number.
+    const prevDefault = tier ? String(TIER_HOURS[tier as Tier]) : "";
+    if (hours === "" || hours === prevDefault) setHours(next ? String(TIER_HOURS[next as Tier]) : "");
+    setTier(next);
+  }
+
+  return (
+    <form action={formAction} className="flex flex-col gap-4" noValidate>
+      <Field label="Name" error={errors.name}>
+        <input name="name" defaultValue={values.name} autoComplete="off" className={inputClass} />
+      </Field>
+      <Field label="Email" error={errors.email}>
+        <input name="email" type="email" defaultValue={values.email} autoComplete="off" className={inputClass} />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Tier" error={errors.tier}>
+          <select name="tier" value={tier} onChange={(e) => changeTier(e.target.value)} className={inputClass}>
+            <option value="">Choose…</option>
+            {TIERS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Weekly hours" error={errors.weeklyHours}>
+          <input
+            name="weeklyHours"
+            inputMode="numeric"
+            value={hours}
+            onChange={(e) => setHours(e.target.value)}
+            className={inputClass}
+          />
+        </Field>
+      </div>
+      <Field error={errors.isAdmin}>
+        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+          <input name="isAdmin" type="checkbox" defaultChecked={values.isAdmin} className="size-5 accent-slate-900" />
+          <span>
+            <span className="font-medium">Admin</span>
+            <span className="block text-xs text-slate-500">
+              Can manage members and see admin pages.{isSelf && " You cannot remove your own admin role."}
+            </span>
+          </span>
+        </label>
+      </Field>
+      <button type="submit" disabled={pending} className={primaryButtonClass}>
+        {pending ? "Saving…" : submitLabel}
+      </button>
+    </form>
+  );
+}
+
+function Field({ label, error, children }: { label?: string; error?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      {label ? (
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>{label}</span>
+          {children}
+        </label>
+      ) : (
+        children
+      )}
+      {error && <p className={errorClass}>{error}</p>}
+    </div>
+  );
+}

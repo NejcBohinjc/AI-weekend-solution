@@ -1,40 +1,39 @@
-import Link from "next/link";
-import { getSession, listLoginMembers } from "@/lib/auth";
+import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { db } from "@/db";
+import { members } from "@/db/schema";
 import { APP_NAME, APP_TAGLINE } from "@/lib/app";
-import { MemberPicker } from "./member-picker";
+import { demoPassword } from "@/lib/env";
+import { LoginForm, type DemoConfig } from "./login-form";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const [members, session, { error }] = await Promise.all([listLoginMembers(), getSession(), searchParams]);
+async function loadDemoConfig(): Promise<DemoConfig | null> {
+  const password = demoPassword();
+  if (!password) return null;
+  const candidates = await db
+    .select({ name: members.name, email: members.email, isAdmin: members.isAdmin })
+    .from(members)
+    .where(and(eq(members.active, true), isNotNull(members.passwordHash)))
+    .orderBy(asc(members.name));
+  const admin = candidates.find((m) => m.isAdmin);
+  const member = candidates.find((m) => !m.isAdmin);
+  const accounts = [
+    admin && { label: "Admin", name: admin.name, email: admin.email },
+    member && { label: "Member", name: member.name, email: member.email },
+  ].filter((a) => !!a);
+  return accounts.length ? { password, accounts } : null;
+}
 
+export default async function LoginPage() {
+  const demo = await loadDemoConfig();
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-6 px-4 py-10">
+    <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-8 px-4 py-10">
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-bold tracking-tight">{APP_NAME}</h1>
         <p className="text-slate-600">{APP_TAGLINE}</p>
       </header>
-
-      {session ? (
-        <div className="flex items-center justify-between rounded-xl bg-slate-100 px-4 py-3 text-sm">
-          <span>
-            Signed in as <strong>{session.name}</strong>. Pick someone else to switch.
-          </span>
-          <Link href="/dashboard" className="font-medium text-slate-900 underline underline-offset-2">
-            Back
-          </Link>
-        </div>
-      ) : (
-        <p className="text-sm text-slate-600">Who are you? Pick your name to sign in.</p>
-      )}
-
-      {error && (
-        <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
-          That member could not be found. Please pick again.
-        </p>
-      )}
-
-      <MemberPicker members={members} currentId={session?.memberId} />
+      <LoginForm demo={demo} />
+      <p className="text-xs text-slate-500">No password yet, or forgot it? Ask an admin for a setup link.</p>
     </main>
   );
 }

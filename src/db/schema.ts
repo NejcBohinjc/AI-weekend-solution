@@ -1,18 +1,62 @@
-import { boolean, integer, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { TIERS } from "../lib/tiers"; // relative: drizzle-kit does not resolve the @/ alias
 
-// Tiers and their weekly hour commitment: Core 70, Impact 10, GO! 4.
-export const TIERS = ["Core", "Impact", "GO!"] as const;
-export type Tier = (typeof TIERS)[number];
+export { TIER_HOURS, TIERS, type Tier } from "../lib/tiers";
 
 export const members = pgTable("members", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  email: text("email").notNull().unique(),
+  email: text("email").notNull().unique(), // always stored lowercase
   tier: text("tier", { enum: TIERS }).notNull(),
   weeklyHours: integer("weekly_hours").notNull(),
   isAdmin: boolean("is_admin").notNull().default(false),
+  active: boolean("active").notNull().default(true),
+  passwordHash: text("password_hash"), // argon2id; null until the member sets one
   series: text("series").array().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type Member = typeof members.$inferSelect;
+
+// The id is the SHA-256 hash of the cookie token, so a database leak does not leak sessions.
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("sessions_member_idx").on(t.memberId)],
+);
+
+// One-time links for setting or resetting a password. Only the token's hash is stored.
+export const passwordTokens = pgTable(
+  "password_tokens",
+  {
+    id: serial("id").primaryKey(),
+    tokenHash: text("token_hash").notNull().unique(),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("password_tokens_member_idx").on(t.memberId)],
+);
+
+// Failed sign-in attempts, used for rate limiting. Kept in the database so limits hold on serverless.
+export const loginAttempts = pgTable(
+  "login_attempts",
+  {
+    id: serial("id").primaryKey(),
+    email: text("email").notNull(),
+    ip: text("ip").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("login_attempts_email_idx").on(t.email, t.createdAt), index("login_attempts_ip_idx").on(t.ip, t.createdAt)],
+);

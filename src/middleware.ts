@@ -1,26 +1,33 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { decodeSession, SESSION_COOKIE } from "@/lib/auth/session";
+import { SESSION_COOKIE, sessionCookieOptions, validateSessionToken } from "@/lib/auth/sessions";
+
+const PUBLIC_PATHS = new Set(["/login", "/set-password"]);
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (pathname === "/login") return NextResponse.next();
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  const session = token ? await validateSessionToken(token) : null;
 
-  const session = await decodeSession(req.cookies.get(SESSION_COOKIE)?.value);
-  if (!session) {
-    const res = NextResponse.redirect(new URL("/login", req.url));
-    res.cookies.delete(SESSION_COOKIE); // clear stale or tampered cookies
-    return res;
+  let res: NextResponse;
+  if (PUBLIC_PATHS.has(pathname)) {
+    res = pathname === "/login" && session ? NextResponse.redirect(new URL("/dashboard", req.url)) : NextResponse.next();
+  } else if (!session) {
+    res = NextResponse.redirect(new URL("/login", req.url));
+  } else if ((pathname === "/admin" || pathname.startsWith("/admin/")) && !session.member.isAdmin) {
+    res = NextResponse.rewrite(new URL("/forbidden", req.url), { status: 403 });
+  } else if (pathname === "/") {
+    res = NextResponse.redirect(new URL("/dashboard", req.url));
+  } else {
+    res = NextResponse.next();
   }
 
-  if ((pathname === "/admin" || pathname.startsWith("/admin/")) && !session.isAdmin) {
-    return NextResponse.redirect(new URL("/dashboard?denied=admin", req.url));
-  }
-
-  if (pathname === "/") return NextResponse.redirect(new URL("/dashboard", req.url));
-  return NextResponse.next();
+  if (token && !session) res.cookies.delete(SESSION_COOKIE); // expired, revoked or tampered
+  if (token && session?.renewed) res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(session.expiresAt));
+  return res;
 }
 
 export const config = {
-  // Everything except Next internals and static files.
+  // Node.js runtime so the middleware can check sessions in Postgres on every request.
+  runtime: "nodejs",
   matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
 };
