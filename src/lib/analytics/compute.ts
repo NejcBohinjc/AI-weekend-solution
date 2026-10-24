@@ -3,6 +3,8 @@
 // for attendance (an unanswered past meeting counts as unexcused), attendanceSummary() for rates.
 // Unconfirmed AI-created tasks never count towards anyone's numbers. A finished task counts once, at its
 // current completion time (tasks.completed_at): reopened tasks drop out, done again counts once.
+import type { WorkLocation } from "@/lib/hours/constants";
+import { emptyLocationTotals, locationTotals, type LocationTotals } from "@/lib/hours/location";
 import { addDays, overlapMs, weekBounds, weekPace, weekStartOf, type Pace } from "@/lib/hours/time";
 import type { AttendanceState } from "@/lib/meetings/constants";
 import { attendanceSummary, effectiveState } from "@/lib/meetings/rules";
@@ -16,7 +18,8 @@ export const RANGES: Record<Range, string> = { "4w": "Last 4 weeks", "8w": "Last
 export type Data = {
   now: Date;
   members: { id: number; name: string; tier: Tier; weeklyHours: number; active: boolean }[];
-  entries: { memberId: number; startedAt: Date; endedAt: Date | null }[];
+  /** location: null for entries from before it was recorded (shown as "unspecified", never guessed). */
+  entries: { memberId: number; startedAt: Date; endedAt: Date | null; location?: WorkLocation | null }[];
   meetings: { id: number; title: string; series: string; startsAt: Date; endsAt: Date; status: string }[];
   invites: { meetingId: number; memberId: number }[];
   attendance: { meetingId: number; memberId: number; state: AttendanceState; lateNotice?: boolean; lateDecision?: "accepted" | "rejected" | null }[];
@@ -73,6 +76,19 @@ export function computeAnalytics(d: Data, f: Filters) {
     const row: Record<string, number | string> = { week: w };
     for (const t of tiers) row[t] = round1(people.filter((p) => p.tier === t).reduce((s, p) => s + hoursIn(p.id, from, to), 0));
     return row as { week: string } & Partial<Record<Tier, number>>;
+  });
+
+  // ---- Office vs home ----
+  const peopleEntries = d.entries.filter((e) => ids.has(e.memberId)).map((e) => ({ ...e, location: e.location ?? null }));
+  const toHours = (t: LocationTotals): LocationTotals => ({ office: round1(t.office / HOUR), home: round1(t.home / HOUR), unspecified: round1(t.unspecified / HOUR) });
+  const locationByWeek = weeks.map((w) => {
+    const { from, to } = weekBounds(w);
+    return { week: w, ...toHours(locationTotals(peopleEntries, from, to, now)) };
+  });
+  const locationByTier = tiers.map((t) => {
+    const tierIds = new Set(people.filter((p) => p.tier === t).map((p) => p.id));
+    const own = peopleEntries.filter((e) => tierIds.has(e.memberId));
+    return { tier: t, ...toHours(own.length ? locationTotals(own, rangeFrom, weekTo, now) : emptyLocationTotals()) };
   });
 
   // ---- Attendance ----
@@ -174,7 +190,7 @@ export function computeAnalytics(d: Data, f: Filters) {
     .filter((r) => r.reasons.length);
 
   const allSeries = [...new Set(d.meetings.filter((m) => m.status === "confirmed").map((m) => m.series))].sort();
-  return { weeks, tiers, tiles, hoursThisWeek, hoursByTier, attendanceBySeries, heatmap, finishedPerMember, tasksPerWeek, anyAi, drifting, allSeries };
+  return { weeks, tiers, tiles, hoursThisWeek, hoursByTier, locationByWeek, locationByTier, attendanceBySeries, heatmap, finishedPerMember, tasksPerWeek, anyAi, drifting, allSeries };
 }
 
 function round1(n: number): number {

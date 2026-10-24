@@ -71,6 +71,13 @@
       "when": 1792852541722,
       "tag": "0009_acoustic_arachne",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792865894607,
+      "tag": "0010_large_santa_claus",
+      "breakpoints": true
     }
   ]
 }

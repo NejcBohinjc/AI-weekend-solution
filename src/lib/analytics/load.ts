@@ -10,7 +10,7 @@ export async function loadAnalyticsData(now = new Date()): Promise<Data> {
   const [m, entries, mtgs, invites, att, t, activity] = await Promise.all([
     db.select({ id: members.id, name: members.name, tier: members.tier, weeklyHours: members.weeklyHours, active: members.active }).from(members),
     db
-      .select({ memberId: timeEntries.memberId, startedAt: timeEntries.startedAt, endedAt: timeEntries.endedAt })
+      .select({ memberId: timeEntries.memberId, startedAt: timeEntries.startedAt, endedAt: timeEntries.endedAt, location: timeEntries.location })
       .from(timeEntries)
       .where(isNull(timeEntries.deletedAt)),
     db.select({ id: meetings.id, title: meetings.title, series: meetings.series, startsAt: meetings.startsAt, endsAt: meetings.endsAt, status: meetings.status }).from(meetings),

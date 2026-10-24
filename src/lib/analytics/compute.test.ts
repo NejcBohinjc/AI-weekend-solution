@@ -71,6 +71,23 @@ test("hours: this week per member sorted, and per week by tier", () => {
   assert.deepEqual(core.hoursThisWeek.map((r) => r.name), ["Ana"]);
 });
 
+test("office vs home: per week and per tier; entries without a location stay unspecified", () => {
+  const withLocation: Data = {
+    ...data,
+    entries: data.entries.map((e, i) => ({ ...e, location: i === 0 ? ("office" as const) : i === 1 ? ("home" as const) : null })),
+  };
+  const a = computeAnalytics(withLocation, { tier: null, series: null, range: "4w" });
+  assert.deepEqual(a.locationByWeek.at(-1), { week: "2026-10-26", office: 30, home: 0.5, unspecified: 0 });
+  assert.deepEqual(a.locationByWeek.at(-2), { week: "2026-10-19", office: 0, home: 0, unspecified: 81 });
+  assert.deepEqual(a.locationByTier, [
+    { tier: "Core", office: 30, home: 0, unspecified: 210 },
+    { tier: "Impact", office: 0, home: 0, unspecified: 30 },
+    { tier: "GO!", office: 0, home: 0.5, unspecified: 3 },
+  ]);
+  const core = computeAnalytics(withLocation, { tier: "Core", series: null, range: "4w" });
+  assert.deepEqual(core.locationByTier.map((r) => r.tier), ["Core"]);
+});
+
 test("attendance: rate per series, heatmap of past meetings with unanswered as unexcused", () => {
   const a = computeAnalytics(data, { tier: null, series: null, range: "8w" });
   assert.deepEqual(a.attendanceBySeries, [

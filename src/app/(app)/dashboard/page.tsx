@@ -7,7 +7,7 @@ import { db } from "@/db";
 import { tasks } from "@/db/schema";
 import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
-import { memberWeek } from "@/lib/hours/queries";
+import { lastLocation, memberWeek } from "@/lib/hours/queries";
 import { weekStartOf } from "@/lib/hours/time";
 import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
 import { myMeetings } from "@/lib/meetings/queries";
@@ -33,7 +33,7 @@ export default async function DashboardPage() {
   syncCalendarInBackground();
   const firstName = member.name.split(" ")[0];
   const now = new Date();
-  const [week, meetings, [openTasks], myOpen] = await Promise.all([
+  const [week, meetings, [openTasks], myOpen, defaultLocation] = await Promise.all([
     memberWeek(member.id, weekStartOf(now), now),
     myMeetings(member.id),
     db
@@ -51,6 +51,7 @@ export default async function DashboardPage() {
       .where(and(eq(tasks.assigneeId, member.id), ne(tasks.status, "done"), isNull(tasks.deletedAt), eq(tasks.kind, "project")))
       .orderBy(sql`${tasks.dueDate} asc nulls last`, tasks.title)
       .limit(5),
+    lastLocation(member.id),
   ]);
   const confirmed = meetings.filter((r) => r.meeting.status === "confirmed");
   const happening = confirmed.filter((r) => meetingPhase(r.meeting, now) === "open");
@@ -68,9 +69,9 @@ export default async function DashboardPage() {
       {happening.map((r) => (
         <NowMeetingCard key={r.meeting.id} meeting={r.meeting} state={r.state} note={r.note} source={r.source} now={now} />
       ))}
-      <TimerCard startedAt={week.running?.startedAt.toISOString() ?? null} renderedAt={now.toISOString()} />
+      <TimerCard startedAt={week.running?.startedAt.toISOString() ?? null} renderedAt={now.toISOString()} location={week.running?.location} defaultLocation={defaultLocation} />
       <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4">
-        <WeekProgress totalMs={week.totalMs} targetHours={member.weeklyHours} />
+        <WeekProgress totalMs={week.totalMs} targetHours={member.weeklyHours} byLocation={week.byLocation} />
         <Link href="/hours" className="self-end text-sm font-medium text-muted hover:text-fg">
           Your hours →
         </Link>

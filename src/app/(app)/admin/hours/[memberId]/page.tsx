@@ -54,7 +54,7 @@ export default async function AdminMemberHoursPage({
           Add time for {member.name.split(" ")[0]}
         </Link>
       </div>
-      <WeekProgress totalMs={data.totalMs} targetHours={member.weeklyHours} label={week === thisWeek ? "This week" : formatWeek(week)} />
+      <WeekProgress totalMs={data.totalMs} targetHours={member.weeklyHours} byLocation={data.byLocation} label={week === thisWeek ? "This week" : formatWeek(week)} />
       <EntryList entries={data.entries} viewer={admin} thisWeekStart={weekBounds(thisWeek).from} returnTo={here} now={now} />
       <div className="flex flex-col gap-2">
         <h2 className="font-semibold">Recent weeks</h2>

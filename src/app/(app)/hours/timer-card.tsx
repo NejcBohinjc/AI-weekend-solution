@@ -5,6 +5,8 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { errorClass, inputClass, labelClass, secondaryButtonClass } from "@/components/ui";
 import { TIMEZONE } from "@/lib/app";
 import { measureSkew, serverNowMs } from "@/lib/hours/clock";
+import { LOCATION_LABELS, type WorkLocation } from "@/lib/hours/constants";
+import { LocationToggle } from "./location-toggle";
 import { discardTimerAction, startTimerAction, stopTimerAction, type TimerState } from "./actions";
 
 /** "2:14:37" */
@@ -52,7 +54,19 @@ const STALE_PAGE_MS = 2000;
  * into the page, which may be a stale copy from the router cache. Coming back to the page (mount,
  * tab focus) refreshes it from the server, so a timer started or stopped elsewhere shows correctly.
  */
-export function TimerCard({ startedAt, renderedAt }: { startedAt: string | null; renderedAt: string }) {
+export function TimerCard({
+  startedAt,
+  renderedAt,
+  location,
+  defaultLocation,
+}: {
+  startedAt: string | null;
+  renderedAt: string;
+  /** Where the running timer was started (null: before locations existed). */
+  location?: WorkLocation | null;
+  /** The member's last choice, preselected for the next Start. */
+  defaultLocation: WorkLocation;
+}) {
   const router = useRouter();
   const [startState, startAction, starting] = useActionState(startTimerAction, {});
   const [stopState, stopAction, stopping] = useActionState(stopTimerAction, {} as TimerState);
@@ -101,7 +115,9 @@ export function TimerCard({ startedAt, renderedAt }: { startedAt: string | null;
     <section aria-label="Timer" className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm" data-testid="timer">
       <div className="flex flex-col items-center gap-1 text-center">
         <p className={`text-sm ${running ? "font-medium text-success" : "text-subtle"}`}>
-          {running ? `Working since ${startLabel(startedAt, now)}` : "Not tracking"}
+          {running
+            ? `Working since ${startLabel(startedAt, now)}${location ? ` · ${LOCATION_LABELS[location].toLowerCase()}` : ""}`
+            : "Not tracking"}
         </p>
         <p className="font-mono text-4xl font-semibold tabular-nums tracking-tight" suppressHydrationWarning>
           {running ? clock(now - new Date(startedAt).getTime()) : "0:00:00"}
@@ -145,7 +161,8 @@ export function TimerCard({ startedAt, renderedAt }: { startedAt: string | null;
           </button>
         </form>
       ) : (
-        <form action={startAction}>
+        <form action={startAction} className="flex flex-col gap-2">
+          <LocationToggle defaultValue={defaultLocation} />
           <button
             type="submit"
             disabled={starting}

@@ -46,7 +46,7 @@ export default async function EditEntryPage({
       </div>
       <EntryForm
         action={saveEntryAction.bind(null, entry.id, null)}
-        defaults={{ date: start.date, start: start.time, end: end.time }}
+        defaults={{ date: start.date, start: start.time, end: end.time, location: entry.location ?? "unspecified" }}
         returnTo={returnTo}
         submitLabel="Save changes"
         minDate={me.isAdmin ? undefined : thisWeek}

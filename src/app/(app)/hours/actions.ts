@@ -9,6 +9,7 @@ import { members, timeEntries, type TimeEntry } from "@/db/schema";
 import { requireAdmin, requireMember, type SessionMember } from "@/lib/auth";
 import { findOverlap } from "@/lib/hours/queries";
 import { syncHoursSheet, syncHoursSheetQuietly, type HoursSheetResult } from "@/lib/hours/sheet-sync";
+import { parseLocation } from "@/lib/hours/location";
 import { stopTimer } from "@/lib/hours/timer";
 import {
   canEditEntry,
@@ -34,12 +35,14 @@ function syncSheetLater() {
 
 export type TimerState = { error?: string; notice?: string; askEnd?: { startedAt: string } };
 
-export async function startTimerAction(_prev: TimerState): Promise<TimerState> {
+export async function startTimerAction(_prev: TimerState, formData: FormData): Promise<TimerState> {
   const me = await requireMember();
+  const location = parseLocation(formData.get("location"));
+  if (!location) return { error: "Pick where you are working: office or home." };
   // The unique index on running entries makes a second tap (or a second device) a no-op.
   await db
     .insert(timeEntries)
-    .values({ memberId: me.id, startedAt: new Date(), source: "timer" })
+    .values({ memberId: me.id, startedAt: new Date(), source: "timer", location })
     .onConflictDoNothing();
   refresh();
   return {};
@@ -79,7 +82,7 @@ export async function discardTimerAction(_prev: TimerState): Promise<TimerState>
 // ---------- Manual entries and corrections ----------
 
 // values: what was submitted, so the form shows it again after an error (React resets forms after an action).
-export type EntryFormState = { error?: string; values?: { date: string; start: string; end: string } };
+export type EntryFormState = { error?: string; values?: { date: string; start: string; end: string; location: string } };
 
 async function loadEditable(me: SessionMember, entryId: number): Promise<TimeEntry | null> {
   const [entry] = await db
@@ -103,7 +106,12 @@ export async function saveEntryAction(
   formData: FormData,
 ): Promise<EntryFormState> {
   const me = await requireMember();
-  const values = { date: String(formData.get("date") ?? ""), start: String(formData.get("start") ?? ""), end: String(formData.get("end") ?? "") };
+  const values = {
+    date: String(formData.get("date") ?? ""),
+    start: String(formData.get("start") ?? ""),
+    end: String(formData.get("end") ?? ""),
+    location: String(formData.get("location") ?? ""),
+  };
   const fail = (error: string): EntryFormState => ({ error, values });
   const existing = entryId ? await loadEditable(me, entryId) : null;
   if (entryId && !existing) return fail("You can't change this entry.");
@@ -118,6 +126,11 @@ export async function saveEntryAction(
 
   const times = parseEntryTimes(values.date, values.start, values.end);
   if ("error" in times) return fail(times.error);
+  // Required for new entries; an older entry may keep "unspecified" (never guessed).
+  const location = parseLocation(values.location);
+  if (!location && !(existing && values.location === "unspecified" && existing.location === null)) {
+    return fail("Pick where you worked: office or home.");
+  }
   if (times.endedAt.getTime() > Date.now() + 60_000) return fail("Hours can't end in the future.");
   const thisWeek = weekBounds(weekStartOf(new Date())).from;
   if (!me.isAdmin && times.startedAt < thisWeek) return fail("You can add hours for this week only. Ask an admin for earlier weeks.");
@@ -130,6 +143,7 @@ export async function saveEntryAction(
       .update(timeEntries)
       .set({
         startedAt: times.startedAt,
+        location,
         endedAt: times.endedAt,
         editedById: byAdmin ?? existing.editedById,
         sheetStatus: existing.source === "seed" ? "skip" : "pending",
@@ -137,7 +151,7 @@ export async function saveEntryAction(
       })
       .where(eq(timeEntries.id, existing.id));
   } else {
-    await db.insert(timeEntries).values({ memberId, startedAt: times.startedAt, endedAt: times.endedAt, source: "manual", editedById: byAdmin });
+    await db.insert(timeEntries).values({ memberId, startedAt: times.startedAt, endedAt: times.endedAt, source: "manual", editedById: byAdmin, location });
   }
   syncSheetLater();
   refresh();

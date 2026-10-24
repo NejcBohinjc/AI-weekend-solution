@@ -4,6 +4,8 @@ import { and, asc, desc, eq, gt, isNotNull, isNull, lt, ne, or } from "drizzle-o
 import { db } from "@/db";
 import { members, timeEntries, type TimeEntry } from "@/db/schema";
 import { getSyncState } from "@/lib/sync-state";
+import type { WorkLocation } from "./constants";
+import { locationTotals } from "./location";
 import { HOURS_SYNC } from "./sheet-sync";
 import { addDays, overlapMs, weekBounds } from "./time";
 
@@ -38,11 +40,11 @@ export function totalMs(entries: Pick<TimeEntry, "startedAt" | "endedAt">[], fro
   return entries.reduce((sum, e) => sum + overlapMs(e.startedAt, e.endedAt, from, to, now), 0);
 }
 
-/** One member's week: its entries, total, and the running timer if any. */
+/** One member's week: its entries, total (also split by office / home / unspecified), and the running timer if any. */
 export async function memberWeek(memberId: number, weekStart: string, now: Date) {
   const { from, to } = weekBounds(weekStart);
   const [entries, running] = await Promise.all([entriesBetween(memberId, from, to), runningEntry(memberId)]);
-  return { entries, running, totalMs: totalMs(entries, from, to, now), from, to };
+  return { entries, running, totalMs: totalMs(entries, from, to, now), byLocation: locationTotals(entries, from, to, now), from, to };
 }
 
 /** Totals for the last `count` weeks up to and including `lastWeek`, newest first. */
@@ -53,7 +55,7 @@ export async function weeklyTotals(memberId: number, lastWeek: string, count: nu
   const entries = await entriesBetween(memberId, from, to);
   return weeks.map((week) => {
     const b = weekBounds(week);
-    return { week, totalMs: totalMs(entries, b.from, b.to, now) };
+    return { week, totalMs: totalMs(entries, b.from, b.to, now), byLocation: locationTotals(entries, b.from, b.to, now) };
   });
 }
 
@@ -118,4 +120,15 @@ export async function findOverlap(memberId: number, startedAt: Date, endedAt: Da
     )
     .limit(1);
   return row ?? null;
+}
+
+/** The location of the member's most recent entry that has one: the default for the next one. */
+export async function lastLocation(memberId: number): Promise<WorkLocation> {
+  const [row] = await db
+    .select({ location: timeEntries.location })
+    .from(timeEntries)
+    .where(and(eq(timeEntries.memberId, memberId), isNotNull(timeEntries.location), notDeleted))
+    .orderBy(desc(timeEntries.startedAt))
+    .limit(1);
+  return row?.location ?? "office";
 }

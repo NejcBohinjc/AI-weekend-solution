@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { TierBadge } from "@/components/badges";
-import { ChartCard, DataTable, HBarChart, Legend, LineChart } from "@/components/charts";
+import { ChartCard, DataTable, HBarChart, Legend, LineChart, StackedBarChart } from "@/components/charts";
 import { computeAnalytics, RANGES, type Range } from "@/lib/analytics/compute";
 import { loadAnalyticsData } from "@/lib/analytics/load";
 import { TIMEZONE } from "@/lib/app";
@@ -14,6 +14,12 @@ export const dynamic = "force-dynamic";
 
 // Colour follows the entity (fixed per tier / per series), never its rank.
 const TIER_COLOR: Record<Tier, string> = { Core: "var(--viz-1)", Impact: "var(--viz-2)", "GO!": "var(--viz-3)" };
+// Office / home / unspecified (entries from before the location was recorded: never guessed).
+const LOCATION_PARTS = [
+  { key: "office", label: "Office", color: "var(--viz-1)" },
+  { key: "home", label: "Home", color: "var(--viz-2)" },
+  { key: "unspecified", label: "Unspecified", color: "var(--viz-neutral)" },
+] as const;
 const STATE_STYLE: Record<AttendanceState, { bg: string; ink: string; letter: string }> = {
   present: { bg: "var(--viz-1)", ink: "var(--viz-cell-ink)", letter: "P" },
   remote: { bg: "var(--viz-3)", ink: "var(--viz-cell-ink)", letter: "R" },
@@ -42,6 +48,8 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   const furthest = [...view.hoursThisWeek].sort((x, y) => x.pct - y.pct)[0];
   const lastFull = view.hoursByTier.at(-2);
   const thisWeekTotal = view.tiers.reduce((s, t) => s + (view.hoursByTier.at(-1)?.[t] ?? 0), 0);
+  const locTotal = view.locationByTier.reduce((acc, r) => ({ office: acc.office + r.office, home: acc.home + r.home, unspecified: acc.unspecified + r.unspecified }), { office: 0, home: 0, unspecified: 0 });
+  const locKnown = locTotal.office + locTotal.home;
   const bestSeries = view.attendanceBySeries[0];
   const worstSeries = view.attendanceBySeries.at(-1);
   const createdTotal = view.tasksPerWeek.reduce((s, w) => s + w.created + (w.aiCreated ?? 0), 0);
@@ -153,6 +161,38 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
             unit="h"
             xLabels={weekLabels}
             series={view.tiers.map((t) => ({ key: t, label: t, color: TIER_COLOR[t], values: view.hoursByTier.map((r) => r[t] ?? 0) }))}
+          />
+        </ChartCard>
+
+        <ChartCard
+          id="location-week"
+          title="Office vs home hours per week"
+          summary={
+            locKnown > 0
+              ? `In this range: office ${h1(locTotal.office)} h, home ${h1(locTotal.home)} h (${Math.round((locTotal.office / locKnown) * 100)}% in the office, of hours with a location).${locTotal.unspecified > 0 ? ` ${h1(locTotal.unspecified)} h are unspecified (logged before the location was asked).` : ""}`
+              : "No hours with a location in this range yet. Older and imported hours show as unspecified."
+          }
+          table={<DataTable head={["Week of", "Office", "Home", "Unspecified"]} rows={view.locationByWeek.map((r) => [fmtWeek(r.week), h1(r.office), h1(r.home), h1(r.unspecified)])} />}
+        >
+          <LineChart
+            ariaLabel="Office, home and unspecified hours per week"
+            unit="h"
+            xLabels={weekLabels}
+            series={LOCATION_PARTS.map((p) => ({ key: p.key, label: p.label, color: p.color, values: view.locationByWeek.map((r) => r[p.key]) }))}
+          />
+        </ChartCard>
+
+        <ChartCard
+          id="location-tier"
+          title="Office vs home hours by tier"
+          summary="Total hours in this range per tier, split by where they were worked."
+          table={<DataTable head={["Tier", "Office", "Home", "Unspecified"]} rows={view.locationByTier.map((r) => [r.tier, h1(r.office), h1(r.home), h1(r.unspecified)])} />}
+        >
+          <StackedBarChart
+            ariaLabel="Office, home and unspecified hours per tier"
+            unit="h"
+            parts={[...LOCATION_PARTS]}
+            rows={view.locationByTier.map((r) => ({ key: r.tier, label: r.tier, values: { office: r.office, home: r.home, unspecified: r.unspecified } }))}
           />
         </ChartCard>
 

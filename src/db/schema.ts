@@ -13,7 +13,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { SHEET_STATUSES, TIME_ENTRY_SOURCES } from "../lib/hours/constants";
+import { SHEET_STATUSES, TIME_ENTRY_SOURCES, WORK_LOCATIONS } from "../lib/hours/constants";
 import {
   ATTENDANCE_SOURCES,
   ATTENDANCE_STATES,
@@ -200,6 +200,8 @@ export const timeEntries = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     source: text("source", { enum: TIME_ENTRY_SOURCES }).notNull(),
+    // "office" or "home"; null for entries from before locations existed ("unspecified").
+    location: text("location", { enum: WORK_LOCATIONS }),
     // Who created or last changed the entry, when it was not the member (an admin).
     editedById: integer("edited_by_id").references(() => members.id, { onDelete: "set null" }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),

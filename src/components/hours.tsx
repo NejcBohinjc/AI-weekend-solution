@@ -1,6 +1,7 @@
 // Building blocks shared by the member hours page, the dashboard and the admin hours pages.
 import Link from "next/link";
 import type { TimeEntry } from "@/db/schema";
+import { locationLabel, type LocationTotals } from "@/lib/hours/location";
 import {
   canEditEntry,
   formatDay,
@@ -12,7 +13,34 @@ import {
   type Pace,
 } from "@/lib/hours/time";
 
-export function WeekProgress({ totalMs, targetHours, label = "This week" }: { totalMs: number; targetHours: number; label?: string }) {
+/** "Office 12 h · Home 3 h", plus unspecified (entries from before locations were recorded) when there is some; only that when nothing has a location. */
+export function LocationSplit({ totals, className = "" }: { totals: LocationTotals; className?: string }) {
+  const known = totals.office + totals.home > 0;
+  const parts: [string, number][] = known
+    ? [
+        ["Office", totals.office],
+        ["Home", totals.home],
+      ]
+    : [];
+  if (totals.unspecified > 0) parts.push([known ? "Unspecified" : "Location unspecified", totals.unspecified]);
+  return (
+    <span className={`tabular-nums ${className}`} data-testid="location-split">
+      {parts.map(([label, ms]) => `${label} ${formatHours(ms)} h`).join(" · ")}
+    </span>
+  );
+}
+
+export function WeekProgress({
+  totalMs,
+  targetHours,
+  label = "This week",
+  byLocation,
+}: {
+  totalMs: number;
+  targetHours: number;
+  label?: string;
+  byLocation?: LocationTotals;
+}) {
   const pct = targetHours > 0 ? Math.min(100, Math.round((totalMs / 3_600_000 / targetHours) * 100)) : 0;
   return (
     <div className="flex flex-col gap-1.5" data-testid="week-progress">
@@ -32,6 +60,7 @@ export function WeekProgress({ totalMs, targetHours, label = "This week" }: { to
       >
         <div className={`h-full rounded-full ${pct >= 100 ? "bg-success-solid" : "bg-primary"}`} style={{ width: `${pct}%` }} />
       </div>
+      {byLocation && totalMs > 0 && <LocationSplit totals={byLocation} className="text-xs text-muted" />}
     </div>
   );
 }
@@ -99,6 +128,7 @@ function EntryRow({ entry: e, viewer, editable, returnTo, now }: { entry: TimeEn
   const end = e.endedAt ? ljubljanaParts(e.endedAt) : null;
   const nextDay = end && end.date !== start.date;
   const notes = [
+    locationLabel(e.location),
     e.source === "manual" && "added by hand",
     e.source === "seed" && "imported",
     e.editedById && "changed by an admin",
@@ -119,7 +149,7 @@ function EntryRow({ entry: e, viewer, editable, returnTo, now }: { entry: TimeEn
             <span className="font-medium text-success">now</span>
           )}
         </span>
-        {notes.length > 0 && <span className="text-xs text-subtle">{notes.join(" · ")}</span>}
+        <span className="text-xs text-subtle">{notes.join(" · ")}</span>
       </span>
       <span className={`tabular-nums ${e.endedAt ? "" : "text-success"}`}>{formatDuration((e.endedAt ?? now).getTime() - e.startedAt.getTime())}</span>
       {editable && (
@@ -141,14 +171,14 @@ export function WeekHistory({
   selected,
   hrefFor,
 }: {
-  weeks: { week: string; totalMs: number }[];
+  weeks: { week: string; totalMs: number; byLocation?: LocationTotals }[];
   targetHours: number;
   selected: string;
   hrefFor: (week: string) => string;
 }) {
   return (
     <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm" data-testid="week-history">
-      {fromFirstWeekWithHours(weeks).map(({ week, totalMs }) => {
+      {fromFirstWeekWithHours(weeks).map(({ week, totalMs, byLocation }) => {
         const pct = targetHours > 0 ? Math.round((totalMs / 3_600_000 / targetHours) * 100) : 0;
         return (
           <li key={week}>
@@ -158,9 +188,12 @@ export function WeekHistory({
               className={`flex items-center justify-between gap-3 px-4 py-2.5 text-sm hover:bg-surface-2 ${week === selected ? "bg-surface-2 font-semibold" : ""}`}
             >
               <span>{formatWeek(week)}</span>
-              <span className="tabular-nums">
-                {formatHours(totalMs)} / {targetHours} h{" "}
-                <span className={pct >= 100 ? "text-success" : pct < 50 ? "text-danger" : "text-subtle"}>({pct}%)</span>
+              <span className="flex flex-col items-end">
+                <span className="tabular-nums">
+                  {formatHours(totalMs)} / {targetHours} h{" "}
+                  <span className={pct >= 100 ? "text-success" : pct < 50 ? "text-danger" : "text-subtle"}>({pct}%)</span>
+                </span>
+                {byLocation && totalMs > 0 && <LocationSplit totals={byLocation} className="text-xs font-normal text-subtle" />}
               </span>
             </Link>
           </li>
