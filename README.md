@@ -42,7 +42,7 @@ Security details: passwords hashed with argon2id (min 10 characters); sessions s
 
 ## Projects
 
-**Projects** (in the menu) lists every project on one line with how many of its tasks are still unfinished; click a project to open the list of all its tasks, or add one to it. Admins add a project in one step at the top, and can rename it or delete it while it is empty. A task's project is set in the task form. Projects live only in the app (the Google Sheet has no project column). The seed adds 10 placeholder projects, marked as such, to rename.
+**Projects** (in the menu) lists every project on one line with how many of its tasks are still unfinished; click a project to open the list of all its tasks, or add one to it. Admins add a project in one step at the top, and can rename it or delete it while it is empty. A task's project is set in the task form. Projects live only in the app (the Google Sheet has no project column). The seed adds the team's seven running projects with placeholder tasks (`npm run seed:projects` adds them to an existing database).
 
 ## Tasks and the Google Sheet
 

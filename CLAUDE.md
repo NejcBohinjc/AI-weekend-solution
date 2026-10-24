@@ -36,7 +36,7 @@ Extras (gamification, Slack, Jarvis agent) count **only after all three areas wo
 - `attendance.xlsx`: flat, one row per member per meeting. Columns: series, date, email, name, state. States: `present`, `remote`, `excused`, `unexcused`. 258 rows. Exists for every meeting before 2026-10-24.
 - `hours.xlsx`: 120 rows (20 members x 6 weeks). Columns: email, name, tier, week_start (a Monday), hours, weekly_hours. Week of 2026-10-19 is in progress (entries through Fri 2026-10-23).
 - `meetings.ics`: 55 events, 2026-09-14 to 2026-11-21, six series: Summer School, Grants, Shape Talks, Shapers Tech, Shapers Voice (10 each) and Community (5, includes everyone). DTSTART is UTC (`Z`); display in **Europe/Ljubljana**. Each event DESCRIPTION is `Series: <name>\nMembers: <comma-separated emails>`, use it to match attendees to the roster. UID looks like `community-20260914@sandbox.example`.
-- The brief mentions "ten project names" in the sandbox package. **They were not in our zip.** Ask in the WhatsApp group; until then seed 10 plausible placeholder project names and mark them clearly as placeholders.
+- The brief mentions "ten project names" in the sandbox package. **They were not in our zip.** The seed uses the team's real running projects instead (01-07 from the projects document for new members; planned projects are left out), each with placeholder tasks: `scripts/team-projects.ts`.
 - Seeding note: hours.xlsx has weekly totals only. The product needs individual hour entries, so seed each weekly total as one entry dated that week and let members add more.
 
 ## Calendar access and meetings
@@ -57,7 +57,7 @@ Meetings are read from the Google Calendar's iCal (.ics) export, never written. 
 - `projects` (name unique, optional description); `tasks.project_id` (at most one project, `set null` on delete). App-only: the sheet has no project column and the sync never touches `project_id`.
 - `/projects` (everyone, "Projects" in the menu; `/admin/tasks` redirects here): every project as a collapsed `<details>` row showing only how many tasks are unfinished; opening it lists all its tasks (unfinished first by due date, done last; `src/lib/projects/overview.ts`, tested) with "+ Add a task" (`/tasks/new?project=<id>`). Tasks without a project come last as "No project". `?open=<id>` opens one.
 - Admins add a project in one step (name + optional description), rename it, and delete it only while it has no tasks. Anyone who can edit a task sets its project in the task form; changes go to `task_events`.
-- Seed: 10 **placeholder** projects (description says so) until the real names arrive; existing names are kept.
+- Seed: the team's seven running projects with 4-5 **placeholder** tasks each (for a person, a department or nobody; mixed statuses and due dates; history says "Placeholder task (sample data)"), from `scripts/team-projects.ts`, also on its own with `npm run seed:projects`. Idempotent: projects by name, a project that has tasks gets none; the old placeholder projects are removed while they have no tasks. The placeholder tasks are app tasks, so they sync to the sheet of the database they are created in.
 
 ## Google Sheets tasks sync (two-way)
 

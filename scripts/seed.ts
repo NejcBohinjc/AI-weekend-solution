@@ -4,13 +4,14 @@ import { readFileSync } from "node:fs";
 import ExcelJS from "exceljs";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../src/db";
-import { attendance, departments, memberDepartments, meetings, members, projects, timeEntries, TIERS, type Tier } from "../src/db/schema";
+import { attendance, departments, memberDepartments, meetings, members, timeEntries, TIERS, type Tier } from "../src/db/schema";
 import { hashPassword } from "../src/lib/auth/password";
 import { PASSWORD_MIN_LENGTH } from "../src/lib/auth/password-rules";
 import { addDays, ljubljanaParts, ljubljanaToUtc } from "../src/lib/hours/time";
 import { ATTENDANCE_STATES, type AttendanceState } from "../src/lib/meetings/constants";
 import { parseIcs } from "../src/lib/meetings/ics";
 import { importMeetings, importWindow } from "../src/lib/meetings/import";
+import { addTeamProjects } from "./team-projects";
 
 async function readSheet(path: string): Promise<Record<string, unknown>[]> {
   const wb = new ExcelJS.Workbook();
@@ -167,28 +168,10 @@ async function seedDepartments() {
   console.log(`departments: ${counts.map((c) => `${c.name} ${c.n}`).join(", ")}; ${none} members in none (sandbox rule)`);
 }
 
-// PLACEHOLDERS: the brief's ten project names were not in the sandbox package, so these stand in for
-// them and say so in their description. Rename or replace them on /projects. Existing names are kept.
-const PLACEHOLDER_PROJECTS = [
-  "Summer School 2027",
-  "Grant applications",
-  "Shape Talks season",
-  "Shapers Tech workshops",
-  "Shapers Voice podcast",
-  "Community events",
-  "New member onboarding",
-  "Partnerships",
-  "Fundraising",
-  "Website and social media",
-];
-
+// The team's seven running projects, each with placeholder tasks for people and departments.
 async function seedProjects() {
-  const description = "Placeholder project (the real project names were not in the sandbox data). Rename or replace it.";
-  await db
-    .insert(projects)
-    .values(PLACEHOLDER_PROJECTS.map((name) => ({ name, description })))
-    .onConflictDoNothing();
-  console.log(`projects: ${PLACEHOLDER_PROJECTS.length} placeholders`);
+  const r = await addTeamProjects();
+  console.log(`projects: ${r.projects} team projects, ${r.tasks} placeholder tasks added, ${r.removedPlaceholders} old placeholder projects removed`);
 }
 
 async function main() {

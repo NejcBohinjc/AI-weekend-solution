@@ -6,6 +6,6 @@
 
 **Also finished:** admin analytics (tiles, hours vs target, hours by tier, attendance by series, members × meetings heatmap, tasks per member and per week incl. AI, drifting members; filters by tier, series and range); departments (Core, Voice, Tech; admin page to add/rename; a member in any number or none; Core only for the Core tier), tasks delegated to a whole department (shown to everyone in it, Take it, synced as the department name in `nosilec`); projects (overview with every project collapsed to its unfinished-task count and opening to its tasks, add/rename/delete for admins, project field on tasks).
 
-**Not finished:** Hours: no chart on the dashboard yet. Projects: the 10 seeded projects are placeholders (the real names were not in the sandbox data). Meetings: email sending needs SMTP settings and a scheduler calling `/api/cron/reminders`; until then reminders are only recorded. No `docs/INFRASTRUCTURE.md` yet.
+**Not finished:** Hours: no chart on the dashboard yet. Projects: the seven seeded projects are the team's real ones, but their tasks are placeholders. Meetings: email sending needs SMTP settings and a scheduler calling `/api/cron/reminders`; until then reminders are only recorded. No `docs/INFRASTRUCTURE.md` yet.
 
 **What AI does:** turns meeting notes or transcripts into tasks (Claude, structured output, validated server-side). Every AI-created task is marked AI, shows the quote it came from and waits for the assignee to confirm, change or delete it. Optional: off without `ANTHROPIC_API_KEY`.
