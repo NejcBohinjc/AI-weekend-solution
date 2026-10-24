@@ -9,11 +9,12 @@ import { CopyLink } from "./copy-link";
 type Props = {
   action: (prev: MemberFormState, formData: FormData) => Promise<MemberFormState>;
   initial: MemberValues;
+  departments: { id: number; name: string }[];
   submitLabel: string;
   isSelf?: boolean;
 };
 
-export function MemberForm({ action, initial, submitLabel, isSelf }: Props) {
+export function MemberForm({ action, initial, departments, submitLabel, isSelf }: Props) {
   const [state, formAction, pending] = useActionState(action, {});
 
   if (state.created) {
@@ -35,6 +36,7 @@ export function MemberForm({ action, initial, submitLabel, isSelf }: Props) {
     <FormFields
       key={JSON.stringify(values)}
       values={values}
+      departments={departments}
       errors={state.errors ?? {}}
       formAction={formAction}
       pending={pending}
@@ -46,6 +48,7 @@ export function MemberForm({ action, initial, submitLabel, isSelf }: Props) {
 
 function FormFields({
   values,
+  departments,
   errors,
   formAction,
   pending,
@@ -53,6 +56,7 @@ function FormFields({
   isSelf,
 }: {
   values: MemberValues;
+  departments: { id: number; name: string }[];
   errors: NonNullable<MemberFormState["errors"]>;
   formAction: (formData: FormData) => void;
   pending: boolean;
@@ -98,6 +102,16 @@ function FormFields({
           />
         </Field>
       </div>
+      <Field label="Department" error={errors.departmentId}>
+        <select name="departmentId" defaultValue={values.departmentId} className={inputClass}>
+          <option value="">No department</option>
+          {departments.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+      </Field>
       <Field error={errors.isAdmin}>
         <label className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
           <input name="isAdmin" type="checkbox" defaultChecked={values.isAdmin} className="size-5 accent-primary" />

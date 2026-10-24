@@ -6,22 +6,24 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
-import { members, taskEvents, tasks, type Task } from "@/db/schema";
+import { departments, members, taskEvents, tasks, type Task } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
 import { STATUS_LABELS, TASK_STATUSES, TASK_TYPES } from "@/lib/tasks/constants";
-import { canConfirmAiTask, canDeleteAiTask, canEditTask } from "@/lib/tasks/permissions";
+import { parseOwner } from "@/lib/tasks/owner";
+import { canConfirmAiTask, canDeleteAiTask, canEditTask, canTakeTask } from "@/lib/tasks/permissions";
 import { runTasksSync } from "@/lib/tasks/sheet-sync";
 
-type Field = "title" | "status" | "assigneeId" | "type" | "dueDate";
-const FIELDS: Field[] = ["title", "status", "assigneeId", "type", "dueDate"];
+type Field = "title" | "status" | "assigneeId" | "departmentId" | "type" | "dueDate";
 
-export type TaskFormValues = { title: string; status: string; assigneeId: string; type: string; dueDate: string };
+/** owner: "m:<member id>", "d:<department id>" or "" (see lib/tasks/owner.ts). */
+export type TaskFormValues = { title: string; status: string; owner: string; type: string; dueDate: string };
+const FORM_FIELDS = ["title", "status", "owner", "type", "dueDate"] as const;
 export type TaskFormState = { error?: string; saved?: boolean; values?: TaskFormValues };
 
 const schema = z.object({
   title: z.string().trim().min(1, "Give the task a title.").max(200, "Use at most 200 characters."),
   status: z.enum(TASK_STATUSES),
-  assigneeId: z.string().regex(/^\d*$/),
+  owner: z.string().max(20),
   type: z.string().max(60),
   dueDate: z.union([z.literal(""), z.iso.date()]),
 });
@@ -45,23 +47,28 @@ function pushToSheetLater(actorId: number) {
 
 /** `currentType`: the task's type now, accepted even if it is not in TASK_TYPES (typed in the sheet). */
 async function parse(formData: FormData, currentType: string | null = null): Promise<{ data: Pick<Task, Field> } | { error: string; values: TaskFormValues }> {
-  const values = Object.fromEntries(FIELDS.map((f) => [f, String(formData.get(f) ?? "")])) as TaskFormValues;
+  const values = Object.fromEntries(FORM_FIELDS.map((f) => [f, String(formData.get(f) ?? "")])) as TaskFormValues;
   const parsed = schema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Please check the values.", values };
   const type = parsed.data.type.trim() || null;
   if (type !== null && !(TASK_TYPES as readonly string[]).includes(type) && type !== currentType) {
     return { error: "Pick a type from the list.", values };
   }
-  const assigneeId = parsed.data.assigneeId ? Number(parsed.data.assigneeId) : null;
-  if (assigneeId !== null) {
-    const [m] = await db.select({ active: members.active }).from(members).where(eq(members.id, assigneeId)).limit(1);
+  const owner = parseOwner(parsed.data.owner);
+  if (!owner) return { error: "Pick a person or a department.", values };
+  if (owner.assigneeId !== null) {
+    const [m] = await db.select({ active: members.active }).from(members).where(eq(members.id, owner.assigneeId)).limit(1);
     if (!m?.active) return { error: "Pick an active member.", values };
+  }
+  if (owner.departmentId !== null) {
+    const [d] = await db.select({ id: departments.id }).from(departments).where(eq(departments.id, owner.departmentId)).limit(1);
+    if (!d) return { error: "That department no longer exists.", values };
   }
   return {
     data: {
       title: parsed.data.title.replace(/\s+/g, " "),
       status: parsed.data.status,
-      assigneeId,
+      ...owner,
       type,
       dueDate: parsed.data.dueDate || null,
     },
@@ -85,10 +92,12 @@ export async function createTaskAction(_prev: TaskFormState, formData: FormData)
 /** Saves the changed fields, one history row each. Returns false if nothing changed. */
 async function applyChanges(task: Task, next: Partial<Pick<Task, Field>>, actorId: number): Promise<boolean> {
   const names = new Map((await db.select({ id: members.id, name: members.name }).from(members)).map((m) => [m.id, m.name]));
+  const departmentNames = new Map((await db.select({ id: departments.id, name: departments.name }).from(departments)).map((d) => [d.id, d.name]));
   const show = (f: Field, v: unknown): string | null => {
     if (v === null || v === undefined) return null;
     if (f === "status") return STATUS_LABELS[v as Task["status"]];
     if (f === "assigneeId") return names.get(v as number) ?? null;
+    if (f === "departmentId") return departmentNames.get(v as number) ?? null;
     return String(v);
   };
   const changed = (Object.keys(next) as Field[]).filter((f) => task[f] !== next[f]);
@@ -160,6 +169,13 @@ export async function updateTaskAction(taskId: number, _prev: TaskFormState, for
   if (await applyChanges(task, result.data, me.id)) pushToSheetLater(me.id);
   refresh(taskId);
   return { saved: true };
+}
+
+/** Someone in the department takes a task delegated to it: it becomes theirs alone. */
+export async function takeTaskAction(taskId: number): Promise<void> {
+  const { me, task } = await loadTask(taskId);
+  if (task && canTakeTask(me, task) && (await applyChanges(task, { assigneeId: me.id, departmentId: null }, me.id))) pushToSheetLater(me.id);
+  refresh(taskId);
 }
 
 /** One-tap finish from the list or the task page. */

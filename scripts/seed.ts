@@ -2,9 +2,9 @@
 import "dotenv/config";
 import { readFileSync } from "node:fs";
 import ExcelJS from "exceljs";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../src/db";
-import { attendance, meetings, members, timeEntries, TIERS, type Tier } from "../src/db/schema";
+import { attendance, departments, meetings, members, timeEntries, TIERS, type Tier } from "../src/db/schema";
 import { hashPassword } from "../src/lib/auth/password";
 import { PASSWORD_MIN_LENGTH } from "../src/lib/auth/password-rules";
 import { addDays, ljubljanaParts, ljubljanaToUtc } from "../src/lib/hours/time";
@@ -144,8 +144,30 @@ async function seedAttendance() {
   console.log(`attendance: ${values.length} records`);
 }
 
+// Sandbox assumption: roster.xlsx has no department column. Members only in the Shapers Tech series
+// go to Tech, only in Shapers Voice to Voice, everyone else to Core. Only members without a
+// department are set, so re-running never undoes what an admin chose.
+async function seedDepartments() {
+  await db.insert(departments).values([{ name: "Core" }, { name: "Voice" }, { name: "Tech" }]).onConflictDoNothing();
+  const id = Object.fromEntries((await db.select().from(departments)).map((d) => [d.name, d.id]));
+  const inTech = sql`'Shapers Tech' = any(${members.series})`;
+  const inVoice = sql`'Shapers Voice' = any(${members.series})`;
+  const unset = isNull(members.departmentId);
+  await db.update(members).set({ departmentId: id.Tech }).where(and(unset, inTech, sql`not ${inVoice}`));
+  await db.update(members).set({ departmentId: id.Voice }).where(and(unset, inVoice, sql`not ${inTech}`));
+  await db.update(members).set({ departmentId: id.Core }).where(unset);
+  const counts = await db
+    .select({ name: departments.name, n: sql<number>`count(${members.id})::int` })
+    .from(departments)
+    .leftJoin(members, eq(members.departmentId, departments.id))
+    .groupBy(departments.name)
+    .orderBy(departments.name);
+  console.log(`departments: ${counts.map((c) => `${c.name} ${c.n}`).join(", ")}`);
+}
+
 async function main() {
   await seedMembers();
+  await seedDepartments();
   await seedHours();
   await seedMeetings();
   await seedAttendance();

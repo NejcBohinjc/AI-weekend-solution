@@ -20,6 +20,11 @@ export function TypeBadge({ type }: { type: string }) {
   return <span className="inline-flex rounded-md bg-violet-bg px-1.5 py-0.5 text-xs font-medium text-violet">{type}</span>;
 }
 
+/** A task delegated to a whole department (or a member's department). */
+export function DepartmentBadge({ name }: { name: string }) {
+  return <span className="inline-flex rounded-full bg-info-bg px-2 py-0.5 text-xs font-medium text-info ring-1 ring-inset ring-info-line">{name}</span>;
+}
+
 /** "15 Nov" (adds the year when it is not this year); red when overdue and not done. */
 export function DueDate({ date, today, done }: { date: string; today: string; done: boolean }) {
   const d = new Date(`${date}T12:00:00Z`);

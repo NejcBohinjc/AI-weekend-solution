@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { TASK_STATUSES, TASK_TYPES } from "./constants";
 import { test } from "node:test";
-import { buildRowKeys, findColumns, formatStatus, mapStatus, matchAssignee, normalizeType, parseDeadline } from "./sheet-mapping";
+import { buildRowKeys, findColumns, formatStatus, mapStatus, matchAssignee, matchOwner, normalizeType, parseDeadline } from "./sheet-mapping";
 
 const TODAY = "2026-10-24";
 
@@ -43,6 +43,20 @@ test("leaves assignee empty unless exactly one member matches", () => {
   assert.deepEqual(matchAssignee("Ana", members), { memberId: null, reason: "matches 2 members (Ana Kovač, Ana Novak)" });
   assert.deepEqual(matchAssignee("Marko", members), { memberId: null, reason: "no member matches" });
   assert.deepEqual(matchAssignee("", members), { memberId: null });
+});
+
+test("nosilec can name a whole department instead of one person", () => {
+  const departments = [
+    { id: 7, name: "Tech" },
+    { id: 8, name: "Voice" },
+  ];
+  assert.deepEqual(matchOwner("Tech", members, departments), { assigneeId: null, departmentId: 7 });
+  assert.deepEqual(matchOwner(" voice ", members, departments), { assigneeId: null, departmentId: 8 });
+  assert.deepEqual(matchOwner("Oddelek Tech", members, departments), { assigneeId: null, departmentId: 7 });
+  assert.deepEqual(matchOwner("Tech department", members, departments), { assigneeId: null, departmentId: 7 });
+  assert.deepEqual(matchOwner("Ana Kovac", members, departments), { assigneeId: 2, departmentId: null, reason: undefined });
+  assert.deepEqual(matchOwner("Marko", members, departments), { assigneeId: null, departmentId: null, reason: "no member matches" });
+  assert.deepEqual(matchOwner("", members, departments), { assigneeId: null, departmentId: null });
 });
 
 test("task types: list types match ignoring case and diacritics, other types are kept as typed", () => {

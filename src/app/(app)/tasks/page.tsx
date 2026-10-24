@@ -1,9 +1,9 @@
-import { and, asc, desc, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import Link from "next/link";
 import { after } from "next/server";
-import { AiBadge, DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
+import { AiBadge, DepartmentBadge, DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
 import { db } from "@/db";
-import { members, tasks, taskSyncs } from "@/db/schema";
+import { departments, members, tasks, taskSyncs } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
 import { STATUS_LABELS, TASK_STATUSES, TASK_TYPES, type TaskStatus } from "@/lib/tasks/constants";
 import { canEditTask } from "@/lib/tasks/permissions";
@@ -28,7 +28,14 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const listedTypes = sql.join(TASK_TYPES.map((t) => sql`${t.toLowerCase()}`), sql`, `);
 
   const where: SQL[] = [isNull(tasks.deletedAt)];
-  if (view === "mine") where.push(eq(tasks.assigneeId, me.id));
+  // Mine: assigned to me, or delegated to my department and not yet taken by anyone.
+  if (view === "mine") {
+    where.push(
+      me.departmentId
+        ? or(eq(tasks.assigneeId, me.id), and(isNull(tasks.assigneeId), eq(tasks.departmentId, me.departmentId)))!
+        : eq(tasks.assigneeId, me.id),
+    );
+  }
   if (status) where.push(eq(tasks.status, status));
   if (type === "none") where.push(isNull(tasks.type));
   else if (type === "other") where.push(isNotNull(tasks.type), sql`lower(${tasks.type}) not in (${listedTypes})`);
@@ -44,6 +51,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         dueDate: tasks.dueDate,
         assigneeRaw: tasks.assigneeRaw,
         assigneeId: tasks.assigneeId,
+        departmentId: tasks.departmentId,
+        departmentName: departments.name,
         createdById: tasks.createdById,
         assigneeName: members.name,
         inSheet: tasks.inSheet,
@@ -55,6 +64,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       })
       .from(tasks)
       .leftJoin(members, eq(tasks.assigneeId, members.id))
+      .leftJoin(departments, eq(tasks.departmentId, departments.id))
       .where(and(...where))
       .orderBy(sql`${tasks.status} = 'done'`, sql`${tasks.dueDate} asc nulls last`, asc(tasks.title)),
     me.isAdmin
@@ -168,13 +178,18 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                   )}
                   {t.type && <TypeBadge type={t.type} />}
                   {t.dueDate && <DueDate date={t.dueDate} today={today} done={t.status === "done"} />}
-                  <span className="text-xs text-muted">
-                    {t.assigneeName ?? (
-                      <span className="text-warning">
-                        Unassigned{t.assigneeRaw && me.isAdmin ? ` (sheet: “${t.assigneeRaw}”)` : ""}
-                      </span>
-                    )}
-                  </span>
+                  {t.assigneeName ? (
+                    <span className="text-xs text-muted">{t.assigneeName}</span>
+                  ) : t.departmentName ? (
+                    <span className="flex items-center gap-1 text-xs text-muted">
+                      <DepartmentBadge name={t.departmentName} />
+                      {t.departmentId === me.departmentId ? "your department" : "department"}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-warning">
+                      Unassigned{t.assigneeRaw && me.isAdmin ? ` (sheet: “${t.assigneeRaw}”)` : ""}
+                    </span>
+                  )}
                   {!t.inSheet && me.isAdmin && <span className="text-xs text-subtle">no longer in sheet</span>}
                   {pendingInSheet.has(t.id) && <span className="text-xs text-warning">not in the sheet yet</span>}
                 </span>

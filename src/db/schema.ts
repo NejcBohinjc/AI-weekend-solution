@@ -26,6 +26,16 @@ import { TIERS } from "../lib/tiers"; // relative: drizzle-kit does not resolve 
 
 export { TIER_HOURS, TIERS, type Tier } from "../lib/tiers";
 
+// Departments (Core, Voice, Tech to start; admins add more on /admin/departments). A member belongs to
+// at most one; a task can be delegated to a whole department instead of one person.
+export const departments = pgTable("departments", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Department = typeof departments.$inferSelect;
+
 export const members = pgTable("members", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -36,6 +46,7 @@ export const members = pgTable("members", {
   active: boolean("active").notNull().default(true),
   passwordHash: text("password_hash"), // argon2id; null until the member sets one
   series: text("series").array().notNull().default([]),
+  departmentId: integer("department_id").references(() => departments.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -92,6 +103,8 @@ export const tasks = pgTable(
     title: text("title").notNull(),
     status: text("status", { enum: TASK_STATUSES }).notNull().default("todo"),
     assigneeId: integer("assignee_id").references(() => members.id, { onDelete: "set null" }),
+    // Delegated to a whole department instead of one person (never both; see the check below).
+    departmentId: integer("department_id").references(() => departments.id, { onDelete: "set null" }),
     type: text("type"), // normalised label, e.g. "marketing"
     dueDate: date("due_date"), // calendar date in Europe/Ljubljana
     createdById: integer("created_by_id").references(() => members.id, { onDelete: "set null" }),
@@ -127,6 +140,8 @@ export const tasks = pgTable(
   (t) => [
     uniqueIndex("tasks_source_key_idx").on(t.source, t.sourceKey),
     index("tasks_assignee_idx").on(t.assigneeId),
+    index("tasks_department_idx").on(t.departmentId),
+    check("tasks_one_owner", sql`${t.assigneeId} is null or ${t.departmentId} is null`),
   ],
 );
 
@@ -135,6 +150,8 @@ export type TaskSheetSnapshot = {
   title: string;
   status: (typeof TASK_STATUSES)[number];
   assigneeId: number | null;
+  // Missing in snapshots from before departments existed: read it as null.
+  departmentId?: number | null;
   type: string | null;
   dueDate: string | null;
 };

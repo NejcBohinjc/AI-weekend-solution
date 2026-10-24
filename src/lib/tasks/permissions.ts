@@ -1,10 +1,30 @@
 import type { SessionMember } from "@/lib/auth";
 
-type TaskRef = { assigneeId: number | null; createdById: number | null; triggeredById?: number | null };
+type Viewer = Pick<SessionMember, "id" | "isAdmin"> & { departmentId?: number | null };
+type TaskRef = { assigneeId: number | null; createdById: number | null; triggeredById?: number | null; departmentId?: number | null };
 
-/** Admins edit every task; members edit tasks assigned to them or created by them (for AI tasks: who ran the AI). */
-export function canEditTask(me: Pick<SessionMember, "id" | "isAdmin">, task: TaskRef): boolean {
-  return me.isAdmin || task.assigneeId === me.id || task.createdById === me.id || (task.triggeredById ?? null) === me.id;
+/** The task is delegated to the viewer's department (and not yet taken by one person). */
+export function isMyDepartmentTask(me: Viewer, task: TaskRef): boolean {
+  return task.assigneeId === null && task.departmentId != null && task.departmentId === me.departmentId;
+}
+
+/**
+ * Admins edit every task; members edit tasks assigned to them, delegated to their department, or
+ * created by them (for AI tasks: who ran the AI).
+ */
+export function canEditTask(me: Viewer, task: TaskRef): boolean {
+  return (
+    me.isAdmin ||
+    task.assigneeId === me.id ||
+    isMyDepartmentTask(me, task) ||
+    task.createdById === me.id ||
+    (task.triggeredById ?? null) === me.id
+  );
+}
+
+/** A department task can be taken by anyone in that department: it becomes theirs. */
+export function canTakeTask(me: Viewer, task: TaskRef & { status: string }): boolean {
+  return task.status !== "done" && isMyDepartmentTask(me, task);
 }
 
 /** An unconfirmed AI task is confirmed by its assignee (or an admin). */
@@ -13,6 +33,6 @@ export function canConfirmAiTask(me: Pick<SessionMember, "id" | "isAdmin">, task
 }
 
 /** AI tasks can be deleted in one click by whoever may edit them. */
-export function canDeleteAiTask(me: Pick<SessionMember, "id" | "isAdmin">, task: TaskRef & { createdByAi: boolean }): boolean {
+export function canDeleteAiTask(me: Viewer, task: TaskRef & { createdByAi: boolean }): boolean {
   return task.createdByAi && canEditTask(me, task);
 }

@@ -17,6 +17,7 @@ const MEMBER_NAV: NavItem[] = [
 const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/members", label: "Members" },
+  { href: "/admin/departments", label: "Departments" },
   { href: "/admin/tasks", label: "Board" },
   { href: "/admin/hours", label: "Hours" },
   { href: "/admin/meetings", label: "Meetings" },

@@ -5,12 +5,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db";
-import { members, passwordTokens, TIER_HOURS, TIERS } from "@/db/schema";
+import { departments, members, passwordTokens, TIER_HOURS, TIERS } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { invalidateMemberSessions } from "@/lib/auth/sessions";
 import { createSetupLink } from "@/lib/auth/setup-links";
 
-export type MemberValues = { name: string; email: string; tier: string; weeklyHours: string; isAdmin: boolean };
+export type MemberValues = { name: string; email: string; tier: string; weeklyHours: string; departmentId: string; isAdmin: boolean };
 type Field = keyof MemberValues;
 export type MemberFormState = {
   errors?: Partial<Record<Field, string>>;
@@ -24,6 +24,7 @@ const memberSchema = z.object({
   email: z.string().trim().toLowerCase().max(254).pipe(z.email("Enter a valid email address.")),
   tier: z.enum(TIERS, "Pick a tier."),
   weeklyHours: z.string().trim().regex(/^\d{0,3}$/, "Enter a whole number of hours."),
+  departmentId: z.string().regex(/^\d*$/, "Pick a department."),
   isAdmin: z.boolean(),
 });
 
@@ -33,6 +34,7 @@ function readValues(formData: FormData): MemberValues {
     email: String(formData.get("email") ?? ""),
     tier: String(formData.get("tier") ?? ""),
     weeklyHours: String(formData.get("weeklyHours") ?? ""),
+    departmentId: String(formData.get("departmentId") ?? ""),
     isAdmin: formData.get("isAdmin") === "on",
   };
 }
@@ -45,9 +47,14 @@ async function parseMember(formData: FormData, excludeId?: number) {
     for (const issue of parsed.error.issues) errors[issue.path[0] as Field] ??= issue.message;
     return { values, errors };
   }
-  const { weeklyHours, ...rest } = parsed.data;
+  const { weeklyHours, departmentId: rawDepartment, ...rest } = parsed.data;
   const hours = weeklyHours === "" ? TIER_HOURS[rest.tier] : Number(weeklyHours);
   if (hours > 168) return { values, errors: { weeklyHours: "A week has 168 hours." } };
+  const departmentId = rawDepartment ? Number(rawDepartment) : null;
+  if (departmentId !== null) {
+    const [d] = await db.select({ id: departments.id }).from(departments).where(eq(departments.id, departmentId)).limit(1);
+    if (!d) return { values, errors: { departmentId: "That department no longer exists." } };
+  }
 
   const [clash] = await db
     .select({ id: members.id })
@@ -56,7 +63,7 @@ async function parseMember(formData: FormData, excludeId?: number) {
     .limit(1);
   if (clash) return { values, errors: { email: "Another member already uses this email." } };
 
-  return { data: { ...rest, weeklyHours: hours } };
+  return { data: { ...rest, weeklyHours: hours, departmentId } };
 }
 
 export async function createMemberAction(_prev: MemberFormState, formData: FormData): Promise<MemberFormState> {

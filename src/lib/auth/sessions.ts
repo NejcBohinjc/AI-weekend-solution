@@ -27,7 +27,7 @@ export async function createSession(memberId: number): Promise<{ token: string; 
   return { token, expiresAt };
 }
 
-export type SessionMember = Pick<typeof members.$inferSelect, "id" | "name" | "email" | "tier" | "weeklyHours" | "isAdmin">;
+export type SessionMember = Pick<typeof members.$inferSelect, "id" | "name" | "email" | "tier" | "weeklyHours" | "isAdmin" | "departmentId">;
 
 /**
  * Looks up a session and its member. Returns null if the session is unknown, expired,
@@ -47,6 +47,7 @@ export async function validateSessionToken(
         tier: members.tier,
         weeklyHours: members.weeklyHours,
         isAdmin: members.isAdmin,
+        departmentId: members.departmentId,
       },
     })
     .from(sessions)

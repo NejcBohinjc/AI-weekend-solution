@@ -9,11 +9,12 @@ type Props = {
   action: (prev: TaskFormState, formData: FormData) => Promise<TaskFormState>;
   initial: TaskFormValues;
   members: { id: number; name: string }[];
+  departments: { id: number; name: string }[];
   submitLabel: string;
 };
 
-/** Create or edit a task. Changing the assignee hands the task over. */
-export function TaskForm({ action, initial, members, submitLabel }: Props) {
+/** Create or edit a task. Changing who it is assigned to (a person or a whole department) hands it over. */
+export function TaskForm({ action, initial, members, departments, submitLabel }: Props) {
   const [state, formAction, pending] = useActionState(action, {});
   const values = state.values ?? initial;
   const extraType = initial.type && !(TASK_TYPES as readonly string[]).includes(initial.type) ? initial.type : null;
@@ -27,14 +28,25 @@ export function TaskForm({ action, initial, members, submitLabel }: Props) {
       </label>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
-          <span className={labelClass}>Assignee</span>
-          <select name="assigneeId" defaultValue={values.assigneeId} className={inputClass}>
+          <span className={labelClass}>Assigned to</span>
+          <select name="owner" defaultValue={values.owner} className={inputClass}>
             <option value="">Unassigned</option>
-            {members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
+            {departments.length > 0 && (
+              <optgroup label="A whole department">
+                {departments.map((d) => (
+                  <option key={d.id} value={`d:${d.id}`}>
+                    {d.name} (department)
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label="One person">
+              {members.map((m) => (
+                <option key={m.id} value={`m:${m.id}`}>
+                  {m.name}
+                </option>
+              ))}
+            </optgroup>
           </select>
         </label>
         <label className="flex flex-col gap-1.5">

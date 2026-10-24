@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { members, passwordTokens } from "@/db/schema";
 import { TIMEZONE } from "@/lib/app";
 import { requireAdmin } from "@/lib/auth";
+import { departmentList } from "@/lib/departments";
 import { AccessStatus } from "../access-status";
 import { generateLinkAction, setActiveAction, updateMemberAction } from "../actions";
 import { MemberForm } from "../member-form";
@@ -29,13 +30,14 @@ export default async function EditMemberPage({
   const id = Number(rawId);
   if (!Number.isInteger(id)) notFound();
 
-  const [[member], [pendingLink]] = await Promise.all([
+  const [[member], [pendingLink], departmentOptions] = await Promise.all([
     db.select().from(members).where(eq(members.id, id)).limit(1),
     db
       .select({ expiresAt: passwordTokens.expiresAt })
       .from(passwordTokens)
       .where(and(eq(passwordTokens.memberId, id), isNull(passwordTokens.usedAt), gt(passwordTokens.expiresAt, new Date())))
       .limit(1),
+    departmentList(),
   ]);
   if (!member) notFound();
   const isSelf = member.id === admin.id;
@@ -66,8 +68,10 @@ export default async function EditMemberPage({
           email: member.email,
           tier: member.tier,
           weeklyHours: String(member.weeklyHours),
+          departmentId: member.departmentId ? String(member.departmentId) : "",
           isAdmin: member.isAdmin,
         }}
+        departments={departmentOptions}
         submitLabel="Save changes"
         isSelf={isSelf}
       />

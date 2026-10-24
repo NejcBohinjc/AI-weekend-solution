@@ -99,6 +99,28 @@ export function matchAssignee(raw: Cell, members: MemberRef[]): { memberId: numb
   return { memberId: null, reason: `matches ${matches.length} members (${matches.map((m) => m.name).join(", ")})` };
 }
 
+export type DepartmentRef = { id: number; name: string };
+
+/**
+ * "nosilec" names one person or a whole department. A department name (ignoring case and diacritics,
+ * with or without the word "department"/"oddelek") makes it a department task; anything else is
+ * matched to a member as in matchAssignee.
+ */
+export function matchOwner(
+  raw: Cell,
+  members: MemberRef[],
+  departments: DepartmentRef[],
+): { assigneeId: number | null; departmentId: number | null; reason?: string } {
+  const key = normalizeText(raw)
+    .replace(/^(oddelek|department)\s+/, "")
+    .replace(/\s+(department|oddelek)$/, "");
+  if (!key) return { assigneeId: null, departmentId: null };
+  const department = departments.find((d) => normalizeText(d.name) === key);
+  if (department) return { assigneeId: null, departmentId: department.id };
+  const member = matchAssignee(raw, members);
+  return { assigneeId: member.memberId, departmentId: null, reason: member.reason };
+}
+
 export type AssigneeStyle = "email" | "first" | "full";
 
 /** Writes names the way the sheet already does: emails, first names or full names (by majority). */
