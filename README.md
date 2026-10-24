@@ -48,6 +48,10 @@ Security details: passwords hashed with argon2id (min 10 characters); sessions s
 
 Every member can create tasks, and edit, hand over or finish the tasks assigned to them or created by them. A task can also be given to a whole **department** (Core, Voice and Tech to start; admins manage them on **Admin → Departments** and tick each member's departments on their page: any number, or none; the Core department is only for members of the Core tier): everyone in it sees it under My tasks and may finish it, and one of them presses **Take it** to make it theirs. In the sheet, write the department's name (e.g. `Tech`) in `nosilec`. Admins can edit all tasks. Every change is kept in the task's history.
 
+Every task has a **priority**: Urgent, Medium (the default) or Low. Task lists show open tasks most pressing first (urgent, then medium, then low; within a priority the soonest due date first), and can be filtered by priority.
+
+**Deadline reminders:** members get an email before their tasks are due, by default 1 day before at 08:00; at the bottom of **Tasks** each member chooses 3 days before, 1 day before and/or on the due day, or turns them off. A task given to a department reminds everyone in it. No reminders for finished tasks, AI-created tasks nobody has confirmed yet, or tasks whose row was deleted from the sheet. They are sent by the same scheduled job as meeting reminders (`/api/cron/reminders`, see below) and need the same SMTP settings; without SMTP they are only recorded.
+
 Tasks are synced both ways with a tab of a Google Sheet (`List1` by default): changes in the app are written to the sheet and changes in the sheet are imported. Each row gets a task id in an `id` column, so sorting the sheet never creates duplicates. If the same field was changed on both sides between two syncs, the app's value wins and the sheet's value is kept in the history. The sync runs by itself in the background (at most once a minute while people use the app); anyone can press **Sync now**.
 
 Setup:
@@ -57,7 +61,7 @@ Setup:
 3. Set `GOOGLE_SHEET_ID` (from the sheet URL), `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (the key's `private_key`, with `\n` for newlines). Optional: `GOOGLE_SHEET_TASKS_TAB`, `GOOGLE_SHEET_HOURS_TAB`.
 4. Check it: `npm run sheets:check` (prints the exact Google error if something is wrong).
 
-The app only touches the tasks tab and the hours tab, and in the tasks tab only its own columns (task, status, nosilec, tip taska, deadline, id). Tests: `npm test` (the database tests need a local Postgres, see above).
+The app only touches the tasks tab and the hours tab, and in the tasks tab only its own columns (task, status, nosilec, tip taska, deadline, priority, id). If the tab has no `priority` column, the first sync adds one after the last column and fills it in; the sheet may say `urgent`/`medium`/`low` or Slovenian words such as `nujno`, `srednja`, `nizka` (an empty cell gets the app's priority). Tests: `npm test` (the database tests need a local Postgres, see above).
 
 ## Work hours
 

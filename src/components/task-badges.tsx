@@ -1,5 +1,5 @@
 import { TIMEZONE } from "@/lib/app";
-import { STATUS_LABELS, type TaskStatus } from "@/lib/tasks/constants";
+import { PRIORITY_LABELS, STATUS_LABELS, type TaskPriority, type TaskStatus } from "@/lib/tasks/constants";
 
 const STATUS_STYLES: Record<TaskStatus, string> = {
   todo: "bg-surface-3 text-fg-2 ring-line",
@@ -12,6 +12,23 @@ export function StatusBadge({ status }: { status: TaskStatus }) {
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_STYLES[status]}`}>
       {STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+// Only "urgent" stands out; medium (the default) and low stay quiet.
+const PRIORITY_STYLES: Record<TaskPriority, string> = {
+  urgent: "bg-danger-bg text-danger ring-danger-line font-semibold",
+  medium: "bg-surface text-muted ring-line font-medium",
+  low: "bg-surface text-subtle ring-line",
+};
+const PRIORITY_MARKS: Record<TaskPriority, string> = { urgent: "! ", medium: "", low: "↓ " };
+
+export function PriorityBadge({ priority }: { priority: TaskPriority }) {
+  return (
+    <span title="Priority" className={`inline-flex rounded-full px-2 py-0.5 text-xs ring-1 ring-inset ${PRIORITY_STYLES[priority]}`}>
+      {PRIORITY_MARKS[priority]}
+      {PRIORITY_LABELS[priority]}
     </span>
   );
 }

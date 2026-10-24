@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AiBadge, DepartmentBadge, DueDate, StatusBadge } from "@/components/task-badges";
+import { AiBadge, DepartmentBadge, DueDate, PriorityBadge, StatusBadge } from "@/components/task-badges";
 import { requireMember } from "@/lib/auth";
 import { unfinishedLabel } from "@/lib/projects/overview";
 import { projectsOverview } from "@/lib/projects/queries";
@@ -68,6 +68,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
                               <span className={`min-w-0 flex-1 ${t.status === "done" ? "text-subtle line-through" : ""}`}>{t.title}</span>
                               <span className="flex flex-wrap items-center gap-2">
                                 <StatusBadge status={t.status} />
+                                {t.status !== "done" && <PriorityBadge priority={t.priority} />}
                                 {t.createdByAi && <AiBadge confirmed={!!t.aiConfirmedAt} />}
                                 {t.dueDate && <DueDate date={t.dueDate} today={today} done={t.status === "done"} />}
                                 {t.assigneeName ? (

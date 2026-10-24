@@ -59,10 +59,13 @@ describe("two-way tasks sync", { skip: testDatabaseSkip() }, () => {
     assert.deepEqual(report.skipped, [{ row: 6, reason: "no task title" }]);
     assert.deepEqual(report.unassigned.map((u) => u.raw), ["Marko"]);
     assert.equal(rows()[0][6], "id");
+    assert.equal(rows()[0][7], "priority", "a priority column is added after the id column");
     for (const title of ["Objava na IG", "Plakat", "Najem dvorane"]) {
       const t = await taskBy(title);
       assert.match(String(rowOf(title)[6]), /^t-[0-9a-f]{10}$/);
       assert.equal(rowOf(title)[6], t.sheetKey);
+      assert.equal(t.priority, "medium");
+      assert.equal(rowOf(title)[7], "medium", "the default priority is written into the sheet");
     }
     assert.equal((await taskBy("Plakat")).assigneeId, ids.ana);
     // Types: "Marketing" / "marketing" become the listed "Marketing"; a type not in the list is kept as typed.
@@ -142,6 +145,38 @@ describe("two-way tasks sync", { skip: testDatabaseSkip() }, () => {
     assert.equal((await taskBy("Plakat")).status, "verification", "sheet -> app");
     assert.ok(!report.warnings.some((w) => w.message.includes("unknown status")), JSON.stringify(report.warnings));
     assert.equal((await sync()).unchanged, 3, "stable afterwards");
+  });
+
+  test("priority syncs both ways; an empty cell gets the app's priority, an unknown one is reported", async () => {
+    const r = () => rows().findIndex((x) => x[0] === "Objava na IG");
+    // Sheet -> app (a Slovenian word), with history.
+    sheets.tabs.get(TAB)!.grid[r()][7] = "Nujno";
+    let report = await sync();
+    const t = await taskBy("Objava na IG");
+    assert.equal(t.priority, "urgent");
+    assert.deepEqual(report.updated.find((u) => u.title === "Objava na IG")?.fields, ["priority"]);
+    const events = await db.select().from(taskEvents).where(eq(taskEvents.taskId, t.id));
+    assert.ok(events.some((e) => e.source === "sheet_sync" && e.field === "priority" && e.newValue === "Urgent"));
+
+    // App -> sheet.
+    await db.update(tasks).set({ priority: "low" }).where(eq(tasks.id, t.id));
+    await sync();
+    assert.equal(rowOf("Objava na IG")[7], "low");
+
+    // An emptied cell is not a change from the sheet: the app's priority is written back into it.
+    sheets.tabs.get(TAB)!.grid[r()][7] = "";
+    report = await sync();
+    assert.equal((await taskBy("Objava na IG")).priority, "low");
+    assert.equal(rowOf("Objava na IG")[7], "low");
+
+    // An unknown word is reported, and the app's priority stays and is written back.
+    sheets.tabs.get(TAB)!.grid[r()][7] = "whenever";
+    report = await sync();
+    assert.ok(report.warnings.some((w) => w.title === "Objava na IG" && w.message.includes('unknown priority "whenever"')), JSON.stringify(report.warnings));
+    assert.equal((await taskBy("Objava na IG")).priority, "low");
+    assert.equal(rowOf("Objava na IG")[7], "low");
+    report = await sync();
+    assert.equal(report.updated.length + report.exported.length, 0, "stable afterwards");
   });
 
   test("a task created in the app is appended once with its key", async () => {

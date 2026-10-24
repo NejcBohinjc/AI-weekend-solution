@@ -1,6 +1,7 @@
 // Attendance and reminder rules. Pure (no I/O), so it is unit-tested (rules.test.ts).
 import { TIMEZONE } from "@/lib/app";
 import { ljubljanaParts } from "@/lib/hours/time";
+import { escapeHtml } from "@/lib/html";
 import {
   CHECKIN_CLOSES_MINUTES,
   CHECKIN_OPENS_MINUTES,
@@ -71,7 +72,6 @@ export function whenPhrase(startsAt: Date, now: Date): string {
 
 export type ReminderEmail = { subject: string; text: string; html: string };
 
-const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** The reminder email for one meeting. `url` opens the meeting in the app (to check in or send an excuse). */
 export function reminderEmail(

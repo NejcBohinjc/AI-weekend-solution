@@ -1,15 +1,29 @@
 import assert from "node:assert/strict";
-import { TASK_STATUSES, TASK_TYPES } from "./constants";
+import { TASK_PRIORITIES, TASK_STATUSES, TASK_TYPES } from "./constants";
 import { test } from "node:test";
-import { buildRowKeys, findColumns, formatStatus, mapStatus, matchAssignee, matchOwner, normalizeType, parseDeadline } from "./sheet-mapping";
+import { buildRowKeys, findColumns, formatPriority, formatStatus, mapPriority, mapStatus, matchAssignee, matchOwner, normalizeType, parseDeadline } from "./sheet-mapping";
 
 const TODAY = "2026-10-24";
 
 test("finds columns by header name, case- and space-insensitive, in any order", () => {
-  const { columns, missing } = findColumns(["Geslo", " Deadline ", "TASK", "Tip  taska", "nosilec", "Status"]);
-  assert.deepEqual(columns, { title: 2, status: 5, assignee: 4, type: 3, deadline: 1 });
+  const { columns, missing } = findColumns(["Geslo", " Deadline ", "TASK", "Tip  taska", "nosilec", "Status", "Prioriteta"]);
+  assert.deepEqual(columns, { title: 2, status: 5, assignee: 4, type: 3, deadline: 1, priority: 6 });
   assert.deepEqual(missing, []);
-  assert.deepEqual(findColumns(["task"]).missing, ["status", "assignee", "type", "deadline"]);
+  assert.deepEqual(findColumns(["task"]).missing, ["status", "assignee", "type", "deadline", "priority"]);
+});
+
+test("maps English and Slovenian priorities; empty or unknown leaves the app's", () => {
+  const cases: [string, string | null][] = [
+    ["urgent", "urgent"], ["Nujno", "urgent"], ["HIGH", "urgent"], ["visoka prioriteta", "urgent"], ["High priority", "urgent"],
+    ["medium", "medium"], ["Srednja", "medium"], ["normal", "medium"],
+    ["low", "low"], ["Nizka", "low"], ["ni nujno", "low"], ["low-priority", "low"],
+  ];
+  for (const [raw, want] of cases) assert.deepEqual(mapPriority(raw), { priority: want, recognised: true }, raw);
+  assert.deepEqual(mapPriority(""), { priority: null, recognised: true });
+  assert.deepEqual(mapPriority(null), { priority: null, recognised: true });
+  assert.deepEqual(mapPriority("whenever"), { priority: null, recognised: false });
+  assert.deepEqual(mapPriority("priority"), { priority: null, recognised: false });
+  for (const p of TASK_PRIORITIES) assert.equal(mapPriority(formatPriority(p)).priority, p, "what the app writes reads back the same");
 });
 
 test("maps English and Slovenian statuses", () => {

@@ -1,6 +1,6 @@
 // Pure mapping from Google Sheets cell values to task fields. No I/O, so it is unit-tested.
 import { TIMEZONE } from "@/lib/app";
-import { TASK_TYPES, type TaskStatus } from "./constants";
+import { TASK_TYPES, type TaskPriority, type TaskStatus } from "./constants";
 
 export type Cell = string | number | boolean | undefined | null;
 
@@ -16,7 +16,7 @@ export function normalizeText(value: Cell): string {
 
 // ---------- Headers ----------
 
-export type SheetField = "title" | "status" | "assignee" | "type" | "deadline";
+export type SheetField = "title" | "status" | "assignee" | "type" | "deadline" | "priority";
 
 // Header names as they appear in the sheet (compared after normalizeText).
 const HEADERS: Record<SheetField, string[]> = {
@@ -25,7 +25,11 @@ const HEADERS: Record<SheetField, string[]> = {
   assignee: ["nosilec"],
   type: ["tip taska"],
   deadline: ["deadline"],
+  priority: ["priority", "prioriteta", "prio", "nujnost"],
 };
+
+/** The header the sync writes when the sheet has no priority column yet. */
+export const PRIORITY_HEADER = "priority";
 
 /** Finds each field's column index in the header row. Only these columns are ever read. */
 export function findColumns(headerRow: Cell[]): { columns: Partial<Record<SheetField, number>>; missing: SheetField[] } {
@@ -79,6 +83,37 @@ const STATUS_TEXT: Record<TaskStatus, string> = { todo: "to do", in_progress: "i
 /** How the app writes a status into the sheet. */
 export function formatStatus(status: TaskStatus): string {
   return STATUS_TEXT[status];
+}
+
+// ---------- Priority ----------
+
+const PRIORITY_WORDS: Record<TaskPriority, string[]> = {
+  urgent: ["urgent", "high", "highest", "critical", "asap", "top", "!", "!!", "!!!", "nujno", "nujna", "nujen", "zelo nujno", "visoka", "visoko", "visok", "kriticno"],
+  medium: ["medium", "med", "normal", "normalno", "normalna", "srednja", "srednje", "srednji", "obicajno", "obicajna"],
+  low: ["low", "lowest", "minor", "later", "nizka", "nizko", "nizek", "ni nujno", "manj nujno", "kasneje"],
+};
+const PRIORITY_LOOKUP = new Map<string, TaskPriority>(
+  (Object.entries(PRIORITY_WORDS) as [TaskPriority, string[]][]).flatMap(([p, words]) => words.map((w) => [w, p])),
+);
+
+/**
+ * Maps a sheet priority, also "high"/"nujno"/"srednja"/"nizka" and the like, with or without the word
+ * "priority"/"prioriteta". Empty or unrecognised gives null: the app keeps (and writes back) its own.
+ */
+export function mapPriority(raw: Cell): { priority: TaskPriority | null; recognised: boolean } {
+  const key = normalizeText(raw)
+    .replace(/[-_/]+/g, " ")
+    .replace(/\b(priority|prioriteta|prioriteto|prio)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!key) return { priority: null, recognised: !normalizeText(raw) };
+  const priority = PRIORITY_LOOKUP.get(key);
+  return priority ? { priority, recognised: true } : { priority: null, recognised: false };
+}
+
+/** How the app writes a priority into the sheet: "urgent", "medium" or "low". */
+export function formatPriority(priority: TaskPriority): string {
+  return priority;
 }
 
 // ---------- Assignee ----------

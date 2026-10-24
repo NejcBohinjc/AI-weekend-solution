@@ -85,6 +85,13 @@
       "when": 1792856014375,
       "tag": "0011_thick_nemesis",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792866378242,
+      "tag": "0012_closed_stranger",
+      "breakpoints": true
     }
   ]
 }

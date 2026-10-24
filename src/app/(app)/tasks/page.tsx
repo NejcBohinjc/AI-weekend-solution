@@ -1,13 +1,14 @@
 import { and, asc, desc, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import Link from "next/link";
 import { after } from "next/server";
-import { AiBadge, DepartmentBadge, DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
+import { AiBadge, DepartmentBadge, DueDate, PriorityBadge, StatusBadge, TypeBadge } from "@/components/task-badges";
 import { db } from "@/db";
 import { departments, members, projects, tasks, taskSyncs } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
-import { STATUS_LABELS, TASK_STATUSES, TASK_TYPES, type TaskStatus } from "@/lib/tasks/constants";
+import { emailSettings } from "@/lib/email";
+import { PRIORITY_LABELS, STATUS_LABELS, TASK_PRIORITIES, TASK_STATUSES, TASK_TYPES, type TaskPriority, type TaskStatus } from "@/lib/tasks/constants";
 import { canEditTask } from "@/lib/tasks/permissions";
-import { myTasksCondition } from "@/lib/tasks/queries";
+import { myTasksCondition, priorityOrder, taskReminderSettingsFor } from "@/lib/tasks/queries";
 import { sheetState } from "@/lib/tasks/sheet-state";
 import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { runTasksSyncQuietly, type SyncReport } from "@/lib/tasks/sheet-sync";
@@ -15,8 +16,9 @@ import { tasksSyncStatus } from "@/lib/tasks/sync-status";
 import { finishTaskAction } from "./actions";
 import { SyncReportPanel } from "./sync-panel";
 import { SyncStatus } from "./sync-status";
+import { TaskReminderSettingsForm } from "./task-reminder-settings-form";
 
-type Search = { view?: string; type?: string; status?: string; deleted?: string };
+type Search = { view?: string; type?: string; status?: string; priority?: string; deleted?: string };
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<Search> }) {
   const [me, sp] = await Promise.all([requireMember(), searchParams]);
@@ -24,6 +26,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   after(runTasksSyncQuietly);
   const view = sp.view === "all" ? "all" : "mine";
   const status = TASK_STATUSES.includes(sp.status as TaskStatus) ? (sp.status as TaskStatus) : undefined;
+  const priority = TASK_PRIORITIES.includes(sp.priority as TaskPriority) ? (sp.priority as TaskPriority) : undefined;
   // A type from TASK_TYPES, "none", or "other" (types typed freely in the sheet).
   const type = sp.type === "none" || sp.type === "other" || (TASK_TYPES as readonly string[]).includes(sp.type ?? "") ? sp.type : undefined;
   const listedTypes = sql.join(TASK_TYPES.map((t) => sql`${t.toLowerCase()}`), sql`, `);
@@ -31,11 +34,12 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const where: SQL[] = [isNull(tasks.deletedAt)];
   if (view === "mine") where.push(myTasksCondition(me));
   if (status) where.push(eq(tasks.status, status));
+  if (priority) where.push(eq(tasks.priority, priority));
   if (type === "none") where.push(isNull(tasks.type));
   else if (type === "other") where.push(isNotNull(tasks.type), sql`lower(${tasks.type}) not in (${listedTypes})`);
   else if (type) where.push(sql`lower(${tasks.type}) = ${type.toLowerCase()}`);
 
-  const [rows, lastSync, syncStatus] = await Promise.all([
+  const [rows, lastSync, syncStatus, reminders] = await Promise.all([
     db
       .select({
         id: tasks.id,
@@ -43,6 +47,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         status: tasks.status,
         type: tasks.type,
         dueDate: tasks.dueDate,
+        priority: tasks.priority,
         assigneeRaw: tasks.assigneeRaw,
         assigneeId: tasks.assigneeId,
         departmentId: tasks.departmentId,
@@ -62,7 +67,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       .leftJoin(departments, eq(tasks.departmentId, departments.id))
       .leftJoin(projects, eq(tasks.projectId, projects.id))
       .where(and(...where))
-      .orderBy(sql`${tasks.status} = 'done'`, sql`${tasks.dueDate} asc nulls last`, asc(tasks.title)),
+      // Open tasks first, most pressing priority first, then the soonest due date; finished ones last.
+      .orderBy(sql`${tasks.status} = 'done'`, sql`case when ${tasks.status} = 'done' then 0 else ${priorityOrder} end`, sql`${tasks.dueDate} asc nulls last`, asc(tasks.title)),
     me.isAdmin
       ? db
           .select({ report: taskSyncs.report, by: members.name })
@@ -72,10 +78,11 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           .limit(1)
       : Promise.resolve([]),
     tasksSyncStatus(),
+    taskReminderSettingsFor(me.id),
   ]);
   const today = todayInLjubljana();
   const href = (patch: Search) => {
-    const params = new URLSearchParams(Object.entries({ view, type, status, ...patch }).filter(([, v]) => v) as [string, string][]);
+    const params = new URLSearchParams(Object.entries({ view, type, status, priority, ...patch }).filter(([, v]) => v) as [string, string][]);
     if (params.get("view") === "mine") params.delete("view");
     const qs = params.toString();
     return qs ? `/tasks?${qs}` : "/tasks";
@@ -143,6 +150,16 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             Other types
           </Chip>
         </FilterRow>
+        <FilterRow label="Priority">
+          <Chip href={href({ priority: "" })} active={!priority}>
+            Any
+          </Chip>
+          {TASK_PRIORITIES.map((p) => (
+            <Chip key={p} href={href({ priority: p })} active={priority === p}>
+              {PRIORITY_LABELS[p]}
+            </Chip>
+          ))}
+        </FilterRow>
         <FilterRow label="Status">
           <Chip href={href({ status: "" })} active={!status}>
             Any
@@ -158,7 +175,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       {rows.length === 0 ? (
         <p className="rounded-xl border border-dashed border-line-strong bg-surface px-4 py-8 text-center text-sm text-subtle">
           {view === "mine" ? "No tasks assigned to you" : "No tasks"}
-          {type || status ? " with these filters." : "."}
+          {type || status || priority ? " with these filters." : "."}
         </p>
       ) : (
         <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm" data-testid="task-list">
@@ -168,6 +185,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                 <span className={`font-medium ${t.status === "done" ? "text-subtle line-through" : ""}`}>{t.title}</span>
                 <span className="flex flex-wrap items-center gap-2">
                   <StatusBadge status={t.status} />
+                  {t.status !== "done" && <PriorityBadge priority={t.priority} />}
                   {t.createdByAi && <AiBadge confirmed={!!t.aiConfirmedAt} />}
                   {t.createdByAi && !t.aiConfirmedAt && t.assigneeId === me.id && (
                     <span className="text-xs font-semibold text-violet">Review</span>
@@ -207,6 +225,11 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           ))}
         </ul>
       )}
+
+      <div className="flex flex-col gap-2">
+        <h2 className="font-semibold">Deadline reminders</h2>
+        <TaskReminderSettingsForm email={me.email} enabled={reminders.enabled} daysBefore={reminders.daysBefore} sending={emailSettings().sending} />
+      </div>
     </section>
   );
 }
@@ -214,7 +237,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 overflow-x-auto">
-      <span className="w-12 shrink-0 text-xs font-semibold uppercase tracking-wide text-subtle">{label}</span>
+      <span className="w-16 shrink-0 text-xs font-semibold uppercase tracking-wide text-subtle">{label}</span>
       {children}
     </div>
   );

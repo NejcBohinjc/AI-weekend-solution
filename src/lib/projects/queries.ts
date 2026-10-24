@@ -19,6 +19,7 @@ export async function projectsOverview() {
         status: tasks.status,
         dueDate: tasks.dueDate,
         projectId: tasks.projectId,
+        priority: tasks.priority,
         assigneeName: members.name,
         departmentName: departments.name,
         createdByAi: tasks.createdByAi,

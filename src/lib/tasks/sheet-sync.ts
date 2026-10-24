@@ -13,18 +13,21 @@
 //
 // Deleted tasks (tasks.deleted_at): their row is deleted from the sheet; never re-added or re-imported.
 //
-// Scope: only the tasks tab is opened. Only row 1 (header names) and the six mapped columns are read,
+// Scope: only the tasks tab is opened. Only row 1 (header names) and the seven mapped columns are read,
 // and only those cells are written, so other columns (e.g. Geslo) are never read or written.
 //
 // Departments: "nosilec" holds one person or a whole department ("Tech"). assignee_id and
 // department_id share that cell, so they are merged together as one value (never both set).
+//
+// Priority: a "priority" column is added after the last header if the sheet has none. An empty or
+// unreadable priority cell is not a change from the sheet: the app's priority is written into it.
 import { randomBytes } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { departments, members, taskEvents, tasks, taskSyncs, type Task, type TaskSheetSnapshot } from "@/db/schema";
 import { columnLetter, describeGoogleError, openTab, plainText, type Cell, type SheetsApi } from "@/lib/google/sheets";
 import { acquireSync, finishSync } from "@/lib/sync-state";
-import { STATUS_LABELS, type TaskStatus } from "./constants";
+import { DEFAULT_PRIORITY, PRIORITY_LABELS, STATUS_LABELS, type TaskPriority, type TaskStatus } from "./constants";
 import {
   buildRowKeys,
   detectAssigneeStyle,
@@ -32,11 +35,14 @@ import {
   findIdColumn,
   formatAssignee,
   formatDeadline,
+  formatPriority,
   formatStatus,
+  mapPriority,
   mapStatus,
   matchOwner,
   normalizeType,
   parseDeadline,
+  PRIORITY_HEADER,
   todayInLjubljana,
   type DepartmentRef,
   type MemberRef,
@@ -93,7 +99,7 @@ export function emptyReport(at = new Date()): SyncReport {
   };
 }
 
-const FIELDS = ["title", "status", "assigneeId", "departmentId", "type", "dueDate"] as const;
+const FIELDS = ["title", "status", "assigneeId", "departmentId", "type", "dueDate", "priority"] as const;
 type Field = (typeof FIELDS)[number];
 const COLUMN_OF: Record<Field, SheetField> = {
   title: "title",
@@ -102,15 +108,16 @@ const COLUMN_OF: Record<Field, SheetField> = {
   departmentId: "assignee",
   type: "type",
   dueDate: "deadline",
+  priority: "priority",
 };
 // Merged as one: fields in a unit share a sheet cell, so they change together or not at all.
-const UNITS: Field[][] = [["title"], ["status"], ["assigneeId", "departmentId"], ["type"], ["dueDate"]];
+const UNITS: Field[][] = [["title"], ["status"], ["assigneeId", "departmentId"], ["type"], ["dueDate"], ["priority"]];
 
 const isEmpty = (c: Cell) => c === undefined || c === null || String(c).trim() === "";
 const rawText = (c: Cell) => (isEmpty(c) ? null : String(c).trim());
 const cleanTitle = (c: Cell) => String(c).replace(/\s+/g, " ").trim();
 const newKey = () => `t-${randomBytes(5).toString("hex")}`;
-// Snapshots from before departments have no departmentId: read it as null.
+// Snapshots from before departments (or priorities) have no departmentId (priority): read it as null.
 const pick = (t: TaskSheetSnapshot): TaskSheetSnapshot => ({
   title: t.title,
   status: t.status,
@@ -118,6 +125,7 @@ const pick = (t: TaskSheetSnapshot): TaskSheetSnapshot => ({
   departmentId: t.departmentId ?? null,
   type: t.type,
   dueDate: t.dueDate,
+  priority: t.priority ?? null,
 });
 
 type SheetRow = { row: number; key: string | null; cells: Record<SheetField, Cell> };
@@ -142,12 +150,17 @@ export async function syncTasks({
   // ---- Read: header names, then only our columns ----
   const header = (await tab.get("1:1"))[0] ?? [];
   const { columns, missing } = findColumns(header);
-  report.missingColumns = missing;
+  report.missingColumns = missing.filter((f) => f !== "priority");
   if (columns.title === undefined) throw new Error(`Tab "${tab.tab}" has no "task" column in its first row.`);
+  let nextFree = header.length; // the first free column after the last header
   let idCol = findIdColumn(header);
   if (idCol < 0) {
-    idCol = header.length; // the first free column after the last header
+    idCol = nextFree++;
     await tab.write(`${columnLetter(idCol)}1`, [["id"]]);
+  }
+  if (columns.priority === undefined) {
+    columns.priority = nextFree++;
+    await tab.write(`${columnLetter(columns.priority)}1`, [[PRIORITY_HEADER]]);
   }
   const fields = Object.keys(columns) as SheetField[];
   const ranges = [...fields.map((f) => columns[f]!), idCol].map((c) => `${columnLetter(c)}2:${columnLetter(c)}`);
@@ -178,6 +191,7 @@ export async function syncTasks({
     departmentId: (v) => (v ? (departmentNames.get(v as number) ?? `#${v}`) : null),
     type: (v) => (v as string) ?? null,
     dueDate: (v) => (v as string) ?? null,
+    priority: (v) => (v ? PRIORITY_LABELS[v as TaskPriority] : null),
   };
   /** The sheet text of a field; "nosilec" is the person (written in the sheet's style) or the department name. */
   const cellFor = (f: Field, t: TaskSheetSnapshot): Cell => {
@@ -198,6 +212,8 @@ export async function syncTasks({
         return t.type ? plainText(t.type) : "";
       case "dueDate":
         return t.dueDate ? formatDeadline(t.dueDate) : "";
+      case "priority":
+        return formatPriority(t.priority ?? DEFAULT_PRIORITY);
     }
   };
   const writable = (f: Field) => columns[COLUMN_OF[f]] !== undefined;
@@ -238,6 +254,11 @@ export async function syncTasks({
     const status = mapStatus(r.cells.status);
     if (!status.recognised) report.warnings.push({ ...ref, message: `unknown status "${rawText(r.cells.status)}", read as To do` });
     const owner = matchOwner(r.cells.assignee, memberRefs, departmentRefs);
+    const priority = mapPriority(r.cells.priority);
+    if (!priority.recognised) {
+      const kept = current ? `kept ${PRIORITY_LABELS[current.priority]}` : `set to ${PRIORITY_LABELS[DEFAULT_PRIORITY]}`;
+      report.warnings.push({ ...ref, message: `unknown priority "${rawText(r.cells.priority)}", ${kept}` });
+    }
     const deadline = parseDeadline(r.cells.deadline, today);
     if (deadline.error) {
       const kept = current?.dueDate ? "kept the app's due date" : "left empty";
@@ -251,6 +272,8 @@ export async function syncTasks({
       type: normalizeType(r.cells.type),
       // An unreadable deadline never wipes a due date the app already has.
       dueDate: deadline.error ? (current?.dueDate ?? null) : deadline.date,
+      // Null when the cell is empty or unreadable: the app's priority is written into it.
+      priority: priority.priority,
     };
     // Columns the sheet does not have keep the app's value.
     if (current) for (const f of FIELDS) if (!writable(f)) (values as Record<Field, unknown>)[f] = current[f];
@@ -285,7 +308,11 @@ export async function syncTasks({
     const fromSheet: Field[] = [];
     const toSheet: Field[] = [];
     const events: NewEvent[] = [];
+    // An empty or unreadable priority cell is not a change from the sheet: the app's priority fills it.
+    const fillPriority = s.priority === null && writable("priority");
+    if (fillPriority) toSheet.push("priority");
     for (const unit of UNITS) {
+      if (fillPriority && unit[0] === "priority") continue;
       const differs = (a: TaskSheetSnapshot, b: TaskSheetSnapshot) => unit.some((f) => a[f] !== b[f]);
       const sheetChanged = differs(s, base);
       const appChanged = differs(app, base);
@@ -342,6 +369,11 @@ export async function syncTasks({
   const create = (r: SheetRow, key: string, legacyKey: string | null) => {
     const { values, raw, reportUnassigned } = mapRow(r, null);
     reportUnassigned(values);
+    if (values.priority === null) {
+      // A row typed into the sheet without a priority gets the default, written into its cell.
+      values.priority = DEFAULT_PRIORITY;
+      if (writable("priority")) writes.push({ range: cellRange("priority", r.row), values: [[formatPriority(DEFAULT_PRIORITY)]] });
+    }
     // The legacy key lets the next sync find this task if writing its key to the row fails. A copied
     // row repeats an existing legacy key, which must stay unique, so it goes without.
     creates.push({ key, legacyKey: legacyKey && !takenLegacyKeys.has(legacyKey) ? legacyKey : null, values, raw, row: r.row });
@@ -400,7 +432,15 @@ export async function syncTasks({
     for (const c of creates) {
       const [created] = await tx
         .insert(tasks)
-        .values({ ...c.values, ...c.raw, source: SHEET_SOURCE, sheetKey: c.key, sourceKey: c.legacyKey, sheetSnapshot: c.values })
+        .values({
+          ...c.values,
+          priority: c.values.priority ?? DEFAULT_PRIORITY,
+          ...c.raw,
+          source: SHEET_SOURCE,
+          sheetKey: c.key,
+          sourceKey: c.legacyKey,
+          sheetSnapshot: c.values,
+        })
         .returning({ id: tasks.id });
       await tx.insert(taskEvents).values({ taskId: created.id, actorId, source: "sheet_sync", kind: "created", newValue: `Imported from sheet row ${c.row}` });
       report.created.push({ row: c.row, title: c.values.title });

@@ -4,6 +4,7 @@ import { requireMember } from "@/lib/auth";
 import { departmentList } from "@/lib/departments";
 import { projectList } from "@/lib/projects/queries";
 import { activeMembers } from "@/lib/tasks/queries";
+import { DEFAULT_PRIORITY } from "@/lib/tasks/constants";
 import { runTasksSyncQuietly } from "@/lib/tasks/sheet-sync";
 import { createTaskAction } from "../actions";
 import { TaskForm } from "../task-form";
@@ -22,7 +23,7 @@ export default async function NewTaskPage({ searchParams }: { searchParams: Prom
       <h1 className="text-2xl font-bold tracking-tight">New task{project ? ` in ${project.name}` : ""}</h1>
       <TaskForm
         action={createTaskAction}
-        initial={{ title: "", status: "todo", owner: `m:${me.id}`, projectId: project ? String(project.id) : "", type: "", dueDate: "" }}
+        initial={{ title: "", status: "todo", priority: DEFAULT_PRIORITY, owner: `m:${me.id}`, projectId: project ? String(project.id) : "", type: "", dueDate: "" }}
         members={memberList}
         departments={departmentOptions}
         projects={projectOptions}

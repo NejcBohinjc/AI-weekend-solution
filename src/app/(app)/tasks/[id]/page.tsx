@@ -2,7 +2,7 @@ import { aliasedTable, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { after } from "next/server";
-import { AiBadge, DepartmentBadge, DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
+import { AiBadge, DepartmentBadge, DueDate, PriorityBadge, StatusBadge, TypeBadge } from "@/components/task-badges";
 import { secondaryButtonClass } from "@/components/ui";
 import { db } from "@/db";
 import { departments, meetings, members, projects, taskEvents, tasks } from "@/db/schema";
@@ -97,6 +97,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
         <h1 className="text-2xl font-bold tracking-tight">{task.title}</h1>
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <StatusBadge status={task.status} />
+          <PriorityBadge priority={task.priority} />
           {task.createdByAi && <AiBadge confirmed={!!task.aiConfirmedAt} />}
           {task.type && <TypeBadge type={task.type} />}
           {task.dueDate && <DueDate date={task.dueDate} today={todayInLjubljana()} done={task.status === "done"} />}
@@ -201,6 +202,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
             initial={{
               title: task.title,
               status: task.status,
+              priority: task.priority,
               owner: ownerValue(task),
               projectId: task.projectId ? String(task.projectId) : "",
               // "marketing" from the sheet shows as the list's "Marketing"; other values stay as they are.

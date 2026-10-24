@@ -1,20 +1,24 @@
 // Groups tasks under their projects for the projects overview. Pure, so it is unit-tested
 // (overview.test.ts).
-import type { TaskStatus } from "@/lib/tasks/constants";
+import { priorityRank, type TaskPriority, type TaskStatus } from "@/lib/tasks/constants";
 
-export type OverviewTask = { id: number; title: string; status: TaskStatus; dueDate: string | null; projectId: number | null };
+export type OverviewTask = { id: number; title: string; status: TaskStatus; dueDate: string | null; projectId: number | null; priority?: TaskPriority };
 export type ProjectGroup<T extends OverviewTask> = {
   project: { id: number; name: string; description: string | null } | null; // null: tasks without a project
   tasks: T[];
   unfinished: number;
 };
 
-/** Unfinished first (soonest due date first, no date last, then by title), finished at the end. */
+/**
+ * Unfinished first (most pressing priority first, then soonest due date, no date last, then by title),
+ * finished at the end.
+ */
 export function sortTasks<T extends OverviewTask>(tasks: T[]): T[] {
   return [...tasks].sort((a, b) => {
     const doneA = a.status === "done" ? 1 : 0;
     const doneB = b.status === "done" ? 1 : 0;
     if (doneA !== doneB) return doneA - doneB;
+    if (!doneA && a.priority !== b.priority) return priorityRank(a.priority) - priorityRank(b.priority);
     if (a.dueDate !== b.dueDate) return a.dueDate === null ? 1 : b.dueDate === null ? -1 : a.dueDate.localeCompare(b.dueDate);
     return a.title.localeCompare(b.title);
   });

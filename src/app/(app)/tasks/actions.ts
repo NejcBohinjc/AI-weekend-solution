@@ -6,23 +6,24 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
-import { departments, members, projects, taskEvents, tasks, type Task } from "@/db/schema";
+import { departments, members, projects, reminderSettings, taskEvents, tasks, type Task } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
-import { STATUS_LABELS, TASK_STATUSES, TASK_TYPES } from "@/lib/tasks/constants";
+import { PRIORITY_LABELS, STATUS_LABELS, TASK_PRIORITIES, TASK_REMINDER_OPTIONS, TASK_STATUSES, TASK_TYPES } from "@/lib/tasks/constants";
 import { parseOwner } from "@/lib/tasks/owner";
 import { canConfirmAiTask, canDeleteAiTask, canEditTask, canTakeTask } from "@/lib/tasks/permissions";
 import { runTasksSync } from "@/lib/tasks/sheet-sync";
 
-type Field = "title" | "status" | "assigneeId" | "departmentId" | "projectId" | "type" | "dueDate";
+type Field = "title" | "status" | "assigneeId" | "departmentId" | "projectId" | "type" | "dueDate" | "priority";
 
 /** owner: "m:<member id>", "d:<department id>" or "" (see lib/tasks/owner.ts). */
-export type TaskFormValues = { title: string; status: string; owner: string; projectId: string; type: string; dueDate: string };
-const FORM_FIELDS = ["title", "status", "owner", "projectId", "type", "dueDate"] as const;
+export type TaskFormValues = { title: string; status: string; priority: string; owner: string; projectId: string; type: string; dueDate: string };
+const FORM_FIELDS = ["title", "status", "priority", "owner", "projectId", "type", "dueDate"] as const;
 export type TaskFormState = { error?: string; saved?: boolean; values?: TaskFormValues };
 
 const schema = z.object({
   title: z.string().trim().min(1, "Give the task a title.").max(200, "Use at most 200 characters."),
   status: z.enum(TASK_STATUSES),
+  priority: z.enum(TASK_PRIORITIES, "Pick a priority from the list."),
   owner: z.string().max(20),
   projectId: z.string().regex(/^\d*$/, "Pick a project from the list."),
   type: z.string().max(60),
@@ -75,6 +76,7 @@ async function parse(formData: FormData, currentType: string | null = null): Pro
     data: {
       title: parsed.data.title.replace(/\s+/g, " "),
       status: parsed.data.status,
+      priority: parsed.data.priority,
       ...owner,
       projectId,
       type,
@@ -105,6 +107,7 @@ async function applyChanges(task: Task, next: Partial<Pick<Task, Field>>, actorI
   const show = (f: Field, v: unknown): string | null => {
     if (v === null || v === undefined) return null;
     if (f === "status") return STATUS_LABELS[v as Task["status"]];
+    if (f === "priority") return PRIORITY_LABELS[v as Task["priority"]];
     if (f === "assigneeId") return names.get(v as number) ?? null;
     if (f === "departmentId") return departmentNames.get(v as number) ?? null;
     if (f === "projectId") return projectNames.get(v as number) ?? null;
@@ -195,7 +198,23 @@ export async function finishTaskAction(taskId: number): Promise<void> {
   refresh(taskId);
 }
 
-export type SyncNowState = { ran?: boolean; ok?: boolean; summary?: string; error?: string } | null;
+export type TaskReminderSettingsState = { saved?: boolean };
+
+/** A member's deadline reminders: on/off and which days before the due date. */
+export async function saveTaskReminderSettingsAction(_prev: TaskReminderSettingsState, formData: FormData): Promise<TaskReminderSettingsState> {
+  const me = await requireMember();
+  const allowed = new Set(TASK_REMINDER_OPTIONS.map((o) => o.days));
+  const taskDaysBefore = [...new Set(formData.getAll("daysBefore").map(Number))].filter((d) => allowed.has(d)).sort((a, b) => b - a);
+  const taskEmailEnabled = formData.get("enabled") === "on";
+  await db
+    .insert(reminderSettings)
+    .values({ memberId: me.id, taskEmailEnabled, taskDaysBefore })
+    .onConflictDoUpdate({ target: reminderSettings.memberId, set: { taskEmailEnabled, taskDaysBefore, updatedAt: new Date() } });
+  revalidatePath("/tasks");
+  return { saved: true };
+}
+
+export type SyncNowState ={ ran?: boolean; ok?: boolean; summary?: string; error?: string } | null;
 
 /** "Sync now", for every member. Admins get the error text; the full report is on the tasks page. */
 export async function syncNowAction(_prev: SyncNowState): Promise<SyncNowState> {

@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { errorClass, inputClass, labelClass, primaryButtonClass } from "@/components/ui";
-import { STATUS_LABELS, TASK_STATUSES, TASK_TYPES } from "@/lib/tasks/constants";
+import { PRIORITY_LABELS, STATUS_LABELS, TASK_PRIORITIES, TASK_STATUSES, TASK_TYPES } from "@/lib/tasks/constants";
 import type { TaskFormState, TaskFormValues } from "./actions";
 
 type Props = {
@@ -67,6 +67,16 @@ export function TaskForm({ action, initial, members, departments, projects, subm
             {TASK_STATUSES.map((s) => (
               <option key={s} value={s}>
                 {STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>Priority</span>
+          <select name="priority" defaultValue={values.priority} className={inputClass}>
+            {TASK_PRIORITIES.map((p) => (
+              <option key={p} value={p}>
+                {PRIORITY_LABELS[p]}
               </option>
             ))}
           </select>

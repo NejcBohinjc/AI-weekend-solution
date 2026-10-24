@@ -23,7 +23,7 @@ import {
   RECORDING_SOURCES,
   RECORDING_STATUSES,
 } from "../lib/meetings/constants";
-import { TASK_STATUSES } from "../lib/tasks/constants";
+import { DEFAULT_PRIORITY, DEFAULT_TASK_REMINDER_DAYS, TASK_PRIORITIES, TASK_STATUSES } from "../lib/tasks/constants";
 import { TIERS } from "../lib/tiers"; // relative: drizzle-kit does not resolve the @/ alias
 
 export { TIER_HOURS, TIERS, type Tier } from "../lib/tiers";
@@ -135,6 +135,7 @@ export const tasks = pgTable(
     projectId: integer("project_id").references(() => projects.id, { onDelete: "set null" }),
     type: text("type"), // normalised label, e.g. "marketing"
     dueDate: date("due_date"), // calendar date in Europe/Ljubljana
+    priority: text("priority", { enum: TASK_PRIORITIES }).notNull().default(DEFAULT_PRIORITY),
     createdById: integer("created_by_id").references(() => members.id, { onDelete: "set null" }),
     // Where the task came from: "app" or "gsheet".
     source: text("source").notNull().default("app"),
@@ -183,6 +184,9 @@ export type TaskSheetSnapshot = {
   departmentId?: number | null;
   type: string | null;
   dueDate: string | null;
+  // Null: the sheet's priority cell was empty or unreadable (the sync then writes the app's value).
+  // Missing in snapshots from before priorities existed: read it as null.
+  priority?: (typeof TASK_PRIORITIES)[number] | null;
 };
 
 // Task history: one row per creation or per changed field. actorId null means the sheet sync did it.
@@ -323,6 +327,9 @@ export const reminderSettings = pgTable("reminder_settings", {
     .references(() => members.id, { onDelete: "cascade" }),
   emailEnabled: boolean("email_enabled").notNull().default(true),
   minutesBefore: integer("minutes_before").array().notNull().default(DEFAULT_REMINDER_MINUTES),
+  // Task deadline reminders: on/off and the days before the due date (0 = on the due day).
+  taskEmailEnabled: boolean("task_email_enabled").notNull().default(true),
+  taskDaysBefore: integer("task_days_before").array().notNull().default(DEFAULT_TASK_REMINDER_DAYS),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -357,6 +364,25 @@ export const meetingReminders = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.meetingId, t.memberId, t.minutesBefore] })],
+);
+
+// Task deadline reminders already handled, so none is sent twice. The due date is part of the key:
+// a rescheduled task gets its reminders again.
+export const taskReminders = pgTable(
+  "task_reminders",
+  {
+    taskId: integer("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    dueDate: date("due_date").notNull(),
+    daysBefore: integer("days_before").notNull(),
+    emailId: integer("email_id").references(() => emailLog.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.taskId, t.memberId, t.dueDate, t.daysBefore] })],
 );
 
 // One row per calendar import (file upload, calendar URL or seed), with the report.

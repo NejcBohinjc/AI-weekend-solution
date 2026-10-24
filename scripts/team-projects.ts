@@ -10,10 +10,10 @@
 import { and, eq, inArray, like } from "drizzle-orm";
 import { db } from "../src/db";
 import { departments, members, projects, taskEvents, tasks } from "../src/db/schema";
-import { STATUS_LABELS, type TaskStatus } from "../src/lib/tasks/constants";
+import { DEFAULT_PRIORITY, STATUS_LABELS, type TaskPriority, type TaskStatus } from "../src/lib/tasks/constants";
 
 type Owner = { email: string } | { department: "Core" | "Voice" | "Tech" } | null;
-type PlaceholderTask = { title: string; owner: Owner; status: TaskStatus; due: string | null; type: string };
+type PlaceholderTask = { title: string; owner: Owner; status: TaskStatus; due: string | null; type: string; priority?: TaskPriority };
 type TeamProject = { name: string; description: string; tasks: PlaceholderTask[] };
 
 const person = (name: string): Owner => ({ email: `${name}@sandbox.example` });
@@ -24,20 +24,20 @@ export const TEAM_PROJECTS: TeamProject[] = [
     name: "Delavnice na srednjih šolah",
     description: "Delavnice za dijake pri aktivnem državljanstvu (divergentno mišljenje, debata Shape Talk, učenje z AI) in predstavitev inštituta.",
     tasks: [
-      { title: "Dogovori novembrske termine z gimnazijami", owner: person("neza.oblak"), status: "in_progress", due: "2026-10-30", type: "Events" },
+      { title: "Dogovori novembrske termine z gimnazijami", owner: person("neza.oblak"), status: "in_progress", due: "2026-10-30", type: "Events", priority: "urgent" },
       { title: "Prilagodi delavnico o učenju z AI za 1. letnike", owner: dept("Tech"), status: "todo", due: "2026-11-06", type: "Content" },
       { title: "Pripravi predstavitev inštituta za dijake", owner: dept("Voice"), status: "verification", due: "2026-10-27", type: "Marketing" },
       { title: "Izvedi delavnico divergentnega mišljenja", owner: person("aljaz.hribar"), status: "todo", due: "2026-11-12", type: "Events" },
-      { title: "Zberi povratne informacije profesorjev", owner: null, status: "todo", due: null, type: "Other" },
+      { title: "Zberi povratne informacije profesorjev", owner: null, status: "todo", due: null, type: "Other", priority: "low" },
     ],
   },
   {
     name: "Shape Talk",
     description: "Moderirane debate za mlade o družbeno pomembnih temah, z aplikacijo za glasovanje, skupnostjo na Discordu in povzetki na Substacku.",
     tasks: [
-      { title: "Izberi temo in napiši trditve za novembrsko debato", owner: person("ziga.krajnc"), status: "in_progress", due: "2026-10-28", type: "Content" },
+      { title: "Izberi temo in napiši trditve za novembrsko debato", owner: person("ziga.krajnc"), status: "in_progress", due: "2026-10-28", type: "Content", priority: "urgent" },
       { title: "Dodaj glasovanje v živo v aplikacijo", owner: dept("Tech"), status: "todo", due: "2026-11-10", type: "Other" },
-      { title: "Objavi tedensko vprašanje na Discordu", owner: dept("Voice"), status: "todo", due: "2026-10-26", type: "Marketing" },
+      { title: "Objavi tedensko vprašanje na Discordu", owner: dept("Voice"), status: "todo", due: "2026-10-26", type: "Marketing", priority: "urgent" },
       { title: "Napiši povzetek zadnje debate za Substack", owner: person("matic.kos"), status: "done", due: "2026-10-20", type: "Content" },
       { title: "Rezerviraj dvorano za večerni dogodek", owner: person("ana.kovac"), status: "verification", due: "2026-10-23", type: "Events" },
     ],
@@ -47,10 +47,10 @@ export const TEAM_PROJECTS: TeamProject[] = [
     description: "Brezplačna večdnevna podjetniška šola z nočitvami: predavanja, delavnice in ekipe, ki z mentorjem razvijejo idejo do predstavitve žiriji.",
     tasks: [
       { title: "Sestavi seznam predavateljev za poletno šolo 2027", owner: dept("Core"), status: "todo", due: "2027-01-31", type: "Events" },
-      { title: "Poišči lokacijo z nočitvami", owner: person("luka.novak"), status: "in_progress", due: "2026-12-15", type: "Events" },
+      { title: "Poišči lokacijo z nočitvami", owner: person("luka.novak"), status: "in_progress", due: "2026-12-15", type: "Events", priority: "urgent" },
       { title: "Pripravi proračun poletne šole", owner: person("maja.horvat"), status: "todo", due: "2026-11-30", type: "Finance" },
-      { title: "Pripravi prijavnico za udeležence", owner: dept("Tech"), status: "todo", due: "2027-02-15", type: "Other" },
-      { title: "Zberi mentorje za ekipe", owner: null, status: "todo", due: null, type: "Other" },
+      { title: "Pripravi prijavnico za udeležence", owner: dept("Tech"), status: "todo", due: "2027-02-15", type: "Other", priority: "low" },
+      { title: "Zberi mentorje za ekipe", owner: null, status: "todo", due: null, type: "Other", priority: "low" },
     ],
   },
   {
@@ -59,8 +59,8 @@ export const TEAM_PROJECTS: TeamProject[] = [
     tasks: [
       { title: "Povabi gosta za decembrsko predavanje", owner: person("eva.vidmar"), status: "in_progress", due: "2026-11-05", type: "Events" },
       { title: "Pripravi vprašanja za moderiran pogovor", owner: person("sara.mlakar"), status: "todo", due: "2026-11-20", type: "Content" },
-      { title: "Zmontiraj kratek video z oktobrskega dogodka", owner: dept("Voice"), status: "todo", due: "2026-10-29", type: "Marketing" },
-      { title: "Organiziraj delavnico o projektnem vodenju za člane", owner: dept("Core"), status: "todo", due: "2026-12-03", type: "Events" },
+      { title: "Zmontiraj kratek video z oktobrskega dogodka", owner: dept("Voice"), status: "todo", due: "2026-10-29", type: "Marketing", priority: "urgent" },
+      { title: "Organiziraj delavnico o projektnem vodenju za člane", owner: dept("Core"), status: "todo", due: "2026-12-03", type: "Events", priority: "low" },
       { title: "Preveri mikrofone in kamere pred dogodkom", owner: dept("Tech"), status: "done", due: "2026-10-22", type: "Other" },
     ],
   },
@@ -144,7 +144,7 @@ export async function addTeamProjects(): Promise<{ projects: number; tasks: numb
         const createdAt = doneAt ? new Date(doneAt.getTime() - 14 * 86_400_000) : new Date();
         const [task] = await tx
           .insert(tasks)
-          .values({ title: t.title, status: t.status, assigneeId, departmentId, projectId, type: t.type, dueDate: t.due, source: "app", createdAt })
+          .values({ title: t.title, status: t.status, priority: t.priority ?? DEFAULT_PRIORITY, assigneeId, departmentId, projectId, type: t.type, dueDate: t.due, source: "app", createdAt })
           .returning({ id: tasks.id });
         await tx
           .insert(taskEvents)

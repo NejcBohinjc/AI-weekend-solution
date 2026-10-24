@@ -21,6 +21,18 @@ test("tasks: unfinished first by due date (none last), finished at the end", () 
   assert.deepEqual(sorted.map((x) => x.title), ["Sooner", "Later", "Also no date", "No date", "Done early"]);
 });
 
+test("tasks: unfinished by priority first (urgent, medium, low), then by due date", () => {
+  const sorted = sortTasks([
+    { ...t(1, "Low soon", "todo", "2026-10-26", 1), priority: "low" },
+    { ...t(2, "Medium later", "todo", "2026-11-20", 1), priority: "medium" },
+    { ...t(3, "Urgent no date", "todo", null, 1), priority: "urgent" },
+    { ...t(4, "Urgent soon", "in_progress", "2026-10-28", 1), priority: "urgent" },
+    { ...t(5, "Medium soon", "todo", "2026-10-27", 1), priority: "medium" },
+    { ...t(6, "Done urgent", "done", "2026-10-01", 1), priority: "urgent" },
+  ]);
+  assert.deepEqual(sorted.map((x) => x.title), ["Urgent soon", "Urgent no date", "Medium soon", "Medium later", "Low soon", "Done urgent"]);
+});
+
 test("groups every project (also empty ones) and puts tasks without a project last", () => {
   const projects = [
     { id: 1, name: "Grants", description: null },
