@@ -24,12 +24,15 @@ const members = [
   { id: 3, name: "Ana Novak", email: "anan@sandbox.example" },
 ];
 
-test("matches assignee by first name, full name or email prefix, ignoring case and diacritics", () => {
+test("matches assignee by first name, full name, email or email prefix, ignoring case and diacritics", () => {
   assert.equal(matchAssignee("ziga", members).memberId, 1);
   assert.equal(matchAssignee("ŽIGA KRAJNC", members).memberId, 1);
   assert.equal(matchAssignee("ziga.krajnc", members).memberId, 1);
   assert.equal(matchAssignee("Ana Kovac", members).memberId, 2);
   assert.equal(matchAssignee("anan", members).memberId, 3);
+  assert.equal(matchAssignee("ana.kovac@sandbox.example", members).memberId, 2);
+  assert.equal(matchAssignee(" Ana.Kovac@Sandbox.Example ", members).memberId, 2);
+  assert.deepEqual(matchAssignee("ana.kovac@other.example", members), { memberId: null, reason: "no member matches" });
 });
 
 test("leaves assignee empty unless exactly one member matches", () => {

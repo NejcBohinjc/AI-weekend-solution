@@ -72,13 +72,14 @@ export function mapStatus(raw: Cell): { status: TaskStatus; recognised: boolean 
 
 export type MemberRef = { id: number; name: string; email: string };
 
-/** Matches "nosilec" by full name, first name or email prefix. Assigns only on exactly one match. */
+/** Matches "nosilec" by full name, first name, email or email prefix. Assigns only on exactly one match. */
 export function matchAssignee(raw: Cell, members: MemberRef[]): { memberId: number | null; reason?: string } {
   const key = normalizeText(raw);
   if (!key) return { memberId: null };
   const matches = members.filter((m) => {
     const name = normalizeText(m.name);
-    return key === name || key === name.split(" ")[0] || key === normalizeText(m.email.split("@")[0]);
+    const email = normalizeText(m.email);
+    return key === name || key === name.split(" ")[0] || key === email || key === email.split("@")[0];
   });
   if (matches.length === 1) return { memberId: matches[0].id };
   if (matches.length === 0) return { memberId: null, reason: "no member matches" };
