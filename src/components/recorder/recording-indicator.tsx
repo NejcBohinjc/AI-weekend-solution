@@ -11,10 +11,15 @@ export function formatElapsed(ms: number): string {
   return s >= 3600 ? `${Math.floor(s / 3600)}:${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}` : `${Math.floor(s / 60)}:${p(s % 60)}`;
 }
 
-export function RecordingIndicator() {
+/**
+ * "pill": in the header's top row (from the sm breakpoint). "bar": a full-width strip at the bottom of
+ * the header on phones, where the top row has no room.
+ */
+export function RecordingIndicator({ variant = "pill" }: { variant?: "pill" | "bar" }) {
   const r = useRecorder();
   if (!r) return null;
   const href = (meetingId: number) => `/meetings/${meetingId}#recording`;
+  if (variant === "bar") return <RecordingBar />;
   if ((r.phase === "recording" || r.phase === "paused" || r.phase === "stopping") && r.meeting) {
     const live = r.phase === "recording";
     return (
@@ -25,7 +30,7 @@ export function RecordingIndicator() {
         title={`Recording “${r.meeting.title}”`}
       >
         <span aria-hidden className={`size-2 rounded-full ${live ? "animate-pulse bg-danger" : "bg-subtle"}`} />
-        <span className="hidden sm:inline">{r.phase === "stopping" ? "Saving" : live ? "Recording" : "Paused"}</span>
+        <span>{r.phase === "stopping" ? "Saving" : live ? "Recording" : "Paused"}</span>
         <span>{formatElapsed(r.elapsedMs)}</span>
       </Link>
     );
@@ -49,4 +54,27 @@ export function RecordingIndicator() {
     );
   }
   return null;
+}
+
+function RecordingBar() {
+  const r = useRecorder()!;
+  const active = (r.phase === "recording" || r.phase === "paused" || r.phase === "stopping") && r.meeting;
+  const text = active
+    ? `${r.phase === "stopping" ? "Saving" : r.phase === "recording" ? "Recording" : "Paused"} ${formatElapsed(r.elapsedMs)} · ${r.meeting!.title}`
+    : r.phase === "importing"
+      ? "Importing an audio file…"
+      : r.queued > 0
+        ? `Uploading ${r.queued} ${r.queued === 1 ? "part" : "parts"} of a recording: keep this page open`
+        : r.interrupted.length > 0
+          ? "Unfinished recording: finish uploading it"
+          : null;
+  if (!text) return null;
+  const meetingId = active ? r.meeting!.id : r.interrupted[0]?.meetingId;
+  const tone = active && r.phase === "recording" ? "bg-danger-solid text-on-primary" : r.interrupted.length && !active && !r.queued ? "bg-warning-bg text-warning" : "bg-surface-3 text-fg-2";
+  return (
+    <Link href={meetingId ? `/meetings/${meetingId}#recording` : "#"} data-testid="recording-bar" className={`flex items-center gap-2 px-4 py-1.5 text-sm font-semibold tabular-nums ${tone}`}>
+      {active && r.phase === "recording" && <span aria-hidden className="size-2 animate-pulse rounded-full bg-on-primary" />}
+      <span className="truncate">{text}</span>
+    </Link>
+  );
 }

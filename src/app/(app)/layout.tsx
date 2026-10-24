@@ -39,7 +39,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {APP_NAME}
           </Link>
           <div className="ml-auto flex min-w-0 items-center gap-2">
-            {member.isAdmin && <RecordingIndicator />}
+            {member.isAdmin && (
+              <span className="hidden sm:flex">
+                <RecordingIndicator />
+              </span>
+            )}
             <span className="hidden truncate text-sm text-fg-2 sm:inline">{member.name}</span>
             {/* On phones the admin nav row already says ADMIN; the badge would push "Log out" off-screen. */}
             {member.isAdmin && (
@@ -68,6 +72,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </div>
           )}
         </nav>
+        {member.isAdmin && (
+          <div className="sm:hidden">
+            <RecordingIndicator variant="bar" />
+          </div>
+        )}
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         <UndoToastProvider>{children}</UndoToastProvider>

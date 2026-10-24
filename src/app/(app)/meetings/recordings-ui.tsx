@@ -238,7 +238,7 @@ function Transcription({ rec, meetingId, transcribeReady }: { rec: RecordingView
       )}
       {rec.transcribedSeconds > 0 && (
         <p className="text-xs text-subtle" data-testid="usage">
-          Usage: {Math.round(rec.transcribedSeconds / 60)} min of audio transcribed{rec.transcribeModel ? ` with ${rec.transcribeModel}` : ""}. (Only admins see this.)
+          Usage: {formatDuration(rec.transcribedSeconds * 1000)} of audio transcribed{rec.transcribeModel ? ` with ${rec.transcribeModel}` : ""} (retries count again). Only admins see this.
         </p>
       )}
       {error && <p className={errorClass}>{error}</p>}
