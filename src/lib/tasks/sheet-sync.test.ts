@@ -117,6 +117,20 @@ describe("two-way tasks sync", { skip: !local && "needs a local DATABASE_URL (it
     assert.equal(report.unassigned.length, 0, "no longer unassigned");
   });
 
+  test("verifikacija syncs both ways and is not an unknown status", async () => {
+    const objava = await taskBy("Objava na IG");
+    await db.update(tasks).set({ status: "verification" }).where(eq(tasks.id, objava.id));
+    let report = await sync();
+    assert.equal(rowOf("Objava na IG")[1], "verifikacija", "app -> sheet");
+
+    const r = rows().findIndex((x) => x[0] === "Plakat");
+    sheets.tabs.get(TAB)!.grid[r][1] = "Verifikacija";
+    report = await sync();
+    assert.equal((await taskBy("Plakat")).status, "verification", "sheet -> app");
+    assert.ok(!report.warnings.some((w) => w.message.includes("unknown status")), JSON.stringify(report.warnings));
+    assert.equal((await sync()).unchanged, 3, "stable afterwards");
+  });
+
   test("a task created in the app is appended once with its key", async () => {
     const [created] = await db
       .insert(tasks)

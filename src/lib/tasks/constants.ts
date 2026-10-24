@@ -1,11 +1,12 @@
 // Shared task constants, safe to import from client components.
 // In workflow order. "verification": done by the assignee, waiting for someone to check it.
+// Only "done" counts as finished; every other status (including verification) is open.
 export const TASK_STATUSES = ["todo", "in_progress", "verification", "done"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: "To do",
   in_progress: "In progress",
-  verification: "Verification",
+  verification: "Verifikacija",
   done: "Done",
 };
 

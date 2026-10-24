@@ -90,3 +90,9 @@ test("every status the app writes to the sheet reads back as the same status", (
   for (const status of TASK_STATUSES) assert.deepEqual(mapStatus(formatStatus(status)), { status, recognised: true }, status);
   assert.equal(formatStatus("verification"), "verifikacija");
 });
+
+test("verifikacija and its variants are a known status, never an \"unknown status\" warning", () => {
+  for (const s of ["verifikacija", "Verifikacija", "verification", "v verifikaciji", "preverjanje", "Preverjanje "]) {
+    assert.deepEqual(mapStatus(s), { status: "verification", recognised: true }, s);
+  }
+});
