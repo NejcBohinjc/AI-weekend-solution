@@ -1,7 +1,10 @@
+import { and, count, eq, ne } from "drizzle-orm";
 import Link from "next/link";
 import { TierBadge } from "@/components/badges";
 import { WeekProgress } from "@/components/hours";
 import { AttendanceBadge, meetingWhen, SeriesBadge } from "@/components/meetings";
+import { db } from "@/db";
+import { tasks } from "@/db/schema";
 import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
 import { memberWeek } from "@/lib/hours/queries";
@@ -27,7 +30,11 @@ export default async function DashboardPage() {
   syncCalendarInBackground();
   const firstName = member.name.split(" ")[0];
   const now = new Date();
-  const [week, meetings] = await Promise.all([memberWeek(member.id, weekStartOf(now), now), myMeetings(member.id)]);
+  const [week, meetings, [openTasks]] = await Promise.all([
+    memberWeek(member.id, weekStartOf(now), now),
+    myMeetings(member.id),
+    db.select({ n: count() }).from(tasks).where(and(eq(tasks.assigneeId, member.id), ne(tasks.status, "done"))),
+  ]);
   const confirmed = meetings.filter((r) => r.meeting.status === "confirmed");
   const happening = confirmed.filter((r) => meetingPhase(r.meeting, now) === "open");
   const next = confirmed.find((r) => meetingPhase(r.meeting, now) === "upcoming");
@@ -49,6 +56,17 @@ export default async function DashboardPage() {
         <WeekProgress totalMs={week.totalMs} targetHours={member.weeklyHours} />
         <Link href="/hours" className="self-end text-sm font-medium text-slate-600 hover:text-slate-900">
           Your hours →
+        </Link>
+      </div>
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4" data-testid="tasks-card">
+        <Link href="/tasks" className="flex flex-col hover:text-slate-700">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Your tasks</span>
+          <span className="font-semibold">
+            {openTasks.n} open {openTasks.n === 1 ? "task" : "tasks"}
+          </span>
+        </Link>
+        <Link href="/tasks/new" className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-700">
+          New task
         </Link>
       </div>
       {next && (

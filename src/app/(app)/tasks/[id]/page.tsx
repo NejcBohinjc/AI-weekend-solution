@@ -10,6 +10,7 @@ import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
 import { FIELD_LABELS } from "@/lib/tasks/constants";
 import { canEditTask } from "@/lib/tasks/permissions";
+import { sheetState } from "@/lib/tasks/sheet-state";
 import { activeMembers, taskTypes } from "@/lib/tasks/queries";
 import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { runTasksSyncQuietly } from "@/lib/tasks/sheet-sync";
@@ -42,11 +43,12 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
       .orderBy(desc(taskEvents.createdAt), desc(taskEvents.id)),
     activeMembers(),
     taskTypes(),
-    tasksSyncStatus(me.isAdmin),
+    tasksSyncStatus(),
   ]);
   if (!row) notFound();
   const { task } = row;
   const editable = canEditTask(me, task);
+  const inSheet = sheetState(task);
   const fmt = (d: Date) => d.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE });
   const fieldLabel = (f: string | null) => FIELD_LABELS[f as keyof typeof FIELD_LABELS] ?? f;
 
@@ -57,11 +59,22 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
           <Link href="/tasks" className="text-sm text-slate-500 hover:text-slate-900">
             ← Tasks
           </Link>
-          <SyncStatus initial={syncStatus} />
+          <SyncStatus initial={syncStatus} awaitSync={inSheet === "pending"} hideError={inSheet === "pending"} />
         </div>
         {created && (
           <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            Task created. It goes to the sheet in a moment.
+            Task created.
+          </p>
+        )}
+        {inSheet === "pending" && (
+          <p
+            role={syncStatus.ok === false ? "alert" : "status"}
+            className={`rounded-xl px-4 py-3 text-sm ${syncStatus.ok === false ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-700"}`}
+            data-testid="sheet-state"
+          >
+            {syncStatus.ok === false && syncStatus.error
+              ? `Not in the Google Sheet yet: the last sync failed (${syncStatus.error}). It is retried automatically; you can also press Sync now.`
+              : "Not in the Google Sheet yet. It is being written now."}
           </p>
         )}
         <h1 className="text-2xl font-bold tracking-tight">{task.title}</h1>
@@ -71,7 +84,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
           {task.dueDate && <DueDate date={task.dueDate} today={todayInLjubljana()} done={task.status === "done"} />}
           <span className="text-slate-600">{row.assigneeName ?? "Unassigned"}</span>
           {row.creatorName && <span className="text-xs text-slate-400">created by {row.creatorName}</span>}
-          {!task.inSheet && <span className="text-xs text-amber-700">no longer in the sheet</span>}
+          {inSheet === "removed" && <span className="text-xs text-amber-700">no longer in the sheet (its row was deleted there)</span>}
         </p>
         {editable && task.status !== "done" && (
           <form action={finishTaskAction.bind(null, task.id)}>

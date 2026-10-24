@@ -141,7 +141,7 @@ export async function syncNowAction(_prev: SyncNowState): Promise<SyncNowState> 
   const { ran, report } = await runTasksSync({ actorId: me.id, force: true });
   refresh();
   if (!ran || !report) return { ran: false };
-  if (!report.ok) return { ran: true, ok: false, error: me.isAdmin ? report.error : undefined };
+  if (!report.ok) return { ran: true, ok: false, error: report.error };
   const fromSheet = report.created.length + report.updated.length;
   const toSheet = report.appended.length + report.exported.length;
   return { ran: true, ok: true, summary: `${fromSheet} from the sheet, ${toSheet} to the sheet` };

@@ -17,9 +17,10 @@ function ago(iso: string, now: number): string {
 
 /**
  * "Synced 12 s ago · Sync now". The page starts a background sync when the last one is over a minute
- * old; this polls until it finishes and then refreshes the page, so the page itself never waits.
+ * old (or a task was just created or changed: `awaitSync`); this polls until it finishes and then
+ * refreshes the page, so the page itself never waits. A failed sync shows its reason.
  */
-export function SyncStatus({ initial }: { initial: TasksSyncStatus }) {
+export function SyncStatus({ initial, awaitSync = false, hideError = false }: { initial: TasksSyncStatus; awaitSync?: boolean; hideError?: boolean }) {
   const router = useRouter();
   const [status, setStatus] = useState(initial);
   const [now, setNow] = useState(() => Date.now());
@@ -32,6 +33,10 @@ export function SyncStatus({ initial }: { initial: TasksSyncStatus }) {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+  // A task was just created or changed: wait for the sync that writes it to the sheet.
+  useEffect(() => {
+    if (awaitSync) setPolling(true);
+  }, [awaitSync]);
   // "Sync now" found another sync running: wait for that one.
   useEffect(() => {
     if (result && !result.ran) setPolling(true);
@@ -81,7 +86,8 @@ export function SyncStatus({ initial }: { initial: TasksSyncStatus }) {
         </button>
       </form>
       {result?.ok && !syncing && <span className="text-slate-500">{result.summary}</span>}
-      {status.error && status.ok === false && !running && <span className="w-full text-xs text-red-700">{status.error}</span>}
+      {result?.ran === false && !running && <span className="text-slate-500">Another sync is running; showing it when done.</span>}
+      {!hideError && status.error && status.ok === false && !running && <span className="w-full text-xs text-red-700">{status.error}</span>}
     </div>
   );
 }

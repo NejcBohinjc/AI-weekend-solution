@@ -7,6 +7,7 @@ import { members, tasks, taskSyncs } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
 import { STATUS_LABELS, TASK_STATUSES, type TaskStatus } from "@/lib/tasks/constants";
 import { canEditTask } from "@/lib/tasks/permissions";
+import { sheetState } from "@/lib/tasks/sheet-state";
 import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { runTasksSyncQuietly, type SyncReport } from "@/lib/tasks/sheet-sync";
 import { tasksSyncStatus } from "@/lib/tasks/sync-status";
@@ -42,6 +43,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         createdById: tasks.createdById,
         assigneeName: members.name,
         inSheet: tasks.inSheet,
+        source: tasks.source,
+        sheetSnapshot: tasks.sheetSnapshot,
       })
       .from(tasks)
       .leftJoin(members, eq(tasks.assigneeId, members.id))
@@ -56,7 +59,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           .orderBy(desc(taskSyncs.id))
           .limit(1)
       : Promise.resolve([]),
-    tasksSyncStatus(me.isAdmin),
+    tasksSyncStatus(),
   ]);
   const today = todayInLjubljana();
   const href = (patch: Search) => {
@@ -66,6 +69,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     return qs ? `/tasks?${qs}` : "/tasks";
   };
   const open = rows.filter((r) => r.status !== "done").length;
+  const pendingInSheet = new Set(rows.filter((r) => sheetState(r) === "pending").map((r) => r.id));
 
   return (
     <section className="flex flex-col gap-4">
@@ -95,7 +99,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         </div>
       </div>
 
-      <SyncStatus initial={syncStatus} />
+      <SyncStatus initial={syncStatus} awaitSync={pendingInSheet.size > 0} />
       {me.isAdmin && lastSync[0] && <SyncReportPanel report={lastSync[0].report as SyncReport} by={lastSync[0].by ?? null} />}
 
       <div className="flex flex-col gap-2 text-sm">
@@ -147,6 +151,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                     )}
                   </span>
                   {!t.inSheet && me.isAdmin && <span className="text-xs text-slate-400">no longer in sheet</span>}
+                  {pendingInSheet.has(t.id) && <span className="text-xs text-amber-700">not in the sheet yet</span>}
                 </span>
               </Link>
               {t.status !== "done" && canEditTask(me, t) && (
