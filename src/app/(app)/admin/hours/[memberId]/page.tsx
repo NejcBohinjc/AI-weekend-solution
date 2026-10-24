@@ -37,7 +37,7 @@ export default async function AdminMemberHoursPage({
 
   return (
     <section className="flex max-w-2xl flex-col gap-5">
-      <Link href={week === thisWeek ? "/admin/hours" : `/admin/hours?week=${week}`} className="text-sm text-slate-500 hover:text-slate-900">
+      <Link href={week === thisWeek ? "/admin/hours" : `/admin/hours?week=${week}`} className="text-sm text-subtle hover:text-fg">
         ← Hours
       </Link>
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -45,9 +45,9 @@ export default async function AdminMemberHoursPage({
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             {member.name} <TierBadge tier={member.tier} />
           </h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted">
             Week of {formatWeek(week)}
-            {data.running && <span className="font-medium text-emerald-700"> · working now</span>}
+            {data.running && <span className="font-medium text-success"> · working now</span>}
           </p>
         </div>
         <Link href={`/hours/new?member=${member.id}&returnTo=${encodeURIComponent(here)}`} className={secondaryButtonClass}>

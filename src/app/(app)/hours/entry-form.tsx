@@ -34,7 +34,7 @@ export function EntryForm({ action, defaults, returnTo, submitLabel, minDate, ma
           <input type="time" name="end" required defaultValue={values.end} className={inputClass} />
         </label>
       </div>
-      <p className="text-xs text-slate-500">An end time earlier than the start means you worked past midnight.</p>
+      <p className="text-xs text-subtle">An end time earlier than the start means you worked past midnight.</p>
       {state.error && (
         <p role="alert" className={errorClass}>
           {state.error}

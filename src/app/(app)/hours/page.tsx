@@ -6,6 +6,9 @@ import { memberWeek, weeklyTotals } from "@/lib/hours/queries";
 import { formatWeek, isWeekStart, weekBounds, weekStartOf } from "@/lib/hours/time";
 import { TimerCard } from "./timer-card";
 
+// Always rendered fresh: the timer and weekly totals must never come from a cached copy.
+export const dynamic = "force-dynamic";
+
 export default async function HoursPage({ searchParams }: { searchParams: Promise<{ week?: string }> }) {
   const [me, sp] = await Promise.all([requireMember(), searchParams]);
   const now = new Date();
@@ -20,7 +23,7 @@ export default async function HoursPage({ searchParams }: { searchParams: Promis
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Hours</h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted">
             {isThisWeek ? "This week" : "Week of"} {formatWeek(week)} · your commitment is {me.weeklyHours} h a week
           </p>
         </div>
@@ -31,7 +34,7 @@ export default async function HoursPage({ searchParams }: { searchParams: Promis
         )}
       </div>
 
-      {isThisWeek && <TimerCard startedAt={data.running?.startedAt.toISOString() ?? null} serverNow={now.toISOString()} />}
+      {isThisWeek && <TimerCard startedAt={data.running?.startedAt.toISOString() ?? null} renderedAt={now.toISOString()} />}
 
       <WeekProgress totalMs={data.totalMs} targetHours={me.weeklyHours} label={isThisWeek ? "This week" : formatWeek(week)} />
       <EntryList entries={data.entries} viewer={me} thisWeekStart={weekBounds(thisWeek).from} returnTo={weekHref(week)} now={now} />

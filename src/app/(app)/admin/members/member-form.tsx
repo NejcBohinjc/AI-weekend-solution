@@ -18,9 +18,9 @@ export function MemberForm({ action, initial, submitLabel, isSelf }: Props) {
 
   if (state.created) {
     return (
-      <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-        <p className="font-semibold text-emerald-900">{state.created.name} was added.</p>
-        <p className="text-sm text-emerald-900">Send them this link so they can set a password.</p>
+      <div className="flex flex-col gap-3 rounded-xl border border-success-line bg-success-bg p-4">
+        <p className="font-semibold text-success">{state.created.name} was added.</p>
+        <p className="text-sm text-success">Send them this link so they can set a password.</p>
         <CopyLink url={state.created.url} expiresAt={state.created.expiresAt} />
         <a href={`/admin/members/${state.created.id}`} className="self-start text-sm font-medium underline underline-offset-2">
           Open member
@@ -99,11 +99,11 @@ function FormFields({
         </Field>
       </div>
       <Field error={errors.isAdmin}>
-        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
-          <input name="isAdmin" type="checkbox" defaultChecked={values.isAdmin} className="size-5 accent-slate-900" />
+        <label className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+          <input name="isAdmin" type="checkbox" defaultChecked={values.isAdmin} className="size-5 accent-primary" />
           <span>
             <span className="font-medium">Admin</span>
-            <span className="block text-xs text-slate-500">
+            <span className="block text-xs text-subtle">
               Can manage members and see admin pages.{isSelf && " You cannot remove your own admin role."}
             </span>
           </span>

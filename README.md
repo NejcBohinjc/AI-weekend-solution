@@ -70,6 +70,10 @@ Meetings come from the Google Calendar (read-only). Each member sees the meeting
 - **Reminders by email:** 1 day and 10 minutes before by default; each member chooses on the Meetings page. Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` (e.g. a Google Workspace account with an app password). Without SMTP, reminders are only recorded and shown on Admin → Meetings. `MAIL_REDIRECT_TO` sends every email to one address, for demos.
 - **Scheduled job:** set `CRON_SECRET` and call `GET /api/cron/reminders` with header `Authorization: Bearer <CRON_SECRET>` every 5 minutes, for example with a free [cron-job.org](https://cron-job.org) job (Vercel Cron on the Hobby plan runs only once a day, too rarely for 10-minute reminders). Locally: `npm run reminders -- --watch`.
 
+## Meeting notes and AI tasks
+
+On a meeting's page, attendees (and admins) can add the meeting notes or a transcript (paste it, or upload a .txt, .md, .vtt or .srt file). With `ANTHROPIC_API_KEY` set, **Create tasks from notes** asks Claude for the action items and creates them as tasks, assigned to the people from the meeting where it is clear and unassigned otherwise. These tasks are marked **AI** until the assignee confirms them; they can also be changed, handed over or deleted in one click. Running it again on the same notes creates nothing new. Without the key the button is hidden and admins see why.
+
 ## Licence
 
 MIT, see `LICENSE`.

@@ -13,7 +13,7 @@ export function NavLinks({ items, variant = "member" }: { items: NavItem[]; vari
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [pathname]);
-  const active = variant === "admin" ? "bg-amber-100 text-amber-900" : "bg-slate-900 text-white";
+  const active = variant === "admin" ? "bg-warning-bg text-warning" : "bg-primary text-on-primary";
   return (
     <>
       {items.map((item) => {
@@ -25,7 +25,7 @@ export function NavLinks({ items, variant = "member" }: { items: NavItem[]; vari
             ref={isActive ? activeRef : undefined}
             href={item.href}
             aria-current={isActive ? "page" : undefined}
-            className={`shrink-0 rounded-lg px-2 py-1.5 sm:px-3 text-sm font-medium transition ${isActive ? active : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
+            className={`shrink-0 rounded-lg px-2 py-1.5 sm:px-3 text-sm font-medium transition ${isActive ? active : "text-muted hover:bg-surface-3 hover:text-fg"}`}
           >
             {item.label}
           </Link>

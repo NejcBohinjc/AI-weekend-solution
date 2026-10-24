@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { errorClass, inputClass, labelClass, secondaryButtonClass } from "@/components/ui";
 import { TIMEZONE } from "@/lib/app";
+import { measureSkew, serverNowMs } from "@/lib/hours/clock";
 import { discardTimerAction, startTimerAction, stopTimerAction, type TimerState } from "./actions";
 
 /** "2:14:37" */
@@ -41,23 +43,54 @@ function localInput(ms: number): string {
   return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
 }
 
+/** A page older than this when it is shown came from the router cache: fetch a fresh one. */
+const STALE_PAGE_MS = 2000;
+
 /**
- * Start/Stop for the signed-in member. The start time lives on the server, so the counter is right
- * after a reload, on another device, or if the phone's clock is off (serverNow corrects for that).
+ * Start/Stop for the signed-in member. The elapsed time is computed only from the entry's startedAt
+ * and the current time (corrected by the server clock offset from /api/time), never from a time baked
+ * into the page, which may be a stale copy from the router cache. Coming back to the page (mount,
+ * tab focus) refreshes it from the server, so a timer started or stopped elsewhere shows correctly.
  */
-export function TimerCard({ startedAt, serverNow }: { startedAt: string | null; serverNow: string }) {
+export function TimerCard({ startedAt, renderedAt }: { startedAt: string | null; renderedAt: string }) {
+  const router = useRouter();
   const [startState, startAction, starting] = useActionState(startTimerAction, {});
   const [stopState, stopAction, stopping] = useActionState(stopTimerAction, {} as TimerState);
   const [discardState, discardAction, discarding] = useActionState(discardTimerAction, {});
-  const [offset] = useState(() => new Date(serverNow).getTime() - Date.now());
-  const [now, setNow] = useState(() => new Date(serverNow).getTime());
+  // Server render: the render time. In the browser: this device's clock (corrected once measured).
+  const [now, setNow] = useState(() => (typeof window === "undefined" ? new Date(renderedAt).getTime() : serverNowMs()));
+  const lastRefresh = useRef(0);
+
+  // Fresh state whenever the member comes back: on mount if this page is a cached copy, and on tab focus.
+  useEffect(() => {
+    const refresh = () => {
+      if (Date.now() - lastRefresh.current < 1000) return; // focus and visibilitychange fire together
+      lastRefresh.current = Date.now();
+      router.refresh();
+    };
+    measureSkew().then(() => {
+      setNow(serverNowMs());
+      if (serverNowMs() - new Date(renderedAt).getTime() > STALE_PAGE_MS) refresh();
+    });
+    const onBack = () => {
+      if (document.visibilityState !== "visible") return;
+      measureSkew().then(() => setNow(serverNowMs()));
+      refresh();
+    };
+    document.addEventListener("visibilitychange", onBack);
+    window.addEventListener("focus", onBack);
+    return () => {
+      document.removeEventListener("visibilitychange", onBack);
+      window.removeEventListener("focus", onBack);
+    };
+  }, [router, renderedAt]);
 
   useEffect(() => {
     if (!startedAt) return;
-    setNow(Date.now() + offset);
-    const timer = setInterval(() => setNow(Date.now() + offset), 1000);
+    setNow(serverNowMs());
+    const timer = setInterval(() => setNow(serverNowMs()), 1000);
     return () => clearInterval(timer);
-  }, [startedAt, offset]);
+  }, [startedAt]);
 
   const running = startedAt !== null;
   const askEnd = running && stopState.askEnd;
@@ -65,9 +98,9 @@ export function TimerCard({ startedAt, serverNow }: { startedAt: string | null; 
   const error = startState.error ?? stopState.error;
 
   return (
-    <section aria-label="Timer" className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="timer">
+    <section aria-label="Timer" className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm" data-testid="timer">
       <div className="flex flex-col items-center gap-1 text-center">
-        <p className={`text-sm ${running ? "font-medium text-emerald-700" : "text-slate-500"}`}>
+        <p className={`text-sm ${running ? "font-medium text-success" : "text-subtle"}`}>
           {running ? `Working since ${startLabel(startedAt, now)}` : "Not tracking"}
         </p>
         <p className="font-mono text-4xl font-semibold tabular-nums tracking-tight" suppressHydrationWarning>
@@ -76,8 +109,8 @@ export function TimerCard({ startedAt, serverNow }: { startedAt: string | null; 
       </div>
 
       {askEnd ? (
-        <form action={stopAction} className="flex flex-col gap-3 rounded-xl bg-amber-50 p-3">
-          <p className="text-sm text-amber-900">
+        <form action={stopAction} className="flex flex-col gap-3 rounded-xl bg-warning-bg p-3">
+          <p className="text-sm text-warning">
             Your timer has been running since {startLabel(askEnd.startedAt, now)}. When did you stop?
           </p>
           <label className="flex flex-col gap-1.5">
@@ -93,7 +126,7 @@ export function TimerCard({ startedAt, serverNow }: { startedAt: string | null; 
             />
           </label>
           <div className="flex gap-2">
-            <button type="submit" disabled={stopping} className="flex-1 rounded-xl bg-red-600 px-4 py-3 font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+            <button type="submit" disabled={stopping} className="flex-1 rounded-xl bg-danger-solid px-4 py-3 font-semibold text-on-primary hover:bg-danger-solid-hover disabled:opacity-60">
               {stopping ? "Saving…" : "Save and stop"}
             </button>
             <button type="submit" formAction={discardAction} formNoValidate disabled={discarding} className={secondaryButtonClass}>
@@ -106,7 +139,7 @@ export function TimerCard({ startedAt, serverNow }: { startedAt: string | null; 
           <button
             type="submit"
             disabled={stopping}
-            className="w-full rounded-xl bg-red-600 px-4 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60"
+            className="w-full rounded-xl bg-danger-solid px-4 py-4 text-lg font-semibold text-on-primary shadow-sm transition hover:bg-danger-solid-hover disabled:opacity-60"
           >
             {stopping ? "Stopping…" : "Stop"}
           </button>
@@ -116,7 +149,7 @@ export function TimerCard({ startedAt, serverNow }: { startedAt: string | null; 
           <button
             type="submit"
             disabled={starting}
-            className="w-full rounded-xl bg-emerald-600 px-4 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+            className="w-full rounded-xl bg-success-solid px-4 py-4 text-lg font-semibold text-on-primary shadow-sm transition hover:bg-success-solid-hover disabled:opacity-60"
           >
             {starting ? "Starting…" : "Start"}
           </button>
@@ -129,7 +162,7 @@ export function TimerCard({ startedAt, serverNow }: { startedAt: string | null; 
         </p>
       )}
       {notice && (
-        <p role="status" className="text-center text-sm text-slate-600">
+        <p role="status" className="text-center text-sm text-muted">
           {notice}
         </p>
       )}

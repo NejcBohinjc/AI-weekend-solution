@@ -94,7 +94,7 @@ export async function importMeetings(
     for (const p of parsed) {
       const status: MeetingStatus = p.cancelled ? "cancelled" : "confirmed";
       if (p.cancelled) report.cancelled++;
-      const values = { title: p.title, series: p.series, startsAt: p.startsAt, endsAt: p.endsAt, location: p.location, status };
+      const values = { title: p.title, series: p.series, startsAt: p.startsAt, endsAt: p.endsAt, location: p.location, description: p.description, status };
       let old = existing.get(p.uid);
       const twin = old ? undefined : byTitleAndStart.get(`${p.title}|${p.startsAt.toISOString()}`);
       if (twin && !seen.has(twin.id)) {
@@ -139,13 +139,14 @@ export async function importMeetings(
   return saveReport(report, actorId);
 }
 
-function changed(old: Meeting, next: Pick<Meeting, "title" | "series" | "startsAt" | "endsAt" | "location" | "status">): boolean {
+function changed(old: Meeting, next: Pick<Meeting, "title" | "series" | "startsAt" | "endsAt" | "location" | "description" | "status">): boolean {
   return (
     old.title !== next.title ||
     old.series !== next.series ||
     old.startsAt.getTime() !== next.startsAt.getTime() ||
     old.endsAt.getTime() !== next.endsAt.getTime() ||
     old.location !== next.location ||
+    old.description !== next.description ||
     old.status !== next.status
   );
 }

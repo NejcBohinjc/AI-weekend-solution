@@ -33,16 +33,16 @@ export default async function AdminHoursPage({ searchParams }: { searchParams: P
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Hours</h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted">
             {isThisWeek ? "This week" : "Week of"} {formatWeek(week)} · {behind} {isThisWeek ? "behind" : "below target"} · {working.length} working now
           </p>
         </div>
         <nav aria-label="Week" className="flex items-center gap-1 text-sm">
-          <Link href={weekHref(addDays(week, -7))} className="rounded-lg px-3 py-1.5 ring-1 ring-slate-200 hover:bg-slate-50">
+          <Link href={weekHref(addDays(week, -7))} className="rounded-lg px-3 py-1.5 ring-1 ring-line hover:bg-surface-2">
             ← Previous
           </Link>
           {!isThisWeek && (
-            <Link href={weekHref(addDays(week, 7))} className="rounded-lg px-3 py-1.5 ring-1 ring-slate-200 hover:bg-slate-50">
+            <Link href={weekHref(addDays(week, 7))} className="rounded-lg px-3 py-1.5 ring-1 ring-line hover:bg-surface-2">
               Next →
             </Link>
           )}
@@ -52,26 +52,26 @@ export default async function AdminHoursPage({ searchParams }: { searchParams: P
       <SheetPanel tab={hoursSheetTab()} pending={queue.pending} failed={queue.failed} lastError={queue.lastError} />
 
       {isThisWeek && (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-subtle">
           “Behind” means under 75% of the hours expected by now ({Math.round(elapsed * 100)}% of the week has passed).
         </p>
       )}
 
-      <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="team-hours">
+      <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm" data-testid="team-hours">
         {rows.map((m) => (
           <li key={m.id}>
             <Link
               href={`/admin/hours/${m.id}${isThisWeek ? "" : `?week=${week}`}`}
-              className="flex flex-col gap-1.5 px-4 py-3 hover:bg-slate-50 sm:flex-row sm:items-center sm:gap-3"
+              className="flex flex-col gap-1.5 px-4 py-3 hover:bg-surface-2 sm:flex-row sm:items-center sm:gap-3"
             >
               <span className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="truncate font-medium">{m.name}</span>
                 <TierBadge tier={m.tier} />
-                {m.working && <span className="text-xs font-medium text-emerald-700">● working now</span>}
+                {m.working && <span className="text-xs font-medium text-success">● working now</span>}
               </span>
               <span className="flex items-center gap-3">
-                <span className="w-32 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
-                  <span className={`block h-2 rounded-full ${m.pct >= 100 ? "bg-emerald-500" : "bg-slate-900"}`} style={{ width: `${Math.min(100, m.pct)}%` }} />
+                <span className="w-32 overflow-hidden rounded-full bg-surface-3" aria-hidden="true">
+                  <span className={`block h-2 rounded-full ${m.pct >= 100 ? "bg-success-solid" : "bg-primary"}`} style={{ width: `${Math.min(100, m.pct)}%` }} />
                 </span>
                 <span className="w-24 text-right text-sm tabular-nums">
                   {formatHours(m.totalMs)} / {m.weeklyHours} h

@@ -11,11 +11,11 @@ type Props = { sending: boolean; from: string | null; redirectTo: string | null;
 export function RemindersPanel({ sending, from, redirectTo, children }: Props) {
   const [run, action, busy] = useActionState(sendRemindersNowAction, null as ReminderRun | null);
   return (
-    <section aria-label="Reminders" className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4">
+    <section aria-label="Reminders" className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold">Email reminders</h2>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-subtle">
             {sending
               ? `Sending from ${from ?? "the SMTP account"}${redirectTo ? `, all to ${redirectTo} (MAIL_REDIRECT_TO)` : ""}.`
               : "Not sending: SMTP is not set up, so reminders are only recorded below."}{" "}
@@ -29,7 +29,7 @@ export function RemindersPanel({ sending, from, redirectTo, children }: Props) {
         </form>
       </div>
       {run && (
-        <p role="status" className="text-sm text-slate-700">
+        <p role="status" className="text-sm text-fg-2">
           {run.ran ? `${run.emails} ${run.emails === 1 ? "email" : "emails"}: ${run.sent} sent, ${run.logged} recorded only, ${run.failed} failed.` : "Another run is busy; try again in a moment."}
         </p>
       )}

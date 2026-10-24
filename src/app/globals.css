@@ -1,5 +1,181 @@
 @import "tailwindcss";
 
+/* Dark mode follows <html data-theme="dark">, set from the theme cookie (server) or, for "System",
+   by the inline script in the root layout. `dark:` utilities use the same switch. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ---------- Design tokens: every colour in the app comes from here ---------- */
+
+:root {
+  color-scheme: light;
+
+  --page: #f8fafc;
+  --surface: #ffffff; /* cards, inputs */
+  --surface-2: #f8fafc; /* hover, subtle fills */
+  --surface-3: #f1f5f9; /* segmented controls, quiet notes */
+  --surface-4: #e2e8f0; /* tracks, strong fills */
+  --fg: #0f172a; /* main text */
+  --fg-2: #334155; /* secondary strong text, labels */
+  --muted: #475569; /* supporting text */
+  --subtle: #5b6779; /* hints, timestamps */
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+
+  --primary: #0f172a; /* main buttons, active nav and chips */
+  --primary-hover: #334155;
+  --on-primary: #ffffff;
+  --link: #0037d6;
+  --link-hover: #002a9e;
+
+  --success-bg: #ecfdf5;
+  --success: #047857;
+  --success-line: #a7f3d0;
+  --success-solid: #047857;
+  --success-solid-hover: #065f46;
+  --danger-bg: #fef2f2;
+  --danger: #b91c1c;
+  --danger-line: #fecaca;
+  --danger-solid: #dc2626;
+  --danger-solid-hover: #b91c1c;
+  --warning-bg: #fffbeb;
+  --warning: #92400e;
+  --warning-line: #fcd34d;
+  --info-bg: #f0f9ff;
+  --info: #075985;
+  --info-line: #bae6fd;
+  --info-solid: #0369a1;
+  --accent-bg: #eff6ff;
+  --accent: #1d4ed8;
+  --accent-line: #bfdbfe;
+  --violet-bg: #f5f3ff;
+  --violet: #6d28d9;
+  --violet-line: #ddd6fe;
+  --indigo-bg: #eef2ff;
+  --indigo: #4338ca;
+  --indigo-line: #c7d2fe;
+  --orange-bg: #fff7ed;
+  --orange: #9a3412;
+  --orange-line: #fdba74;
+
+  /* Charts (validated with the dataviz palette checker: CVD-safe, all pairs, both modes) */
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-neutral: #cbd5e1;
+  --viz-grid: #e2e8f0;
+  --viz-axis: #cbd5e1;
+  --viz-cell-ink: #0b0b0b; /* letters inside coloured cells */
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --page: #0a0a0c;
+  --surface: #141418;
+  --surface-2: #1a1a20;
+  --surface-3: #202028;
+  --surface-4: #2c2c36;
+  --fg: #ededf2;
+  --fg-2: #d2d2dc;
+  --muted: #a9a9b6;
+  --subtle: #9898a8;
+  --line: #2a2a33;
+  --line-strong: #3d3d4a;
+
+  --primary: #0041ff;
+  --primary-hover: #2a5cff;
+  --on-primary: #ffffff;
+  --link: #8fa9ff;
+  --link-hover: #b8c8ff;
+
+  --success-bg: #0d2a20;
+  --success: #6ee7b7;
+  --success-line: #1f5c45;
+  --success-solid: #047857;
+  --success-solid-hover: #065f46;
+  --danger-bg: #2e1215;
+  --danger: #fca5a5;
+  --danger-line: #6b2228;
+  --danger-solid: #c81e1e;
+  --danger-solid-hover: #a51818;
+  --warning-bg: #2a2008;
+  --warning: #fcd34d;
+  --warning-line: #6b4f12;
+  --info-bg: #0b2434;
+  --info: #7dd3fc;
+  --info-line: #1b4d6b;
+  --info-solid: #0369a1;
+  --accent-bg: #0f1c45;
+  --accent: #a9bcff;
+  --accent-line: #24408f;
+  --violet-bg: #1f173a;
+  --violet: #c9b8ff;
+  --violet-line: #4a3585;
+  --indigo-bg: #191c40;
+  --indigo: #b3bdff;
+  --indigo-line: #3c3f8f;
+  --orange-bg: #2e1a0b;
+  --orange: #fdba74;
+  --orange-line: #7a3d14;
+
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-neutral: #3d3d4a;
+  --viz-grid: #26262e;
+  --viz-axis: #3d3d4a;
+  --viz-cell-ink: #0b0b0b;
+}
+
+/* Tailwind utilities for the tokens: bg-surface, text-muted, border-line, bg-success-bg, ... */
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-4: var(--surface-4);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-on-primary: var(--on-primary);
+  --color-link: var(--link);
+  --color-link-hover: var(--link-hover);
+  --color-success-bg: var(--success-bg);
+  --color-success: var(--success);
+  --color-success-line: var(--success-line);
+  --color-success-solid: var(--success-solid);
+  --color-success-solid-hover: var(--success-solid-hover);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger: var(--danger);
+  --color-danger-line: var(--danger-line);
+  --color-danger-solid: var(--danger-solid);
+  --color-danger-solid-hover: var(--danger-solid-hover);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning: var(--warning);
+  --color-warning-line: var(--warning-line);
+  --color-info-bg: var(--info-bg);
+  --color-info: var(--info);
+  --color-info-line: var(--info-line);
+  --color-info-solid: var(--info-solid);
+  --color-accent-bg: var(--accent-bg);
+  --color-accent: var(--accent);
+  --color-accent-line: var(--accent-line);
+  --color-violet-bg: var(--violet-bg);
+  --color-violet: var(--violet);
+  --color-violet-line: var(--violet-line);
+  --color-indigo-bg: var(--indigo-bg);
+  --color-indigo: var(--indigo);
+  --color-indigo-line: var(--indigo-line);
+  --color-orange-bg: var(--orange-bg);
+  --color-orange: var(--orange);
+  --color-orange-line: var(--orange-line);
+}
+
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-page text-fg antialiased;
 }

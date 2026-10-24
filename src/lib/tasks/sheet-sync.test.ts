@@ -65,6 +65,10 @@ describe("two-way tasks sync", { skip: testDatabaseSkip() }, () => {
       assert.equal(rowOf(title)[6], t.sheetKey);
     }
     assert.equal((await taskBy("Plakat")).assigneeId, ids.ana);
+    // Types: "Marketing" / "marketing" become the listed "Marketing"; a type not in the list is kept as typed.
+    assert.equal((await taskBy("Objava na IG")).type, "Marketing");
+    assert.equal((await taskBy("Plakat")).type, "Marketing");
+    assert.equal((await taskBy("Najem dvorane")).type, "logistika");
   });
 
   test("never reads the Geslo column or any other tab, and leaves Geslo untouched", () => {
@@ -126,6 +130,20 @@ describe("two-way tasks sync", { skip: testDatabaseSkip() }, () => {
     assert.equal(report.unassigned.length, 0, "no longer unassigned");
   });
 
+  test("verifikacija syncs both ways and is not an unknown status", async () => {
+    const objava = await taskBy("Objava na IG");
+    await db.update(tasks).set({ status: "verification" }).where(eq(tasks.id, objava.id));
+    let report = await sync();
+    assert.equal(rowOf("Objava na IG")[1], "verifikacija", "app -> sheet");
+
+    const r = rows().findIndex((x) => x[0] === "Plakat");
+    sheets.tabs.get(TAB)!.grid[r][1] = "Verifikacija";
+    report = await sync();
+    assert.equal((await taskBy("Plakat")).status, "verification", "sheet -> app");
+    assert.ok(!report.warnings.some((w) => w.message.includes("unknown status")), JSON.stringify(report.warnings));
+    assert.equal((await sync()).unchanged, 3, "stable afterwards");
+  });
+
   test("a task created in the app is appended once with its key", async () => {
     const [created] = await db
       .insert(tasks)
@@ -156,6 +174,19 @@ describe("two-way tasks sync", { skip: testDatabaseSkip() }, () => {
     const keys = rows().slice(1).map((r) => r[6]).filter(Boolean);
     assert.equal(new Set(keys).size, keys.length, "the copy got its own key");
     assert.equal((await sync()).appended.length, 0, "Plakat is not re-added");
+  });
+
+  test("a task deleted in the app loses its sheet row and is not imported again", async () => {
+    const najem = await taskBy("Najem dvorane");
+    const rowsBefore = rows().length;
+    await db.update(tasks).set({ deletedAt: new Date() }).where(eq(tasks.id, najem.id));
+    const report = await sync();
+    assert.deepEqual(report.removedFromSheet, [{ title: "Najem dvorane" }]);
+    assert.equal(rows().length, rowsBefore - 1);
+    assert.ok(!rows().some((r) => r[0] === "Najem dvorane"));
+    assert.ok(rows().some((r) => r[0] === "=Nova naloga"), "other rows intact");
+    const again = await sync();
+    assert.equal(again.created.length + again.appended.length + again.removedFromSheet.length, 0, "stable, not re-imported");
   });
 
   test("runTasksSync: one at a time, and background syncs wait 60 s unless forced", async () => {

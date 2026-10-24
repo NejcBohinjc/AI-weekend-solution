@@ -1,7 +1,12 @@
 import Link from "next/link";
+import { desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { TierBadge } from "@/components/badges";
+import { LinkifiedText } from "@/components/linkified-text";
 import { AttendanceBadge, meetingWhen, SeriesBadge } from "@/components/meetings";
+import { db } from "@/db";
+import { aiTaskRuns, meetingNotes, members } from "@/db/schema";
+import { aiEnabled } from "@/lib/ai/meeting-tasks";
 import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
 import { ATTENDANCE_STATES, STATE_LABELS } from "@/lib/meetings/constants";
@@ -10,13 +15,30 @@ import { meetingAttendees, meetingById } from "@/lib/meetings/queries";
 import { attendanceSummary, effectiveState, meetingPhase, memberActions } from "@/lib/meetings/rules";
 import { adminMarkRestPresentAction, adminSetAttendanceAction, setMyAttendanceAction } from "../actions";
 import { AttendanceActions } from "../attendance-actions";
+import { addNoteAction, createTasksFromNotesAction } from "../notes-actions";
+import { AddNotesSection, CreateTasksButton } from "../notes-ui";
 
 export default async function MeetingPage({ params }: { params: Promise<{ id: string }> }) {
   const [me, { id: rawId }] = await Promise.all([requireMember(), params]);
   syncCalendarInBackground();
   const id = Number(rawId);
   if (!Number.isInteger(id)) notFound();
-  const [meeting, attendees] = await Promise.all([meetingById(id), meetingAttendees(id)]);
+  const [meeting, attendees, notes, runs] = await Promise.all([
+    meetingById(id),
+    meetingAttendees(id),
+    db
+      .select({ note: meetingNotes, author: members.name })
+      .from(meetingNotes)
+      .leftJoin(members, eq(meetingNotes.authorId, members.id))
+      .where(eq(meetingNotes.meetingId, id))
+      .orderBy(desc(meetingNotes.createdAt)),
+    db
+      .select({ noteId: aiTaskRuns.noteId, ok: aiTaskRuns.ok, created: aiTaskRuns.created, at: aiTaskRuns.createdAt, by: members.name })
+      .from(aiTaskRuns)
+      .leftJoin(members, eq(aiTaskRuns.triggeredById, members.id))
+      .where(eq(aiTaskRuns.meetingId, id))
+      .orderBy(desc(aiTaskRuns.id)),
+  ]);
   if (!meeting) notFound();
   const mine = attendees.find((a) => a.memberId === me.id);
   if (!mine && !me.isAdmin) notFound();
@@ -32,24 +54,31 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
   return (
     <section className="flex max-w-2xl flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <Link href={me.isAdmin && !mine ? "/admin/meetings" : "/meetings"} className="text-sm text-slate-500 hover:text-slate-900">
+        <Link href={me.isAdmin && !mine ? "/admin/meetings" : "/meetings"} className="text-sm text-subtle hover:text-fg">
           ← Meetings
         </Link>
         <h1 className="text-2xl font-bold tracking-tight">{meeting.title}</h1>
-        <p className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+        <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
           <SeriesBadge series={meeting.series} />
           <span>{meetingWhen(meeting)}</span>
           {meeting.location && <span>· {meeting.location}</span>}
         </p>
         {cancelled && (
-          <p className="rounded-xl bg-slate-100 px-4 py-2 text-sm text-slate-700">
+          <p className="rounded-xl bg-surface-3 px-4 py-2 text-sm text-fg-2">
             {meeting.status === "cancelled" ? "This meeting was cancelled in the calendar." : "This meeting is no longer in the calendar."}
           </p>
         )}
       </div>
 
+      {meeting.description && (
+        <div className="flex flex-col gap-1.5 rounded-2xl border border-line bg-surface p-4" data-testid="meeting-description">
+          <h2 className="text-sm font-semibold text-subtle">From the calendar</h2>
+          <LinkifiedText text={meeting.description} className="text-sm text-fg" />
+        </div>
+      )}
+
       {mine && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="my-attendance">
+        <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm" data-testid="my-attendance">
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-semibold">Your attendance</h2>
             {!cancelled && <AttendanceBadge state={effectiveState(mine.state, meeting, now)} />}
@@ -62,16 +91,49 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
             lockedByAdmin={mine.source === "admin"}
           />
           {!cancelled && phase === "upcoming" && (
-            <p className="text-xs text-slate-500">Check-in opens 15 minutes before the start. If you don&apos;t check in or send an excuse, you count as unexcused.</p>
+            <p className="text-xs text-subtle">Check-in opens 15 minutes before the start. If you don&apos;t check in or send an excuse, you count as unexcused.</p>
           )}
         </div>
       )}
+
+      {/* Notes: this page is only shown to the meeting's invitees and admins. */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="meeting-notes">
+        <h2 className="font-semibold">Meeting notes</h2>
+        {me.isAdmin && !aiEnabled() && (
+          <p className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning">
+            Creating tasks from notes with AI is off: ANTHROPIC_API_KEY is not set. Notes can still be added. (Only admins see this.)
+          </p>
+        )}
+        {notes.map(({ note, author }) => {
+          // The run that created this note's tasks (a rerun on the same notes creates none).
+          const lastRun = runs.find((r) => r.noteId === note.id && r.ok && r.created > 0) ?? runs.find((r) => r.noteId === note.id && r.ok);
+          return (
+            <div key={note.id} className="flex flex-col gap-2 border-t border-line pt-3 first:border-t-0 first:pt-0">
+              <p className="text-xs text-subtle">
+                Added by {author ?? "a former member"} on {fmt(note.createdAt)}
+                {note.fileName && ` · ${note.fileName}`} · {note.content.length.toLocaleString("en-GB")} characters
+              </p>
+              <details>
+                <summary className="cursor-pointer text-sm font-medium">Show notes</summary>
+                <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-surface-2 p-3 font-sans text-sm text-fg-2">{note.content}</pre>
+              </details>
+              {lastRun && (
+                <p className="text-xs text-subtle">
+                  AI ran on {fmt(lastRun.at)}{lastRun.by ? ` (${lastRun.by})` : ""}: {lastRun.created} {lastRun.created === 1 ? "task" : "tasks"} created.
+                </p>
+              )}
+              {aiEnabled() && <CreateTasksButton action={createTasksFromNotesAction.bind(null, note.id, meeting.id)} />}
+            </div>
+          );
+        })}
+        <AddNotesSection action={addNoteAction.bind(null, meeting.id)} initiallyOpen={notes.length === 0} />
+      </div>
 
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <h2 className="font-semibold">Invited ({people.length})</h2>
           {me.isAdmin && (
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-muted">
               {summary.present} present · {summary.remote} remote · {summary.excused} excused · {summary.unexcused} unexcused
               {phase !== "past" && unanswered ? ` · ${unanswered} no answer yet` : ""}
             </p>
@@ -80,13 +142,13 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
 
         {me.isAdmin && phase !== "upcoming" && unanswered > 0 && !cancelled && (
           <form action={adminMarkRestPresentAction.bind(null, meeting.id)}>
-            <button type="submit" className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-700">
+            <button type="submit" className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
               Mark the other {unanswered} present
             </button>
           </form>
         )}
 
-        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="attendees">
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm" data-testid="attendees">
           {people.map((p) => (
             <li key={p.memberId} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-3">
               <span className="flex min-w-0 flex-1 flex-col">
@@ -95,7 +157,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
                   {me.isAdmin && <TierBadge tier={p.tier} />}
                 </span>
                 {me.isAdmin && p.state && (
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-subtle">
                     {p.note && `“${p.note}” · `}
                     {p.source === "seed" ? "imported" : `${p.source === "admin" ? `set by ${p.setByName ?? "an admin"}` : "by themself"}, ${fmt(p.updatedAt!)}`}
                   </span>
@@ -110,24 +172,24 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
                       name="state"
                       value={s}
                       aria-pressed={p.effective === s}
-                      className={`rounded-lg px-2 py-1 text-xs font-medium ring-1 ring-inset ${p.effective === s ? "bg-slate-900 text-white ring-slate-900" : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50"}`}
+                      className={`rounded-lg px-2 py-1 text-xs font-medium ring-1 ring-inset ${p.effective === s ? "bg-primary text-on-primary ring-primary" : "bg-surface text-fg-2 ring-line hover:bg-surface-2"}`}
                     >
                       {STATE_LABELS[s]}
                     </button>
                   ))}
                   {p.state && (
-                    <button type="submit" name="state" value="clear" className="px-1.5 text-xs text-slate-500 hover:underline" title="Remove the record">
+                    <button type="submit" name="state" value="clear" className="px-1.5 text-xs text-subtle hover:underline" title="Remove the record">
                       Clear
                     </button>
                   )}
                 </form>
               ) : p.memberId === me.id ? (
-                <span className="text-xs text-slate-500">you</span>
+                <span className="text-xs text-subtle">you</span>
               ) : null}
             </li>
           ))}
         </ul>
-        {me.isAdmin && <p className="text-xs text-slate-500">A darker button shows the current state; unanswered invitees count as unexcused once the meeting is over.</p>}
+        {me.isAdmin && <p className="text-xs text-subtle">A darker button shows the current state; unanswered invitees count as unexcused once the meeting is over.</p>}
       </div>
     </section>
   );

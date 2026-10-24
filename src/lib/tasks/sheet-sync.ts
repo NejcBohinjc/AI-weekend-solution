@@ -11,6 +11,8 @@
 // sheet. Changed on both sides -> the app wins (the sheet gives no edit times, so "most recent" cannot
 // be known); the overwritten sheet value is kept in the task history and the admin report.
 //
+// Deleted tasks (tasks.deleted_at): their row is deleted from the sheet; never re-added or re-imported.
+//
 // Scope: only the tasks tab is opened. Only row 1 (header names) and the six mapped columns are read,
 // and only those cells are written, so other columns (e.g. Geslo) are never read or written.
 import { randomBytes } from "node:crypto";
@@ -63,6 +65,7 @@ export type SyncReport = {
   unassigned: (RowRef & { raw: string; reason: string })[];
   warnings: (RowRef & { message: string })[];
   noLongerInSheet: { title: string }[];
+  removedFromSheet: { title: string }[]; // tasks deleted in the app: their rows were deleted
   missingColumns: string[];
 };
 
@@ -81,6 +84,7 @@ export function emptyReport(at = new Date()): SyncReport {
     unassigned: [],
     warnings: [],
     noLongerInSheet: [],
+    removedFromSheet: [],
     missingColumns: [],
   };
 }
@@ -184,8 +188,9 @@ export async function syncTasks({
   const legacyByRow = new Map(titled.map((r, i) => [r.row, legacyKeys[i]]));
   // Tasks a keyless row may belong to: same legacy key, and not already matched through its key.
   const legacyCandidates = new Map(
-    allTasks.filter((t) => t.sourceKey && !(t.sheetKey && usedKeys.has(t.sheetKey))).map((t) => [t.sourceKey!, t]),
+    allTasks.filter((t) => !t.deletedAt && t.sourceKey && !(t.sheetKey && usedKeys.has(t.sheetKey))).map((t) => [t.sourceKey!, t]),
   );
+  const rowsToDelete: { row: number; task: Task }[] = [];
 
   // ---- Plan ----
   const creates: { key: string; legacyKey: string | null; values: TaskSheetSnapshot; raw: Partial<Task>; row: number }[] = [];
@@ -291,6 +296,11 @@ export async function syncTasks({
 
   for (const r of rowsWithKey) {
     const task = byKey.get(r.key!);
+    if (task?.deletedAt) {
+      handled.add(task.id);
+      rowsToDelete.push({ row: r.row, task });
+      continue;
+    }
     if (isEmpty(r.cells.title)) {
       report.skipped.push({ row: r.row, reason: "no task title" });
       if (task) handled.add(task.id); // keep the task as it is
@@ -320,7 +330,7 @@ export async function syncTasks({
   const goneFromSheet: Task[] = [];
   let nextRow = height + 2;
   for (const task of allTasks) {
-    if (handled.has(task.id)) continue;
+    if (handled.has(task.id) || task.deletedAt) continue;
     if (!task.sheetSnapshot && task.source === "app") {
       const key = task.sheetKey ?? newKey();
       const row = nextRow++;
@@ -353,12 +363,18 @@ export async function syncTasks({
     }
   });
 
-  // ---- 2. The sheet: one request with every cell we change ----
+  // ---- 2. The sheet: one request with every cell we change, then rows of deleted tasks (last, so
+  // the row numbers above stay valid) ----
   await tab.writeMany(writes);
+  await tab.deleteRows(rowsToDelete.map((d) => d.row));
 
   // ---- 3. Database again: record what the sheet now holds ----
   await db.transaction(async (tx) => {
     for (const [id, set] of afterWrite) await tx.update(tasks).set(set).where(eq(tasks.id, id));
+    if (rowsToDelete.length) {
+      await tx.update(tasks).set({ inSheet: false }).where(inArray(tasks.id, rowsToDelete.map((d) => d.task.id)));
+      report.removedFromSheet.push(...rowsToDelete.map((d) => ({ title: d.task.title })));
+    }
     for (const a of appends) {
       await tx
         .update(tasks)

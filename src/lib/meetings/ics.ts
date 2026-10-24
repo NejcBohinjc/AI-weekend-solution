@@ -12,6 +12,8 @@ export type ParsedMeeting = {
   startsAt: Date;
   endsAt: Date;
   location: string | null;
+  /** The event description for people to read (see displayDescription), or null. */
+  description: string | null;
   cancelled: boolean;
   /** Invitees: emails from the "Members:" line of the description and from ATTENDEE properties, lowercase. */
   emails: string[];
@@ -40,6 +42,44 @@ function plainText(value: unknown): string {
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&");
+}
+
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+
+/**
+ * The description as plain text for people: iCal escapes undone (ical.js does this; leftover literal
+ * "\\n", "\\," and "\\;" from double-escaping exports too), HTML from Google turned into text (links
+ * keep their address), and the machine lines "Series: …" and "Members: …" removed. Null if nothing is left.
+ */
+export function displayDescription(raw: unknown): string | null {
+  let text = String(raw ?? "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\\n/gi, "\n")
+    .replace(/\\([,;\\])/g, "$1");
+  if (/<[a-z][^>]*>/i.test(text)) {
+    text = text
+      .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "")
+      // <a href="https://x">label</a> -> "label (https://x)", or just the address when they are the same
+      .replace(/<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_, href: string, label: string) => {
+        const l = label.replace(/<[^>]+>/g, "").trim();
+        return !l || l === href ? href : `${l} (${href})`;
+      })
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
+      .replace(/<li[^>]*>/gi, "• ")
+      .replace(/<[^>]+>/g, "");
+  }
+  text = text
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) =>
+      e[0] === "#" ? String.fromCodePoint(e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : (ENTITIES[e.toLowerCase()] ?? m),
+    )
+    .split("\n")
+    .filter((line) => !/^\s*(Series|Members):/i.test(line))
+    .map((line) => line.replace(/[ \t]+$/g, ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return text || null;
 }
 
 const EMAIL = /^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$/;
@@ -77,6 +117,7 @@ function describe(event: Event, startsAt: Date, endsAt: Date, uid: string): Pars
     startsAt,
     endsAt,
     location: String(event.location ?? "").trim() || null,
+    description: displayDescription(event.description),
     cancelled: String(component.getFirstPropertyValue("status") ?? "").toUpperCase() === "CANCELLED",
     emails: invitees(component, description),
   };

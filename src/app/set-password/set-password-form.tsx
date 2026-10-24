@@ -26,7 +26,7 @@ export function SetPasswordForm({ token, email }: { token: string; email: string
           required
           className={inputClass}
         />
-        <span className="text-xs text-slate-500">At least {PASSWORD_MIN_LENGTH} characters. A short sentence works well.</span>
+        <span className="text-xs text-subtle">At least {PASSWORD_MIN_LENGTH} characters. A short sentence works well.</span>
       </label>
       <label className="flex flex-col gap-1.5">
         <span className={labelClass}>Repeat password</span>
@@ -50,7 +50,7 @@ export function InvalidLink() {
       <p role="alert" className={errorClass}>
         This link is invalid, has expired or has already been used. Ask an admin for a new one.
       </p>
-      <Link href="/login" className="text-sm font-medium text-slate-900 underline underline-offset-2">
+      <Link href="/login" className="text-sm font-medium text-fg underline underline-offset-2">
         Go to sign in
       </Link>
     </div>

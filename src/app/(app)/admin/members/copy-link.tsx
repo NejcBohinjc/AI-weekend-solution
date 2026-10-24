@@ -28,7 +28,7 @@ export function CopyLink({ url, expiresAt }: { url: string; expiresAt: string })
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <p className="text-xs text-slate-600">
+      <p className="text-xs text-muted">
         Shown only once. Works once, until {expires}. Generating a new link cancels this one.
       </p>
     </div>

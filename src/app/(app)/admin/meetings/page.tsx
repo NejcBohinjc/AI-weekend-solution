@@ -52,7 +52,7 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
     <section className="flex flex-col gap-5">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Meetings</h1>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-muted">
           {all.length} meetings in {seriesList.length} series · open a meeting to record attendance
         </p>
       </div>
@@ -61,14 +61,14 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
         <ImportPanel last={last?.report ?? null} lastBy={last?.by ?? null} auto={auto} />
         <RemindersPanel sending={mail.sending} from={mail.from} redirectTo={mail.redirectTo}>
           {emails.length > 0 && (
-            <ul className="divide-y divide-slate-100 text-xs" data-testid="email-log">
+            <ul className="divide-y divide-line text-xs" data-testid="email-log">
               {emails.map((e) => (
                 <li key={e.id} className="flex gap-2 py-1.5">
-                  <span className="shrink-0 tabular-nums text-slate-500">{fmt(e.createdAt)}</span>
+                  <span className="shrink-0 tabular-nums text-subtle">{fmt(e.createdAt)}</span>
                   <span className="min-w-0 flex-1 truncate" title={e.error ?? undefined}>
                     {e.to}: {e.subject}
                   </span>
-                  <span className={e.status === "sent" ? "text-emerald-700" : e.status === "failed" ? "text-red-700" : "text-slate-500"}>
+                  <span className={e.status === "sent" ? "text-success" : e.status === "failed" ? "text-danger" : "text-subtle"}>
                     {e.status === "logged" ? "not sent" : e.status}
                   </span>
                 </li>
@@ -80,38 +80,38 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
 
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <nav aria-label="When" className="flex rounded-xl bg-slate-100 p-1 font-medium">
+          <nav aria-label="When" className="flex rounded-xl bg-surface-3 p-1 font-medium">
             {(["upcoming", "past"] as const).map((v) => (
-              <Link key={v} href={href({ view: v })} aria-current={view === v ? "page" : undefined} className={`rounded-lg px-3 py-1.5 ${view === v ? "bg-white shadow-sm" : "text-slate-600"}`}>
+              <Link key={v} href={href({ view: v })} aria-current={view === v ? "page" : undefined} className={`rounded-lg px-3 py-1.5 ${view === v ? "bg-surface shadow-sm" : "text-muted"}`}>
                 {v === "upcoming" ? "Upcoming" : "Past"}
               </Link>
             ))}
           </nav>
           <div className="flex items-center gap-1 overflow-x-auto">
-            <Link href={href({ series: "" })} className={`shrink-0 rounded-full px-3 py-1 ${!series ? "bg-slate-900 text-white" : "bg-white ring-1 ring-slate-200"}`}>
+            <Link href={href({ series: "" })} className={`shrink-0 rounded-full px-3 py-1 ${!series ? "bg-primary text-on-primary" : "bg-surface ring-1 ring-line"}`}>
               All series
             </Link>
             {seriesList.map((s) => (
-              <Link key={s} href={href({ series: s })} className={`shrink-0 rounded-full px-3 py-1 ${series === s ? "bg-slate-900 text-white" : "bg-white ring-1 ring-slate-200"}`}>
+              <Link key={s} href={href({ series: s })} className={`shrink-0 rounded-full px-3 py-1 ${series === s ? "bg-primary text-on-primary" : "bg-surface ring-1 ring-line"}`}>
                 {s}
               </Link>
             ))}
           </div>
         </div>
 
-        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="admin-meetings">
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm" data-testid="admin-meetings">
           {shown.map(({ meeting: m, counts: c }) => (
             <li key={m.id}>
-              <Link href={`/meetings/${m.id}`} className={`flex flex-col gap-1 px-4 py-3 hover:bg-slate-50 sm:flex-row sm:items-center sm:gap-3 ${m.status !== "confirmed" ? "opacity-60" : ""}`}>
+              <Link href={`/meetings/${m.id}`} className={`flex flex-col gap-1 px-4 py-3 hover:bg-surface-2 sm:flex-row sm:items-center sm:gap-3 ${m.status !== "confirmed" ? "opacity-60" : ""}`}>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="font-medium">
-                    {m.title} {m.status === "cancelled" && <span className="text-xs font-normal text-slate-500">(cancelled)</span>}
+                    {m.title} {m.status === "cancelled" && <span className="text-xs font-normal text-subtle">(cancelled)</span>}
                   </span>
-                  <span className="text-sm text-slate-600">{meetingWhen(m)}</span>
+                  <span className="text-sm text-muted">{meetingWhen(m)}</span>
                 </span>
                 <span className="flex flex-wrap items-center gap-2 text-xs">
                   <SeriesBadge series={m.series} />
-                  <span className="tabular-nums text-slate-600">
+                  <span className="tabular-nums text-muted">
                     {view === "past"
                       ? `${c.present} present · ${c.remote} remote · ${c.excused} excused · ${c.unexcused} unexcused`
                       : `${c.invited} invited · ${c.excused} excused${c.present + c.remote ? ` · ${c.present + c.remote} checked in` : ""}`}
@@ -120,17 +120,17 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
               </Link>
             </li>
           ))}
-          {!shown.length && <li className="px-4 py-6 text-center text-sm text-slate-500">No meetings here.</li>}
+          {!shown.length && <li className="px-4 py-6 text-center text-sm text-subtle">No meetings here.</li>}
         </ul>
       </div>
 
       {people.length > 0 && (
         <div className="flex flex-col gap-2">
           <h2 className="font-semibold">Attendance by member and series</h2>
-          <p className="text-xs text-slate-500">Attended (present or remote) out of meetings that are over. Red is under 50%.</p>
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <p className="text-xs text-subtle">Attended (present or remote) out of meetings that are over. Red is under 50%.</p>
+          <div className="overflow-x-auto rounded-xl border border-line bg-surface shadow-sm">
             <table className="w-full text-sm" data-testid="attendance-matrix">
-              <thead className="bg-slate-50 text-left text-xs text-slate-600">
+              <thead className="bg-surface-2 text-left text-xs text-muted">
                 <tr>
                   <th className="px-3 py-2 font-semibold">Member</th>
                   {seriesList.map((s) => (
@@ -141,7 +141,7 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
                   <th className="px-3 py-2 font-semibold">All</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-line">
                 {people.map(([memberId, name]) => (
                   <tr key={memberId}>
                     <td className="px-3 py-1.5 whitespace-nowrap">
@@ -152,7 +152,7 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
                     {[...seriesList, undefined].map((s) => {
                       const c = cell(memberId, s);
                       return (
-                        <td key={s ?? "all"} className={`px-3 py-1.5 tabular-nums ${c.rate === null ? "text-slate-300" : c.rate < 50 ? "font-medium text-red-700" : ""} ${s ? "" : "font-semibold"}`}>
+                        <td key={s ?? "all"} className={`px-3 py-1.5 tabular-nums ${c.rate === null ? "text-subtle" : c.rate < 50 ? "font-medium text-danger" : ""} ${s ? "" : "font-semibold"}`}>
                           {c.total ? `${c.attended}/${c.total}` : "–"}
                         </td>
                       );

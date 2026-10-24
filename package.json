@@ -17,6 +17,7 @@
     "sheets:check": "tsx scripts/sheets-check.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@node-rs/argon2": "^2.2.2",
     "drizzle-orm": "^0.45.4",
     "google-auth-library": "^9.15.1",

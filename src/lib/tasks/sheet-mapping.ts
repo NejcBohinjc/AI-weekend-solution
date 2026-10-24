@@ -1,6 +1,6 @@
 // Pure mapping from Google Sheets cell values to task fields. No I/O, so it is unit-tested.
 import { TIMEZONE } from "@/lib/app";
-import type { TaskStatus } from "./constants";
+import { TASK_TYPES, type TaskStatus } from "./constants";
 
 export type Cell = string | number | boolean | undefined | null;
 
@@ -56,6 +56,7 @@ const STATUS_WORDS: Record<TaskStatus, string[]> = {
     "in progress", "progress", "doing", "wip", "started", "ongoing", "in work", "working", "in review", "review",
     "v delu", "v teku", "v izvajanju", "v procesu", "se dela", "delam", "zaceto", "v pregledu",
   ],
+  verification: ["verifikacija", "verification", "v verifikaciji", "za verifikacijo", "verify", "to verify", "to be verified", "za preverjanje", "preverjanje"],
   done: [
     "done", "complete", "completed", "finished", "closed", "resolved",
     "narejeno", "koncano", "zakljuceno", "opravljeno", "dokoncano", "reseno", "izvedeno", "oddano",
@@ -73,7 +74,7 @@ export function mapStatus(raw: Cell): { status: TaskStatus; recognised: boolean 
   return status ? { status, recognised: true } : { status: "todo", recognised: false };
 }
 
-const STATUS_TEXT: Record<TaskStatus, string> = { todo: "to do", in_progress: "in progress", done: "done" };
+const STATUS_TEXT: Record<TaskStatus, string> = { todo: "to do", in_progress: "in progress", verification: "verifikacija", done: "done" };
 
 /** How the app writes a status into the sheet. */
 export function formatStatus(status: TaskStatus): string {
@@ -120,10 +121,14 @@ export function formatAssignee(member: MemberRef, style: AssigneeStyle, members:
 
 // ---------- Type ----------
 
-/** "Tip taska" becomes a lowercase label, e.g. "Marketing " -> "marketing". */
+/**
+ * A task type: one of TASK_TYPES if it matches ignoring case and diacritics ("marketing " ->
+ * "Marketing"), otherwise the value as typed (trimmed). Empty means no type.
+ */
 export function normalizeType(raw: Cell): string | null {
-  const value = String(raw ?? "").replace(/\s+/g, " ").trim().toLowerCase();
-  return value || null;
+  const value = String(raw ?? "").replace(/\s+/g, " ").trim();
+  if (!value) return null;
+  return TASK_TYPES.find((t) => normalizeText(t) === normalizeText(value)) ?? value;
 }
 
 // ---------- Deadline ----------
