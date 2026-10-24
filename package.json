@@ -12,7 +12,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
     "create-admin": "tsx scripts/create-admin.ts",
-    "test": "tsx --test src/lib/tasks/sheet-mapping.test.ts src/lib/hours/time.test.ts src/lib/meetings/ics.test.ts src/lib/meetings/rules.test.ts src/lib/hours/stop-and-sheet.test.ts src/lib/tasks/sheet-sync.test.ts",
+    "test": "node scripts/test.mjs",
     "reminders": "tsx scripts/reminders.ts",
     "sheets:check": "tsx scripts/sheets-check.ts"
   },
