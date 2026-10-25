@@ -1,12 +1,8 @@
-import { eq, ne } from "drizzle-orm";
-import { union } from "drizzle-orm/pg-core";
 import Link from "next/link";
 import { MediaIcons, meetingWhen, SeriesBadge } from "@/components/meetings";
-import { meetingMedia } from "@/lib/meetings/media";
+import { meetingMedia, type MeetingMedia } from "@/lib/meetings/media";
 import { ABSENCE_NOTICE_HOURS } from "@/lib/absence-rules";
 import { TIMEZONE } from "@/lib/app";
-import { db } from "@/db";
-import { meetingRecordings, recordings } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { emailSettings } from "@/lib/email";
 import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
@@ -41,8 +37,6 @@ export default async function AdminMeetingsPage({
     bySeries,
     lastPull,
     lateNotices,
-    withRecording,
-    media,
     seriesRows,
   ] = await Promise.all([
     requireAdmin(),
@@ -52,22 +46,9 @@ export default async function AdminMeetingsPage({
     attendanceBySeries(now),
     lastCalendarSync(),
     pendingLateNotices(),
-    // Meetings with a recording: from the meeting recorder, or an earlier one (meeting_recordings).
-    union(
-      db
-        .selectDistinct({ id: meetingRecordings.meetingId })
-        .from(meetingRecordings)
-        .where(eq(meetingRecordings.status, "ready")),
-      db
-        .selectDistinct({ id: recordings.meetingId })
-        .from(recordings)
-        .where(ne(recordings.status, "recording")),
-    ),
-    meetingMedia(),
     seriesOverview(now),
   ]);
   syncCalendarInBackground();
-  const recorded = new Set(withRecording.map((r) => r.id));
   const auto = calendarUrl()
     ? {
         minutes: CALENDAR_SYNC_MINUTES,
@@ -89,6 +70,11 @@ export default async function AdminMeetingsPage({
     )
     .filter((m) => !series || m.meeting.series === series);
   if (view === "past") shown.reverse();
+  // A year of a real calendar is hundreds of meetings: the page lists at most this many (a series
+  // filter narrows it down), so it stays quick to load.
+  const MAX_LISTED = 100;
+  // Only the past view shows the recording marks, and only for the meetings actually listed.
+  const media = view === "past" ? await meetingMedia(shown.slice(0, MAX_LISTED).map((m) => m.meeting.id)) : new Map<number, MeetingMedia>();
   const href = (patch: Search) => {
     const params = new URLSearchParams(
       Object.entries({ view, series, ...patch }).filter(([, v]) => v) as [
@@ -126,9 +112,6 @@ export default async function AdminMeetingsPage({
     );
 
   const SHOWN = 8;
-  // A year of a real calendar is hundreds of meetings: the page lists at most this many (a series
-  // filter narrows it down), so it stays quick to load.
-  const MAX_LISTED = 100;
   const listCls =
     "divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-card";
   const renderRow = ({ meeting: m, counts: c }: (typeof shown)[number]) => (
@@ -160,9 +143,9 @@ export default async function AdminMeetingsPage({
           {view === "past" && m.status === "confirmed" && (
             <>
               <span
-                className={recorded.has(m.id) ? "text-subtle" : "text-warning"}
+                className={media.get(m.id)?.recording ? "text-subtle" : "text-warning"}
               >
-                {recorded.has(m.id) ? "recorded" : "no recording"}
+                {media.get(m.id)?.recording ? "recorded" : "no recording"}
               </span>
               <MediaIcons media={media.get(m.id)} />
             </>

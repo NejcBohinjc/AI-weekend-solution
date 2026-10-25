@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
@@ -72,4 +72,32 @@ export async function deleteDepartmentAction(id: number): Promise<void> {
   ]);
   if (m.n === 0 && t.n === 0) await db.delete(departments).where(eq(departments.id, id));
   refresh();
+}
+
+export type DepartmentMembersState = { error?: string; saved?: string } | null;
+
+/**
+ * Replaces a department's members with exactly the ticked ones. A department named like a tier
+ * ("Core") only takes members of that tier, the same rule the member page and renaming enforce.
+ */
+export async function setDepartmentMembersAction(departmentId: number, _prev: DepartmentMembersState, formData: FormData): Promise<DepartmentMembersState> {
+  await requireAdmin();
+  const ids = [...new Set(formData.getAll("memberIds").map((v) => Number(v)))].filter((n) => Number.isInteger(n) && n > 0);
+  const [department] = await db.select({ name: departments.name }).from(departments).where(eq(departments.id, departmentId)).limit(1);
+  if (!department) return { error: "That department no longer exists." };
+
+  const chosen = ids.length ? await db.select({ id: members.id, name: members.name, tier: members.tier }).from(members).where(inArray(members.id, ids)) : [];
+  if (chosen.length !== ids.length) return { error: "Someone on that list no longer exists. Reload the page and try again." };
+  const onlyFor = tierOfDepartment(department.name);
+  if (onlyFor) {
+    const wrong = chosen.find((m) => m.tier !== onlyFor);
+    if (wrong) return { error: `${department.name} is only for the ${onlyFor} tier, but ${wrong.name} is not in it.` };
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.delete(memberDepartments).where(eq(memberDepartments.departmentId, departmentId));
+    if (ids.length) await tx.insert(memberDepartments).values(ids.map((memberId) => ({ memberId, departmentId })));
+  });
+  refresh();
+  return { saved: ids.length ? `Saved: ${ids.length} ${ids.length === 1 ? "member" : "members"} in ${department.name}.` : `Saved: ${department.name} has no members now.` };
 }

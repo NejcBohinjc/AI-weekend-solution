@@ -7,14 +7,15 @@ import { tierOfDepartment } from "@/lib/department-rules";
 import { departmentsWithCounts } from "@/lib/departments";
 import { dangerLinkClass, quietLinkClass } from "@/components/ui";
 import { PageTitle } from "@/components/ui-kit";
-import { createDepartmentAction, deleteDepartmentAction, renameDepartmentAction } from "./actions";
-import { DepartmentNameForm } from "./department-forms";
+import { createDepartmentAction, deleteDepartmentAction, renameDepartmentAction, setDepartmentMembersAction } from "./actions";
+import { DepartmentMembersForm, DepartmentNameForm } from "./department-forms";
 
 export default async function DepartmentsPage() {
-  await requireAdmin();
-  const [list, everyone, withDepartment] = await Promise.all([
+  // The lists do not depend on who is asking, so they run while the session is being checked.
+  const [, list, everyone, withDepartment] = await Promise.all([
+    requireAdmin(),
     departmentsWithCounts(),
-    db.select({ id: members.id, name: members.name }).from(members).where(eq(members.active, true)).orderBy(asc(members.name)),
+    db.select({ id: members.id, name: members.name, tier: members.tier }).from(members).where(eq(members.active, true)).orderBy(asc(members.name)),
     db.selectDistinct({ id: memberDepartments.memberId }).from(memberDepartments),
   ]);
   const inSome = new Set(withDepartment.map((r) => r.id));
@@ -22,7 +23,7 @@ export default async function DepartmentsPage() {
 
   return (
     <section className="flex max-w-2xl flex-col gap-8">
-      <PageTitle accent="departments" sub="A member can be in any number of departments, or none; set them on the member's page. A task given to a whole department shows under My tasks for everyone in it, and one of them takes it.">
+      <PageTitle accent="departments" sub="A member can be in any number of departments, or none. Tick who is in one under “Edit members” here, or set a single member's departments on their own page. A task given to a whole department shows under My tasks for everyone in it, and one of them takes it.">
         Our
       </PageTitle>
 
@@ -55,6 +56,18 @@ export default async function DepartmentsPage() {
                   ))}
                 </p>
               )}
+              <details>
+                <summary className={`${quietLinkClass} cursor-pointer`}>Edit members</summary>
+                <div className="mt-3">
+                  <DepartmentMembersForm
+                    action={setDepartmentMembersAction.bind(null, d.id)}
+                    people={everyone.map((p) => ({ ...p, allowed: !onlyFor || p.tier === onlyFor }))}
+                    inIt={d.members.map((p) => p.id)}
+                    onlyFor={onlyFor}
+                  />
+                </div>
+              </details>
+
               <details>
                 <summary className={`${quietLinkClass} cursor-pointer`}>Rename or delete</summary>
                 <div className="mt-3 flex flex-col gap-3">
