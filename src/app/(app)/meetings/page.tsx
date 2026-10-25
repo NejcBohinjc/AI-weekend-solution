@@ -3,19 +3,17 @@ import { aiEnabled } from "@/lib/ai/meeting-tasks";
 import { secondaryButtonClass } from "@/components/ui";
 import { MeetingRow } from "@/components/meetings";
 import { requireMember } from "@/lib/auth";
-import { emailSettings } from "@/lib/email";
 import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
 import { meetingMedia } from "@/lib/meetings/media";
-import { myMeetings, reminderSettingsFor } from "@/lib/meetings/queries";
+import { myMeetings } from "@/lib/meetings/queries";
 import { attendanceSummary, effectiveState, meetingPhase } from "@/lib/meetings/rules";
 import { NowMeetingCard } from "./now-card";
-import { ReminderSettingsForm } from "./reminder-settings-form";
 
 export default async function MeetingsPage() {
   const me = await requireMember();
   syncCalendarInBackground();
   const now = new Date();
-  const [rows, settings, media] = await Promise.all([myMeetings(me.id), reminderSettingsFor(me.id), meetingMedia()]);
+  const [rows, media] = await Promise.all([myMeetings(me.id), meetingMedia()]);
   const list = rows.map((r) => ({ ...r, phase: meetingPhase(r.meeting, now), effective: effectiveState(r.state, r.meeting, now, { lateNotice: !!r.lateNotice, lateDecision: r.lateDecision }) }));
   const happening = list.filter((r) => r.phase === "open" && r.meeting.status === "confirmed");
   const upcoming = list.filter((r) => r.phase === "upcoming");
@@ -71,11 +69,6 @@ export default async function MeetingsPage() {
             ))}
           </ul>
         )}
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <h2 className="font-semibold">Reminders</h2>
-        <ReminderSettingsForm email={me.email} emailEnabled={settings.emailEnabled} minutesBefore={settings.minutesBefore} sending={emailSettings().sending} />
       </div>
     </section>
   );

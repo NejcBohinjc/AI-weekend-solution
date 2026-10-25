@@ -5,10 +5,9 @@ import { AiBadge, DepartmentBadge, DueDate, PriorityBadge, StatusBadge, TypeBadg
 import { db } from "@/db";
 import { departments, members, projects, tasks, taskSyncs } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
-import { emailSettings } from "@/lib/email";
 import { PRIORITY_LABELS, STATUS_LABELS, TASK_PRIORITIES, TASK_STATUSES, TASK_TYPES, type TaskPriority, type TaskStatus } from "@/lib/tasks/constants";
 import { canEditTask } from "@/lib/tasks/permissions";
-import { myTasksCondition, priorityOrder, taskReminderSettingsFor } from "@/lib/tasks/queries";
+import { myTasksCondition, priorityOrder } from "@/lib/tasks/queries";
 import { sheetState } from "@/lib/tasks/sheet-state";
 import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { runTasksSyncQuietly, type SyncReport } from "@/lib/tasks/sheet-sync";
@@ -17,7 +16,6 @@ import { DoneToggle } from "./done-toggle";
 import { SyncReportPanel } from "./sync-panel";
 import { GeneralTasks } from "./general-tasks";
 import { SyncStatus } from "./sync-status";
-import { TaskReminderSettingsForm } from "./task-reminder-settings-form";
 
 type Search = { view?: string; type?: string; status?: string; priority?: string; deleted?: string; tab?: string; picked?: string; error?: string };
 
@@ -77,7 +75,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   else if (type === "other") where.push(isNotNull(tasks.type), sql`lower(${tasks.type}) not in (${listedTypes})`);
   else if (type) where.push(sql`lower(${tasks.type}) = ${type.toLowerCase()}`);
 
-  const [rows, lastSync, syncStatus, reminders] = await Promise.all([
+  const [rows, lastSync, syncStatus] = await Promise.all([
     db
       .select({
         id: tasks.id,
@@ -116,7 +114,6 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           .limit(1)
       : Promise.resolve([]),
     tasksSyncStatus(),
-    taskReminderSettingsFor(me.id),
   ]);
   const today = todayInLjubljana();
   const href = (patch: Search) => {
@@ -245,11 +242,6 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           ))}
         </ul>
       )}
-
-      <div className="flex flex-col gap-2">
-        <h2 className="font-semibold">Deadline reminders</h2>
-        <TaskReminderSettingsForm email={me.email} enabled={reminders.enabled} daysBefore={reminders.daysBefore} sending={emailSettings().sending} />
-      </div>
     </section>
   );
 }
