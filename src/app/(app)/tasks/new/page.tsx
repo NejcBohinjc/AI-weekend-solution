@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { after } from "next/server";
+import { quietLinkClass } from "@/components/ui";
+import { PageTitle } from "@/components/ui-kit";
 import { requireMember } from "@/lib/auth";
 import { departmentList } from "@/lib/departments";
 import { projectList } from "@/lib/projects/queries";
@@ -16,11 +18,13 @@ export default async function NewTaskPage({ searchParams }: { searchParams: Prom
   const [memberList, departmentOptions, projectOptions] = await Promise.all([activeMembers(), departmentList(), projectList()]);
   const project = projectOptions.find((p) => String(p.id) === sp.project);
   return (
-    <section className="flex max-w-2xl flex-col gap-4">
-      <Link href={project ? `/projects?open=${project.id}` : "/tasks"} className="text-sm text-subtle hover:text-fg">
+    <section className="flex max-w-2xl flex-col gap-8">
+      <Link href={project ? `/projects?open=${project.id}` : "/tasks"} className={quietLinkClass}>
         ← {project ? project.name : "Tasks"}
       </Link>
-      <h1 className="text-2xl font-bold tracking-tight">New task{project ? ` in ${project.name}` : ""}</h1>
+      <PageTitle accent="task" sub={project ? `In ${project.name}` : undefined}>
+        New
+      </PageTitle>
       <TaskForm
         action={createTaskAction}
         initial={{ title: "", status: "todo", priority: DEFAULT_PRIORITY, owner: `m:${me.id}`, projectId: project ? String(project.id) : "", type: "", dueDate: "" }}

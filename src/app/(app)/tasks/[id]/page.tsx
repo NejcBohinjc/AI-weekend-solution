@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { after } from "next/server";
 import { AiBadge, DepartmentBadge, DueDate, PriorityBadge, StatusBadge, TypeBadge } from "@/components/task-badges";
-import { secondaryButtonClass } from "@/components/ui";
+import { quietLinkClass, secondaryButtonClass, smallButtonClass } from "@/components/ui";
 import { db } from "@/db";
 import { departments, generalTaskRequests, meetings, members, projects, taskEvents, tasks } from "@/db/schema";
 import { TIMEZONE } from "@/lib/app";
@@ -93,7 +93,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
     <section className="flex max-w-2xl flex-col gap-6">
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Link href="/tasks" className="text-sm text-subtle hover:text-fg">
+          <Link href="/tasks" className={quietLinkClass}>
             ← Tasks
           </Link>
           <SyncStatus initial={syncStatus} awaitSync={inSheet === "pending"} hideError={inSheet === "pending"} />
@@ -114,7 +114,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
               : "Not in the Google Sheet yet. It is being written now."}
           </p>
         )}
-        <h1 className="text-2xl font-bold tracking-tight">{task.title}</h1>
+        <h1 className="font-display text-[clamp(1.75rem,5vw,2.5rem)] font-semibold leading-tight tracking-display">{task.title}</h1>
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <StatusBadge status={task.status} />
           <PriorityBadge priority={task.priority} />
@@ -140,7 +140,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
           {inSheet === "removed" && <span className="text-xs text-warning">no longer in the sheet (its row was deleted there)</span>}
         </p>
         {task.createdByAi && (
-          <div className="flex flex-col gap-1.5 rounded-xl border border-violet-line bg-violet-bg p-4 text-sm text-fg-2" data-testid="ai-provenance">
+          <div className="flex flex-col gap-1.5 rounded-card border border-violet-line bg-violet-bg p-5 text-sm text-fg-2" data-testid="ai-provenance">
             <p>
               <span className="font-semibold text-violet">Created by AI</span> from{" "}
               {row.meeting?.id ? (
@@ -160,12 +160,12 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
           </div>
         )}
         {(canConfirmAiTask(me, task) || (task.createdByAi && !task.aiConfirmedAt && canDeleteAiTask(me, task))) && (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface p-4" data-testid="ai-review">
+          <div className="flex flex-wrap items-center gap-2 rounded-card border border-line bg-surface p-5" data-testid="ai-review">
             <p className="w-full text-sm font-semibold">Review this AI-created task</p>
             <p className="w-full text-sm text-muted">Check the title, person and date. Confirm it, change it below (or hand it to someone else), or delete it.</p>
             {canConfirmAiTask(me, task) && (
               <form action={confirmAiTaskAction.bind(null, task.id)}>
-                <button type="submit" className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
+                <button type="submit" className={smallButtonClass}>
                   Confirm
                 </button>
               </form>
@@ -181,7 +181,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
           <div className="flex flex-wrap items-center gap-3">
             {task.status !== "done" && canTakeTask(me, task) && (
               <form action={takeTaskAction.bind(null, task.id)}>
-                <button type="submit" className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
+                <button type="submit" className={smallButtonClass}>
                   Take it
                 </button>
               </form>
@@ -196,10 +196,12 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
       </div>
 
       {me.isAdmin && (task.statusRaw || task.assigneeRaw || task.deadlineRaw) && (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-xl border border-line bg-surface p-4 text-sm">
-          <dt className="col-span-2 mb-1 font-semibold">
-            In the sheet{task.sheetRow ? `, row ${task.sheetRow}` : ""} <span className="font-normal text-subtle">· as last read · admins only</span>
-          </dt>
+        <details className="group rounded-card border border-line bg-surface">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3.5 text-sm font-medium text-muted">
+            In the sheet{task.sheetRow ? `, row ${task.sheetRow}` : ""} · admins only
+            <span aria-hidden className="transition group-open:rotate-45">+</span>
+          </summary>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 border-t border-line p-5 text-sm">
           <dt className="text-subtle">status</dt>
           <dd>{task.statusRaw ?? "—"}</dd>
           <dt className="text-subtle">nosilec</dt>
@@ -209,11 +211,16 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
           <dt className="text-subtle">deadline</dt>
           <dd>{task.deadlineRaw ?? "—"}</dd>
         </dl>
+        </details>
       )}
 
       {editable ? (
-        <div className="flex flex-col gap-2">
-          <h2 className="font-semibold">Edit or hand over</h2>
+        <details className="group rounded-card border border-line bg-surface">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 font-display text-sm font-semibold">
+            Edit or hand over
+            <span aria-hidden className="text-muted transition group-open:rotate-45">+</span>
+          </summary>
+          <div className="border-t border-line p-5">
           <TaskForm
             action={updateTaskAction.bind(null, task.id)}
             initial={{
@@ -231,14 +238,18 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
             projects={projectOptions}
             submitLabel="Save task"
           />
-        </div>
+          </div>
+        </details>
       ) : (
         <p className="text-sm text-subtle">Only the assignee (or their department, for a department task), the person who created it, or an admin can change this task.</p>
       )}
 
-      <div className="flex flex-col gap-2">
-        <h2 className="font-semibold">History</h2>
-        <ol className="flex flex-col gap-2 border-l-2 border-line pl-4 text-sm" data-testid="task-history">
+      <details className="group rounded-card border border-line bg-surface">
+        <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 font-display text-sm font-semibold">
+          History <span className="font-sans font-normal text-subtle">· {events.length} {events.length === 1 ? "change" : "changes"}</span>
+          <span aria-hidden className="ml-auto text-muted transition group-open:rotate-45">+</span>
+        </summary>
+        <ol className="flex flex-col gap-2 border-t border-line p-5 text-sm" data-testid="task-history">
           {events.map(({ event: e, actorName }) => (
             <li key={e.id}>
               <span className="text-subtle">{fmt(e.createdAt)} · </span>
@@ -266,7 +277,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
             </li>
           ))}
         </ol>
-      </div>
+      </details>
     </section>
   );
 }
