@@ -66,7 +66,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const type = sp.type === "none" || sp.type === "other" || (TASK_TYPES as readonly string[]).includes(sp.type ?? "") ? sp.type : undefined;
   const listedTypes = sql.join(TASK_TYPES.map((t) => sql`${t.toLowerCase()}`), sql`, `);
 
-  const where: SQL[] = [isNull(tasks.deletedAt), eq(tasks.kind, "project")]; // general tasks have their own tab
+  const where: SQL[] = [isNull(tasks.deletedAt)];
+  // General tasks have their own tab; My tasks also shows the ones I hold (to tick when done).
+  if (view === "all") where.push(eq(tasks.kind, "project"));
   if (view === "mine") where.push(myTasksCondition(me));
   if (status) where.push(eq(tasks.status, status));
   if (priority) where.push(eq(tasks.priority, priority));
@@ -83,6 +85,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         type: tasks.type,
         dueDate: tasks.dueDate,
         priority: tasks.priority,
+        kind: tasks.kind,
         assigneeRaw: tasks.assigneeRaw,
         assigneeId: tasks.assigneeId,
         departmentId: tasks.departmentId,
@@ -122,7 +125,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     return qs ? `/tasks?${qs}` : "/tasks";
   };
   const toReview = rows.filter((r) => r.createdByAi && !r.aiConfirmedAt && r.assigneeId === me.id).length;
-  const pendingInSheet = new Set(rows.filter((r) => sheetState(r) === "pending").map((r) => r.id));
+  const pendingInSheet = new Set(rows.filter((r) => r.kind !== "general" && sheetState(r) === "pending").map((r) => r.id)); // general tasks never go to the sheet
 
   const activeFilters = [type, status, priority].filter(Boolean).length;
   const openRows = rows.filter((r) => r.status !== "done");
@@ -133,7 +136,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         <span className={`font-medium ${t.status === "done" ? "text-subtle line-through" : ""}`}>{t.title}</span>
         <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <StatusBadge status={t.status} />
-          {t.status !== "done" && <PriorityBadge priority={t.priority} />}
+          {t.kind === "general" && <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium text-fg-2">General task</span>}
+          {t.status !== "done" && t.kind !== "general" && <PriorityBadge priority={t.priority} />}
           {t.createdByAi && <AiBadge confirmed={!!t.aiConfirmedAt} />}
           {t.createdByAi && !t.aiConfirmedAt && t.assigneeId === me.id && <span className="text-xs font-semibold text-violet">Review</span>}
           {t.dueDate && <DueDate date={t.dueDate} today={today} done={t.status === "done"} />}
@@ -154,7 +158,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       </Link>
       {canEditTask(me, t) && (
         <div className="pr-4">
-          <DoneToggle taskId={t.id} title={t.title} done={t.status === "done"} />
+          <DoneToggle taskId={t.id} title={t.title} done={t.status === "done"} general={t.kind === "general"} />
         </div>
       )}
     </li>

@@ -77,7 +77,10 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
     return (
       <GeneralTaskDetail
         task={row.task}
+        meId={me.id}
         isAdmin={me.isAdmin}
+        assigneeName={row.assigneeName}
+        members={memberList}
         helpers={helpers.map((h) => h.name)}
         events={events.map(({ event: e, actorName }) => ({ id: e.id, createdAt: e.createdAt, kind: e.kind, field: e.field, oldValue: e.oldValue, newValue: e.newValue, actorName }))}
       />

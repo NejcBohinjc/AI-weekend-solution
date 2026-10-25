@@ -9,14 +9,20 @@ import { TIMEZONE } from "@/lib/app";
 import type { SessionMember } from "@/lib/auth";
 import { PICK_ERRORS } from "@/lib/general-tasks";
 import { createGeneralTaskAction, pickGeneralTaskAction } from "./general-actions";
+import { DoneToggle } from "./done-toggle";
 import { GeneralTaskForm } from "./general-form";
 
 const fmtDate = (d: Date) => d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: TIMEZONE });
 
-/** The "General tasks" tab: standing tasks, never done. Members pick one after missing a meeting. */
+/** The "General tasks" tab: standing tasks, one person at a time. Members pick a free one after missing a meeting. */
 export async function GeneralTasks({ me, picked, error }: { me: SessionMember; picked: boolean; error?: string }) {
   const [list, picks, mine, waiting] = await Promise.all([
-    db.select().from(tasks).where(and(eq(tasks.kind, "general"), isNull(tasks.deletedAt))).orderBy(asc(tasks.title)),
+    db
+      .select({ id: tasks.id, title: tasks.title, description: tasks.description, type: tasks.type, assigneeId: tasks.assigneeId, assigneeName: members.name })
+      .from(tasks)
+      .leftJoin(members, eq(tasks.assigneeId, members.id))
+      .where(and(eq(tasks.kind, "general"), isNull(tasks.deletedAt)))
+      .orderBy(asc(tasks.title)),
     db
       .select({ taskId: generalTaskRequests.pickedTaskId, memberId: generalTaskRequests.memberId, name: members.name })
       .from(generalTaskRequests)
@@ -45,12 +51,10 @@ export async function GeneralTasks({ me, picked, error }: { me: SessionMember; p
 
   return (
     <div className="flex flex-col gap-4" data-testid="general-tasks">
-      <p className="rounded-xl bg-surface-3 px-4 py-3 text-sm text-fg-2">
-        {GENERAL_TASK_ASSUMPTION} General tasks are never marked as done.
-      </p>
+      <p className="rounded-xl bg-surface-3 px-4 py-3 text-sm text-fg-2">{GENERAL_TASK_ASSUMPTION}</p>
       {picked && (
         <p role="status" className="rounded-xl bg-success-bg px-4 py-3 text-sm text-success">
-          Thanks! The task is yours.
+          Thanks! The task is yours: it is under My tasks. Mark it done when you have finished it.
         </p>
       )}
       {shownError && (
@@ -60,7 +64,7 @@ export async function GeneralTasks({ me, picked, error }: { me: SessionMember; p
       )}
       {open && (
         <p className="rounded-xl border border-warning-line bg-warning-bg px-4 py-3 text-sm text-warning" data-testid="pick-banner">
-          You missed <strong>{open.title}</strong> on {fmtDate(open.startsAt)}. Pick one of the tasks below.
+          You missed <strong>{open.title}</strong> on {fmtDate(open.startsAt)}. Pick one of the free tasks below.
         </p>
       )}
       {myPicks.length > 0 && (
@@ -83,18 +87,31 @@ export async function GeneralTasks({ me, picked, error }: { me: SessionMember; p
         <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-card">
           {list.map((t) => {
             const helpers = picks.filter((p) => p.taskId === t.id);
+            const mine = t.assigneeId === me.id;
+            // Who holds or picked a task can show who missed a meeting: names for admins only.
+            const holder =
+              t.assigneeId === null ? (
+                <span className="font-medium text-success">Free</span>
+              ) : mine ? (
+                <span className="font-semibold text-fg">Yours</span>
+              ) : me.isAdmin ? (
+                <span>Assigned to {t.assigneeName ?? "a former member"}</span>
+              ) : (
+                <span>Taken</span>
+              );
             return (
               <li key={t.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
                 <Link href={`/tasks/${t.id}`} className="flex min-w-0 flex-1 flex-col gap-1 hover:underline">
                   <span className="font-medium">{t.title}</span>
                   {t.description && <span className="text-sm text-muted">{t.description}</span>}
                   <span className="flex flex-wrap items-center gap-2 text-xs text-subtle">
+                    {holder}
                     {t.type && <TypeBadge type={t.type} />}
-                    {/* Who picked a task shows who missed a meeting: names for admins only. */}
-                    {helpers.length > 0 && (me.isAdmin ? `Picked by ${helpers.map((h) => h.name).join(", ")}` : `${helpers.length} helping`)}
+                    {helpers.length > 0 && (me.isAdmin ? `Picked by ${helpers.map((h) => h.name).join(", ")}` : `${helpers.length} helped`)}
                   </span>
                 </Link>
-                {open && (
+                {mine && <DoneToggle taskId={t.id} title={t.title} done={false} general />}
+                {open && t.assigneeId === null && (
                   <form action={pickGeneralTaskAction.bind(null, open.request.id, t.id)}>
                     <button type="submit" className={secondaryButtonClass}>
                       Pick this

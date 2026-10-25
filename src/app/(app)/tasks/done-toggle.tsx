@@ -9,8 +9,21 @@ import { setTaskDoneAction } from "./actions";
 /**
  * Tick / untick a task. The same control undoes it, and a toast offers "Undo" for 8 seconds.
  * `variant`: a round check (lists) or a labelled button (task page).
+ * `general`: a general task is not closed but freed for the next person, so there is no undo.
  */
-export function DoneToggle({ taskId, title, done, variant = "check" }: { taskId: number; title: string; done: boolean; variant?: "check" | "button" }) {
+export function DoneToggle({
+  taskId,
+  title,
+  done,
+  variant = "check",
+  general = false,
+}: {
+  taskId: number;
+  title: string;
+  done: boolean;
+  variant?: "check" | "button";
+  general?: boolean;
+}) {
   const router = useRouter();
   const showToast = useUndoToast();
   const [pending, start] = useTransition();
@@ -21,6 +34,10 @@ export function DoneToggle({ taskId, title, done, variant = "check" }: { taskId:
       router.refresh();
       if (!result.ok) {
         showToast({ message: result.error ?? "Could not change the task." });
+        return;
+      }
+      if (general) {
+        showToast({ message: `Thanks! “${title}” is done and back on the general list for the next person.` });
         return;
       }
       if (offerUndo) {

@@ -20,12 +20,15 @@ export const GENERAL_TASK_AFTER = {
   excused: false,
 } as const;
 
-/** General tasks are standing tasks: they are never marked as done (app, server and sheet sync). */
+/**
+ * General tasks are standing tasks: their status is never "done" (app, server and sheet sync). One member
+ * holds one at a time; when they mark it done it is unassigned and stays "To do" for the next person.
+ */
 export const GENERAL_TASKS_CAN_BE_DONE = false;
 
 /** Shown in the app next to general tasks, so the assumption stays visible. */
 export const GENERAL_TASK_ASSUMPTION =
-  "General tasks are standing tasks anyone can help with. After missing a meeting, a member picks one. (Our reading of the member feedback; admins can ask for the rules to change.)";
+  "General tasks are standing tasks. One person does a task at a time: after missing a meeting a member picks one, or an admin assigns it. When they mark it done, it goes back on the list for the next person. (Our reading of the member feedback; admins can ask for the rules to change.)";
 
 export const TASK_KINDS = ["project", "general"] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];

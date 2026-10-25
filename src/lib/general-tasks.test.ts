@@ -1,12 +1,13 @@
-// Database test (runs on the *_test database that npm test sets up): general tasks never become done;
-// a missed meeting asks the member to pick one; notifications reach only their own member.
+// Database test (runs on the *_test database that npm test sets up): general tasks never become done (one
+// person holds one at a time, and marking it done frees it); a missed meeting asks the member to pick one;
+// notifications reach only their own member.
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { and, eq } from "drizzle-orm";
 import { closeDb, db } from "@/db";
 import { attendance, generalTaskRequests, meetingInvites, meetings, members, notifications, taskEvents, tasks } from "@/db/schema";
-import { followUpAbsence, pickGeneralTask, sweepAbsenceFollowUps } from "@/lib/general-tasks";
+import { assignGeneralTask, followUpAbsence, pickGeneralTask, sweepAbsenceFollowUps } from "@/lib/general-tasks";
 import { listNotifications, readNotification } from "@/lib/notifications";
 import { applyTaskChanges, setTaskDone, TaskRuleError } from "@/lib/tasks/changes";
 import { testDatabaseSkip } from "@/lib/test-db";
@@ -51,8 +52,8 @@ describe("general tasks and missed meetings", { skip: testDatabaseSkip() }, () =
     await closeDb();
   });
 
-  test("a general task can never be marked as done (tick, edit form)", async () => {
-    await assert.rejects(setTaskDone(general, true, admin), TaskRuleError);
+  test("a general task is never done: the edit form refuses; a tick while nobody holds it changes nothing", async () => {
+    assert.equal(await setTaskDone(general, true, admin), null);
     await assert.rejects(applyTaskChanges(general, { status: "done" }, admin), TaskRuleError);
     const [row] = await db.select().from(tasks).where(eq(tasks.id, general.id));
     assert.equal(row.status, "todo");
@@ -91,6 +92,36 @@ describe("general tasks and missed meetings", { skip: testDatabaseSkip() }, () =
     assert.equal(events.length, 1);
     assert.equal(events[0].newValue, "Ana Gen picked this after missing “Grants meeting”");
     assert.equal(await followUpAbsence(ana, meetingId), "none", "already picked: nothing more");
+    const [row] = await db.select().from(tasks).where(eq(tasks.id, general.id));
+    assert.equal(row.assigneeId, ana, "picking makes it hers");
+  });
+
+  test("one person at a time; marking it done frees it (still to do) with history; admins assign it", async () => {
+    // Bor also missed a meeting, but the task is Ana's until she has done it.
+    const [borRequest] = await db.insert(generalTaskRequests).values({ memberId: bor, meetingId, reason: "unexcused" }).returning();
+    assert.deepEqual(await pickGeneralTask(bor, borRequest.id, general.id), { ok: false, error: "Someone else is doing that task right now. Pick another one." });
+
+    const [held] = await db.select().from(tasks).where(eq(tasks.id, general.id));
+    assert.equal(await setTaskDone(held, true, ana), "todo");
+    let [row] = await db.select().from(tasks).where(eq(tasks.id, general.id));
+    assert.deepEqual([row.assigneeId, row.status, row.completedAt], [null, "todo", null], "unassigned and not done");
+    const [done] = await db.select().from(taskEvents).where(and(eq(taskEvents.taskId, general.id), eq(taskEvents.kind, "completed")));
+    assert.equal(done.newValue, "Ana Gen finished it; it is free for the next person");
+    assert.equal(await setTaskDone(row, true, ana), null, "a second tick does nothing");
+
+    // Free again: Bor can pick it now.
+    assert.deepEqual(await pickGeneralTask(bor, borRequest.id, general.id), { ok: true });
+    [row] = await db.select().from(tasks).where(eq(tasks.id, general.id));
+    assert.equal(row.assigneeId, bor);
+
+    // Admins move it to someone else or free it, with history.
+    assert.equal(await assignGeneralTask(general.id, ana, admin), "saved");
+    assert.equal(await assignGeneralTask(general.id, ana, admin), "unchanged");
+    const moves = await db.select().from(taskEvents).where(and(eq(taskEvents.taskId, general.id), eq(taskEvents.field, "assigneeId")));
+    assert.deepEqual([moves.at(-1)?.oldValue, moves.at(-1)?.newValue], ["Bor Gen", "Ana Gen"]);
+    assert.equal(await assignGeneralTask(general.id, null, admin), "saved");
+    [row] = await db.select().from(tasks).where(eq(tasks.id, general.id));
+    assert.equal(row.assigneeId, null);
   });
 
   test("a meeting that has not ended yet asks nothing; the sweep asks once it is over", async () => {

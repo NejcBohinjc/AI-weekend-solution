@@ -6,6 +6,7 @@ import { departments, members, projects, taskEvents, tasks, type Task } from "@/
 import { PRIORITY_LABELS, STATUS_LABELS, type TaskPriority, type TaskStatus } from "./constants";
 import { completionFields, isReopen, reopenStatus } from "./done";
 import { GENERAL_TASKS_CAN_BE_DONE } from "@/lib/absence-rules";
+import { completeGeneralTask } from "@/lib/general-tasks";
 
 export type TaskField = "title" | "status" | "assigneeId" | "departmentId" | "projectId" | "type" | "dueDate" | "priority";
 
@@ -75,6 +76,8 @@ async function everStarted(taskId: number): Promise<boolean> {
  * Returns the new status, or null if it was already in that state.
  */
 export async function setTaskDone(task: Task, done: boolean, actorId: number, now = new Date()): Promise<TaskStatus | null> {
+  // A general task is never "done": ticking it frees it for the next person (lib/general-tasks.ts).
+  if (task.kind === "general") return done && (await completeGeneralTask(task, actorId, now)) ? "todo" : null;
   if (done) assertMayChangeStatus(task, "done");
   if (done === (task.status === "done")) return null;
   const status = done ? "done" : reopenStatus(task.statusBeforeDone, await everStarted(task.id));

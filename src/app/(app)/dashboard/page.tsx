@@ -69,13 +69,14 @@ export default async function DashboardPage() {
         title: tasks.title,
         status: tasks.status,
         dueDate: tasks.dueDate,
+        kind: tasks.kind,
         n: sql<number>`(count(*) filter (where ${or(eq(tasks.createdByAi, false), isNotNull(tasks.aiConfirmedAt))}) over ())::int`,
         review: sql<number>`(count(*) filter (where ${and(eq(tasks.createdByAi, true), isNull(tasks.aiConfirmedAt))}) over ())::int`,
         department: sql<number>`(count(*) filter (where ${isNull(tasks.assigneeId)}) over ())::int`,
       })
       .from(tasks)
-      // As under My tasks: assigned to me, or to one of my departments and not taken yet.
-      .where(and(myTasksCondition(member), ne(tasks.status, "done"), isNull(tasks.deletedAt), eq(tasks.kind, "project")))
+      // As under My tasks: assigned to me (also general tasks I hold), or to one of my departments and not taken yet.
+      .where(and(myTasksCondition(member), ne(tasks.status, "done"), isNull(tasks.deletedAt)))
       .orderBy(sql`${tasks.dueDate} asc nulls last`, tasks.title)
       .limit(5),
     lastLocation(member.id),
@@ -121,7 +122,7 @@ export default async function DashboardPage() {
             <ul className="divide-y divide-line px-5" aria-label="My open tasks">
               {myOpen.map((t) => (
                 <li key={t.id} className="flex items-center gap-3 py-3.5">
-                  <DoneToggle taskId={t.id} title={t.title} done={false} />
+                  <DoneToggle taskId={t.id} title={t.title} done={false} general={t.kind === "general"} />
                   <Link href={`/tasks/${t.id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">
                     {t.title}
                   </Link>

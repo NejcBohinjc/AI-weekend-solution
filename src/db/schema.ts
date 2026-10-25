@@ -220,7 +220,7 @@ export const taskEvents = pgTable(
       .references(() => tasks.id, { onDelete: "cascade" }),
     actorId: integer("actor_id").references(() => members.id, { onDelete: "set null" }),
     source: text("source", { enum: ["app", "sheet_sync", "ai"] }).notNull(),
-    kind: text("kind", { enum: ["created", "updated", "conflict", "confirmed", "deleted", "reopened", "picked"] }).notNull(),
+    kind: text("kind", { enum: ["created", "updated", "conflict", "confirmed", "deleted", "reopened", "picked", "completed"] }).notNull(),
     field: text("field"),
     oldValue: text("old_value"),
     newValue: text("new_value"),

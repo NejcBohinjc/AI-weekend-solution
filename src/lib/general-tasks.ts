@@ -1,7 +1,8 @@
-// General tasks: standing tasks members pick after missing a meeting (rules in lib/absence-rules.ts).
-import { and, eq, gt, isNotNull, isNull, lte, or } from "drizzle-orm";
+// General tasks: standing tasks held by one member at a time (rules in lib/absence-rules.ts). A member
+// picks one after missing a meeting, or an admin assigns it; marking it done frees it for the next person.
+import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/db";
-import { attendance, generalTaskRequests, meetings, members, taskEvents, tasks } from "@/db/schema";
+import { attendance, generalTaskRequests, meetings, members, taskEvents, tasks, type Task } from "@/db/schema";
 import { TIMEZONE } from "@/lib/app";
 import { needsGeneralTask } from "@/lib/meetings/absence";
 import { notify } from "@/lib/notifications";
@@ -57,6 +58,7 @@ export const PICK_ERRORS = [
   "This is no longer needed: your attendance was changed.",
   "You already picked a task for this meeting.",
   "That general task no longer exists.",
+  "Someone else is doing that task right now. Pick another one.",
 ] as const;
 export type PickResult = { ok: true } | { ok: false; error: (typeof PICK_ERRORS)[number] };
 
@@ -77,8 +79,20 @@ export async function pickGeneralTask(memberId: number, requestId: number, taskI
     .where(and(eq(tasks.id, taskId), eq(tasks.kind, "general"), isNull(tasks.deletedAt)))
     .limit(1);
   if (!task) return { ok: false, error: "That general task no longer exists." };
+  if (task.assigneeId !== null && task.assigneeId !== memberId) return { ok: false, error: "Someone else is doing that task right now. Pick another one." };
   const [me] = await db.select({ name: members.name }).from(members).where(eq(members.id, memberId)).limit(1);
+  let taken = false;
   await db.transaction(async (tx) => {
+    // The task becomes the member's (only while it is free: one person at a time).
+    const [mine] = await tx
+      .update(tasks)
+      .set({ assigneeId: memberId, updatedAt: new Date() })
+      .where(and(eq(tasks.id, task.id), or(isNull(tasks.assigneeId), eq(tasks.assigneeId, memberId))))
+      .returning({ id: tasks.id });
+    if (!mine) {
+      taken = true;
+      return;
+    }
     const [updated] = await tx
       .update(generalTaskRequests)
       .set({ pickedTaskId: task.id, pickedAt: new Date() })
@@ -93,7 +107,61 @@ export async function pickGeneralTask(memberId: number, requestId: number, taskI
       newValue: `${me?.name ?? "A member"} picked this after missing “${request.meetingTitle}”`,
     });
   });
+  if (taken) return { ok: false, error: "Someone else is doing that task right now. Pick another one." };
   return { ok: true };
+}
+
+/**
+ * The person doing a general task marks it done: it is not closed (general tasks are standing tasks)
+ * but freed for the next person, back to "To do", and its history says who finished it. False if the
+ * task is not a general task held by someone.
+ */
+export async function completeGeneralTask(task: Pick<Task, "id" | "kind" | "assigneeId" | "status">, actorId: number, now = new Date()): Promise<boolean> {
+  if (task.kind !== "general" || task.assigneeId === null) return false;
+  const holder = task.assigneeId;
+  const [who] = await db.select({ name: members.name }).from(members).where(eq(members.id, holder)).limit(1);
+  return db.transaction(async (tx) => {
+    const [freed] = await tx
+      .update(tasks)
+      .set({ assigneeId: null, status: "todo", updatedAt: now })
+      .where(and(eq(tasks.id, task.id), eq(tasks.assigneeId, holder)))
+      .returning({ id: tasks.id });
+    if (!freed) return false;
+    await tx.insert(taskEvents).values({
+      taskId: task.id,
+      actorId,
+      source: "app",
+      kind: "completed",
+      newValue: `${who?.name ?? "A member"} finished it; it is free for the next person`,
+    });
+    return true;
+  });
+}
+
+/** Admins give a general task to one member, move it to another, or free it (memberId null). */
+export async function assignGeneralTask(taskId: number, memberId: number | null, adminId: number): Promise<"saved" | "unchanged" | "gone"> {
+  const [task] = await db
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.id, taskId), eq(tasks.kind, "general"), isNull(tasks.deletedAt)))
+    .limit(1);
+  if (!task) return "gone";
+  if (task.assigneeId === memberId) return "unchanged";
+  const ids = [task.assigneeId, memberId].filter((id): id is number => id !== null);
+  const names = new Map((ids.length ? await db.select({ id: members.id, name: members.name }).from(members).where(inArray(members.id, ids)) : []).map((m) => [m.id, m.name]));
+  await db.transaction(async (tx) => {
+    await tx.update(tasks).set({ assigneeId: memberId, updatedAt: new Date() }).where(eq(tasks.id, taskId));
+    await tx.insert(taskEvents).values({
+      taskId,
+      actorId: adminId,
+      source: "app",
+      kind: "updated",
+      field: "assigneeId",
+      oldValue: task.assigneeId ? (names.get(task.assigneeId) ?? null) : null,
+      newValue: memberId ? (names.get(memberId) ?? null) : null,
+    });
+  });
+  return "saved";
 }
 
 const SWEEP_DAYS = 14;
