@@ -38,9 +38,9 @@ in pogledom za admina na vsakem področju, ter analitiko za vodjo.
   prevzame kdorkoli iz tega departmenta.
 - Določita se tip naloge in projekt, pod katerega spada.
 - Naloga ima prioriteto in rok; vsaka sprememba se zapiše v zgodovino (kdo, kdaj, kaj).
-- **General task** je stalna naloga, pri kateri kdorkoli lahko pomaga. General taska **ni mogoče
-  označiti kot done** — to pravilo je uveljavljeno na strežniku, ne le skrito v vmesniku.
-  Člane se nanje napoti po neopravičeni odsotnosti s sestanka.
+- **General task** je stalna naloga, pri kateri kdorkoli lahko pomaga. Naenkrat jo drži en član;
+  ko jo ta zaključi, se **ne označi kot done, ampak se sprosti za naslednjega**. Člane se nanje
+  napoti po neopravičeni odsotnosti s sestanka.
 - Naloge se **dvosmerno sinhronizirajo** z obstoječim Google Sheetom ekipe. Če se spremeni samo
   list, aplikacija spremembo prevzame; če se spremeni samo aplikacija, se zapiše v list; če oboje,
   **obvelja aplikacija**, prepisana vrednost pa se ohrani v zgodovini.
