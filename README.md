@@ -99,6 +99,17 @@ Setup (once):
 2. In Vercel (Settings → Environment Variables): `SUPABASE_URL` (Project Settings → API → Project URL) and `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → API → service_role secret; server-side only, never prefix it with `NEXT_PUBLIC_`).
 3. Optional, for transcripts: `TRANSCRIBE_API_KEY` (e.g. console.groq.com → API Keys). Defaults are Groq (`TRANSCRIBE_BASE_URL=https://api.groq.com/openai/v1`, `TRANSCRIBE_MODEL=whisper-large-v3`); set them to use another OpenAI-compatible service. An existing `OPENAI_API_KEY` still works when `TRANSCRIBE_API_KEY` is empty (OpenAI's address, `whisper-1`). The provider is behind one function, `src/lib/ai/transcribe.ts`.
 
+## Slack meeting announcements (optional)
+
+With Slack connected, every meeting is announced in its series' channel **3 days and 1 day before**, mentioning the people invited and linking to the meeting page (check in, send an excuse). Moved meetings are rescheduled and cancelled ones withdrawn automatically. Nothing else in the app writes to Slack.
+
+1. At [api.slack.com/apps](https://api.slack.com/apps): **Create New App** → **From scratch**, choose your workspace.
+2. **OAuth & Permissions** → Bot Token Scopes: `chat:write`, `channels:read`, `channels:join`, `users:read`, `users:read.email`. **Install to Workspace**.
+3. Put the **Bot User OAuth Token** (`xoxb-…`) in `SLACK_BOT_TOKEN` (Vercel → Environment Variables) and redeploy.
+4. On **Admin → Slack**, choose a channel per meeting series (or one default channel), check that members are linked to their Slack accounts (found by email, or pick them), and press **Sync with Slack now**. After that it keeps itself up to date whenever the calendar syncs.
+
+Use the token in one place only (production): a local copy with the same token would announce every meeting twice.
+
 ## Licence
 
 MIT, see `LICENSE`.

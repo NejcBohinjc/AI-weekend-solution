@@ -5,6 +5,7 @@
 import "dotenv/config";
 import { syncCalendarIfStale } from "../src/lib/meetings/import";
 import { sendDueReminders, type ReminderRun } from "../src/lib/meetings/reminders";
+import { runSlackSync } from "../src/lib/slack/announcements";
 import { sendDueTaskReminders } from "../src/lib/tasks/reminders";
 
 const summary = (label: string, r: ReminderRun) =>
@@ -17,6 +18,8 @@ async function runOnce() {
   const tasks = await sendDueTaskReminders();
   const time = new Date().toLocaleTimeString("en-GB");
   console.log(`${time} ${summary("meeting reminders", meetings)}; ${summary("task reminders", tasks)}`);
+  const slack = await runSlackSync();
+  if (slack) console.log(`slack: ${slack.scheduled} scheduled, ${slack.rescheduled} rescheduled, ${slack.postedNow} posted, ${slack.cancelled} cancelled${slack.ok ? "" : ` (${slack.error ?? slack.problems.map((p) => p.error).join("; ")})`}`);
 }
 
 async function main() {
