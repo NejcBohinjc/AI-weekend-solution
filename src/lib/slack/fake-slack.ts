@@ -38,6 +38,21 @@ export class FakeSlack implements SlackApi {
         this.posted.push({ channel, text: String(params.text), ts });
         return { ok: true, ts, channel };
       }
+      case "chat.delete": {
+        const i = this.posted.findIndex((p) => p.channel === channel && p.ts === String(params.ts));
+        if (i < 0) throw new SlackError(method, "message_not_found");
+        this.posted.splice(i, 1);
+        return { ok: true };
+      }
+      case "chat.scheduledMessages.list": {
+        // All on one page unless `limit` is smaller (the cursor is the offset).
+        const all = [...this.scheduled.values()];
+        const from = Number(params.cursor ?? 0);
+        const limit = Number(params.limit ?? 100);
+        const page = all.slice(from, from + limit).map((s) => ({ id: s.id, channel_id: s.channel, post_at: s.post_at }));
+        const next = from + limit < all.length ? String(from + limit) : "";
+        return { ok: true, scheduled_messages: page, response_metadata: { next_cursor: next } };
+      }
       case "conversations.join":
         this.members.add(channel);
         return { ok: true };

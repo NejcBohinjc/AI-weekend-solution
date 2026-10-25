@@ -17,8 +17,12 @@ function summarize(report: SlackSyncReport | null): SlackActionState {
     report.rescheduled && `${report.rescheduled} rescheduled`,
     report.postedNow && `${report.postedNow} posted now`,
     report.cancelled && `${report.cancelled} cancelled`,
+    report.withdrawn && `${report.withdrawn} of deleted meetings taken back`,
   ].filter(Boolean);
-  const summary = done.length ? done.join(", ") : "Everything was already up to date";
+  const summary =
+    (done.length ? done.join(", ") : report.more ? "Started" : "Everything was already up to date") +
+    // Slack allows only so many calls a minute: the rest follows in the next runs (every few minutes).
+    (report.more ? "; more to do, it continues by itself in a few minutes (or press Sync again)" : "");
   if (!report.ok) return { summary, error: report.error ?? report.problems.map((p) => `${p.meeting}: ${p.error}`).join("; ") };
   return { saved: true, summary };
 }

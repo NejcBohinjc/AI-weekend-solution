@@ -1,8 +1,8 @@
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, count, eq, gte, lte } from "drizzle-orm";
 import Link from "next/link";
 import { inputClass } from "@/components/ui";
 import { db } from "@/db";
-import { meetings, members, slackAnnouncements, slackChannels, slackMembers } from "@/db/schema";
+import { meetings, members, slackAnnouncements, slackChannels, slackMembers, slackWithdrawals } from "@/db/schema";
 import { TIMEZONE } from "@/lib/app";
 import { requireAdmin } from "@/lib/auth";
 import { SLACK_SYNC } from "@/lib/slack/announcements";
@@ -52,7 +52,7 @@ export default async function AdminSlackPage() {
   }
 
   const now = new Date();
-  const [info, channelRows, seriesRows, people, links, upcoming, state] = await Promise.all([
+  const [info, channelRows, seriesRows, people, links, upcoming, state, [queued]] = await Promise.all([
     workspaceInfo(api),
     db.select().from(slackChannels),
     activeSeries(),
@@ -65,6 +65,7 @@ export default async function AdminSlackPage() {
       .where(and(gte(meetings.startsAt, new Date(now.getTime() - 2 * 86_400_000)), lte(slackAnnouncements.postAt, new Date(now.getTime() + 14 * 86_400_000))))
       .orderBy(asc(slackAnnouncements.postAt)),
     getSyncState(SLACK_SYNC),
+    db.select({ n: count() }).from(slackWithdrawals),
   ]);
   const channelOf = new Map(channelRows.map((c) => [c.series, c]));
   const linkOf = new Map(links.map((l) => [l.memberId, l]));
@@ -150,6 +151,11 @@ export default async function AdminSlackPage() {
               </li>
             ))}
           </ul>
+        )}
+        {queued.n > 0 && (
+          <p className="text-sm text-warning" data-testid="slack-withdrawals">
+            {queued.n} announcement{queued.n === 1 ? "" : "s"} of deleted meetings still to be taken back from Slack. That happens by itself in batches every few minutes; Sync now speeds it up.
+          </p>
         )}
         {state?.lastOk === false && state.lastError && <p className="rounded-xl bg-danger-bg px-4 py-3 text-sm text-danger">{state.lastError}</p>}
         <SlackForm action={syncSlackNowAction} submitLabel="Sync with Slack now" label="Sync with Slack" />
