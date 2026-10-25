@@ -17,22 +17,36 @@ export function emailSettings() {
   };
 }
 
-let transporter: Transporter | null = null;
+/** Every network step of an email gives up after this long (a slow server must not hold a request or a job). */
+export function smtpTimeoutMs(): number {
+  return Number(process.env.SMTP_TIMEOUT_MS) || 10_000;
+}
+
+let transporter: { key: string; transport: Transporter } | null = null;
 function transport(): Transporter {
-  if (!transporter) {
-    const port = Number(process.env.SMTP_PORT || 587);
-    transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port,
-      secure: port === 465,
-      auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
-    });
+  const port = Number(process.env.SMTP_PORT || 587);
+  const timeout = smtpTimeoutMs();
+  const key = `${process.env.SMTP_HOST}:${port}:${process.env.SMTP_USER}:${timeout}`;
+  if (transporter?.key !== key) {
+    transporter = {
+      key,
+      transport: nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port,
+        secure: port === 465,
+        auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
+        connectionTimeout: timeout,
+        greetingTimeout: timeout,
+        socketTimeout: timeout,
+        dnsTimeout: timeout,
+      }),
+    };
   }
-  return transporter;
+  return transporter.transport;
 }
 
 /** Sends (or, without SMTP, only records) one email. Never throws; the result says what happened. */
-export async function sendEmail(mail: OutgoingEmail): Promise<{ id: number; status: EmailStatus; error?: string }> {
+export async function sendEmail(mail: OutgoingEmail): Promise<{ id: number; status: EmailStatus; error?: string; to: string }> {
   const { sending, from, redirectTo } = emailSettings();
   const to = redirectTo ?? mail.to;
   let status: EmailStatus = "logged";
@@ -43,7 +57,8 @@ export async function sendEmail(mail: OutgoingEmail): Promise<{ id: number; stat
       status = "sent";
     } catch (err) {
       status = "failed";
-      error = (err as Error).message;
+      const code = (err as { code?: string }).code;
+      error = `${(err as Error).message}${code ? ` (${code})` : ""}`;
       console.error("[email]", to, error);
     }
   } else {
@@ -53,5 +68,17 @@ export async function sendEmail(mail: OutgoingEmail): Promise<{ id: number; stat
     .insert(emailLog)
     .values({ memberId: mail.memberId, to, subject: mail.subject, body: mail.text, status, error })
     .returning({ id: emailLog.id });
-  return { id: row.id, status, error };
+  return { id: row.id, status, error, to };
+}
+
+/** One test message to the current admin (or MAIL_REDIRECT_TO, which sendEmail applies): shows the exact error if SMTP is wrong. */
+export async function sendTestEmail(admin: { id: number; name: string; email: string }) {
+  const stamp = new Date().toISOString();
+  return sendEmail({
+    memberId: admin.id,
+    to: admin.email,
+    subject: "Test email from Shapers Hub",
+    text: `Hello ${admin.name},\n\nthis is a test email from Shapers Hub, sent ${stamp}. If you can read it, sending reminders works.`,
+    html: `<p>Hello ${admin.name.replace(/[<&>]/g, "")},</p><p>this is a test email from Shapers Hub, sent ${stamp}. If you can read it, sending reminders works.</p>`,
+  });
 }
