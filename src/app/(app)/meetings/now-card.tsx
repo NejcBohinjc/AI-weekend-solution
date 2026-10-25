@@ -12,11 +12,11 @@ type Props = { meeting: Meeting; state: AttendanceState | null; note: string | n
 export function NowMeetingCard({ meeting, state, note, source, now }: Props) {
   const can = memberActions({ ...meeting, cancelled: meeting.status !== "confirmed" }, now);
   return (
-    <section aria-label="Meeting now" className="flex flex-col gap-3 rounded-2xl border border-success-line bg-surface p-4 shadow-sm" data-testid="meeting-now">
+    <section aria-label="Meeting now" className="flex flex-col gap-3 rounded-card border border-success-line bg-surface p-5 shadow-card" data-testid="meeting-now">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-success">Happening now</p>
-          <Link href={`/meetings/${meeting.id}`} className="text-lg font-semibold hover:underline">
+          <p className="font-display text-xs font-semibold uppercase tracking-eyebrow text-success">Happening now</p>
+          <Link href={`/meetings/${meeting.id}`} className="font-display text-xl font-semibold tracking-display hover:underline">
             {meeting.title}
           </Link>
           <p className="text-sm text-muted">

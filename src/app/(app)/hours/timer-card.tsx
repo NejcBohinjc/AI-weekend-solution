@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState } from "react";
-import { errorClass, inputClass, labelClass, secondaryButtonClass } from "@/components/ui";
+import { errorClass, inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from "@/components/ui";
+import { Arrow } from "@/components/ui-kit";
 import { TIMEZONE } from "@/lib/app";
 import { measureSkew, serverNowMs } from "@/lib/hours/clock";
 import { LOCATION_LABELS, type WorkLocation } from "@/lib/hours/constants";
@@ -112,14 +113,14 @@ export function TimerCard({
   const error = startState.error ?? stopState.error;
 
   return (
-    <section aria-label="Timer" className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm" data-testid="timer">
+    <section aria-label="Timer" className="flex flex-col gap-4" data-testid="timer">
       <div className="flex flex-col items-center gap-1 text-center">
-        <p className={`text-sm ${running ? "font-medium text-success" : "text-subtle"}`}>
+        <p className={`text-sm font-medium ${running ? "text-success" : "text-subtle"}`}>
           {running
             ? `Working since ${startLabel(startedAt, now)}${location ? ` · ${LOCATION_LABELS[location].toLowerCase()}` : ""}`
             : "Not tracking"}
         </p>
-        <p className="font-mono text-4xl font-semibold tabular-nums tracking-tight" suppressHydrationWarning>
+        <p className="font-display text-[clamp(2.75rem,12vw,4rem)] font-semibold leading-none tabular-nums tracking-display" suppressHydrationWarning>
           {running ? clock(now - new Date(startedAt).getTime()) : "0:00:00"}
         </p>
       </div>
@@ -142,7 +143,7 @@ export function TimerCard({
             />
           </label>
           <div className="flex gap-2">
-            <button type="submit" disabled={stopping} className="flex-1 rounded-xl bg-danger-solid px-4 py-3 font-semibold text-on-primary hover:bg-danger-solid-hover disabled:opacity-60">
+            <button type="submit" disabled={stopping} className="flex-1 rounded-pill bg-danger-solid px-4 py-3 font-display font-semibold text-on-primary hover:bg-danger-solid-hover disabled:opacity-60">
               {stopping ? "Saving…" : "Save and stop"}
             </button>
             <button type="submit" formAction={discardAction} formNoValidate disabled={discarding} className={secondaryButtonClass}>
@@ -155,7 +156,7 @@ export function TimerCard({
           <button
             type="submit"
             disabled={stopping}
-            className="w-full rounded-xl bg-danger-solid px-4 py-4 text-lg font-semibold text-on-primary shadow-sm transition hover:bg-danger-solid-hover disabled:opacity-60"
+            className="w-full rounded-pill bg-danger-solid px-6 py-4 font-display text-lg font-semibold text-on-primary transition hover:bg-danger-solid-hover disabled:opacity-60"
           >
             {stopping ? "Stopping…" : "Stop"}
           </button>
@@ -166,9 +167,10 @@ export function TimerCard({
           <button
             type="submit"
             disabled={starting}
-            className="w-full rounded-xl bg-success-solid px-4 py-4 text-lg font-semibold text-on-primary shadow-sm transition hover:bg-success-solid-hover disabled:opacity-60"
+            className={`group w-full py-4 text-lg ${primaryButtonClass}`}
           >
-            {starting ? "Starting…" : "Start"}
+            {starting ? "Starting…" : "Start the timer"}
+            {!starting && <Arrow />}
           </button>
         </form>
       )}

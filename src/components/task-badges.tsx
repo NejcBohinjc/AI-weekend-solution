@@ -43,15 +43,24 @@ export function DepartmentBadge({ name }: { name: string }) {
 }
 
 /** "15 Nov" (adds the year when it is not this year); red when overdue and not done. */
-export function DueDate({ date, today, done }: { date: string; today: string; done: boolean }) {
+/** A due date in plain words: "Today", "Tomorrow", "Friday", "3 Nov"; "Overdue" (with how long) when it has passed. */
+export function dueInWords(date: string, today: string): { text: string; overdue: boolean } {
+  const days = Math.round((Date.parse(`${date}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000);
   const d = new Date(`${date}T12:00:00Z`);
+  if (days < 0) return { text: days === -1 ? "Overdue since yesterday" : `Overdue by ${-days} days`, overdue: true };
+  if (days === 0) return { text: "Today", overdue: false };
+  if (days === 1) return { text: "Tomorrow", overdue: false };
+  if (days < 7) return { text: d.toLocaleDateString("en-GB", { weekday: "long", timeZone: "UTC" }), overdue: false };
   const sameYear = date.slice(0, 4) === today.slice(0, 4);
-  const label = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: sameYear ? undefined : "numeric", timeZone: TIMEZONE });
-  const overdue = !done && date < today;
+  return { text: d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: sameYear ? undefined : "numeric", timeZone: TIMEZONE }), overdue: false };
+}
+
+export function DueDate({ date, today, done }: { date: string; today: string; done: boolean }) {
+  const { text, overdue } = dueInWords(date, today);
+  const late = !done && overdue;
   return (
-    <span className={`text-xs ${overdue ? "font-semibold text-danger" : "text-muted"}`}>
-      {overdue ? "Overdue · " : "Due "}
-      {label}
+    <span title={date} className={`whitespace-nowrap text-sm ${late ? "font-semibold text-danger" : "text-muted"}`}>
+      {done ? `Due ${date}` : text}
     </span>
   );
 }
