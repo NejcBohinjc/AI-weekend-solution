@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { aiEnabled } from "@/lib/ai/meeting-tasks";
+import { secondaryButtonClass } from "@/components/ui";
 import { MeetingRow } from "@/components/meetings";
 import { requireMember } from "@/lib/auth";
 import { emailSettings } from "@/lib/email";
@@ -12,7 +15,7 @@ export default async function MeetingsPage() {
   syncCalendarInBackground();
   const now = new Date();
   const [rows, settings] = await Promise.all([myMeetings(me.id), reminderSettingsFor(me.id)]);
-  const list = rows.map((r) => ({ ...r, phase: meetingPhase(r.meeting, now), effective: effectiveState(r.state, r.meeting, now) }));
+  const list = rows.map((r) => ({ ...r, phase: meetingPhase(r.meeting, now), effective: effectiveState(r.state, r.meeting, now, { lateNotice: !!r.lateNotice, lateDecision: r.lateDecision }) }));
   const happening = list.filter((r) => r.phase === "open" && r.meeting.status === "confirmed");
   const upcoming = list.filter((r) => r.phase === "upcoming");
   const past = list.filter((r) => r.phase === "past").reverse();
@@ -20,12 +23,19 @@ export default async function MeetingsPage() {
 
   return (
     <section className="flex max-w-2xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Meetings</h1>
-        <p className="text-sm text-muted">
-          {summary.total ? `You attended ${summary.attended} of ${summary.total} meetings (${summary.rate}%)` : "No past meetings yet"} ·{" "}
-          {upcoming.length} upcoming
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Meetings</h1>
+          <p className="text-sm text-muted">
+            {summary.total ? `You attended ${summary.attended} of ${summary.total} meetings (${summary.rate}%)` : "No past meetings yet"} ·{" "}
+            {upcoming.length} upcoming
+          </p>
+        </div>
+        {aiEnabled() && (
+          <Link href="/meetings/ask" className={secondaryButtonClass}>
+            ✦ Ask about a meeting
+          </Link>
+        )}
       </div>
 
       {happening.map((r) => (

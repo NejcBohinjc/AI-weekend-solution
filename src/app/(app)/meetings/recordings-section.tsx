@@ -1,47 +1,46 @@
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { meetingRecordings, members, type Meeting } from "@/db/schema";
+import { meetingRecordings, members, type MeetingRecording } from "@/db/schema";
 import { TIMEZONE } from "@/lib/app";
 import type { SessionMember } from "@/lib/auth";
-import { canStartRecording, canUploadRecording, formatBytes, formatSeconds, isVideo } from "@/lib/meetings/recordings";
-import { playUrl, storageMode } from "@/lib/storage";
-import { MeetingRecorder } from "./meeting-recorder";
-import { deleteRecordingAction } from "./recording-actions";
-import { RecordingUploadForm } from "./recording-upload-form";
+import { formatBytes, formatSeconds, isVideo } from "@/lib/meetings/recordings";
+import { playUrl } from "@/lib/storage";
+import { deleteEarlierRecordingAction } from "./recording-actions";
 
 const UNFINISHED_AFTER_MS = 60 * 60_000;
 
+export type EarlierRecording = { recording: MeetingRecording; by: string | null };
+
 /**
- * The meeting's recordings with players, the in-room recorder while the meeting is on (invitees and
- * admins), and the upload form for admins once it has happened and has no recording. Only rendered on
- * the meeting page, which only invitees and admins can open.
+ * Recordings made with the first recorder (one file per meeting in an S3-compatible bucket, table
+ * meeting_recordings). New recordings are made with the meeting recorder; these stay playable. No access
+ * check here: the meeting page loads them in its one query wave and only renders them after its own
+ * invitee-or-admin check.
  */
-export async function RecordingsSection({ meeting, me, invited, now }: { meeting: Meeting; me: SessionMember; invited: boolean; now: Date }) {
-  const rows = await db
+export function earlierRecordings(meetingId: number): Promise<EarlierRecording[]> {
+  return db
     .select({ recording: meetingRecordings, by: members.name })
     .from(meetingRecordings)
     .leftJoin(members, eq(meetingRecordings.uploadedById, members.id))
-    .where(eq(meetingRecordings.meetingId, meeting.id))
+    .where(eq(meetingRecordings.meetingId, meetingId))
     .orderBy(asc(meetingRecordings.createdAt));
+}
+
+/** Players for the earlier recordings; admins can delete them (and uploads that never finished). */
+export async function EarlierRecordings({ rows, me, now }: { rows: EarlierRecording[]; me: SessionMember; now: Date }) {
   const ready = rows.filter((r) => r.recording.status === "ready");
   // Uploads that never finished (the page was closed): only admins see them, to delete them.
   const stuck = rows.filter((r) => r.recording.status === "uploading" && now.getTime() - r.recording.createdAt.getTime() > UNFINISHED_AFTER_MS);
+  if (!ready.length && !(me.isAdmin && stuck.length)) return null;
+  // Signing a link is computed locally (no request to the bucket).
   const players = await Promise.all(
     ready.map(async (r) => ({ ...r, src: await playUrl(r.recording.storageKey, r.recording.contentType, `/api/recordings/${r.recording.id}/file`) })),
   );
-
-  const times = { ...meeting, cancelled: meeting.status !== "confirmed" };
-  const mode = storageMode();
-  const showRecorder = (invited || me.isAdmin) && canStartRecording(times, now);
-  const showUpload = me.isAdmin && mode !== "none" && canUploadRecording(times, ready.length > 0, now);
-  if (!players.length && !showRecorder && !showUpload && !(me.isAdmin && stuck.length)) return null;
-
   const fmt = (d: Date) => d.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE });
-  const fileBase = `${meeting.title} ${meeting.startsAt.toISOString().slice(0, 10)}`.replace(/[^\p{L}\p{N} _-]+/gu, "").trim();
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="meeting-recordings">
-      <h2 className="font-semibold">Recording</h2>
+      <h2 className="font-semibold">Earlier recordings</h2>
 
       {players.map(({ recording: r, by, src }) => (
         <div key={r.id} className="flex flex-col gap-2 border-t border-line pt-3 first:border-t-0 first:pt-0">
@@ -58,7 +57,7 @@ export async function RecordingsSection({ meeting, me, invited, now }: { meeting
             // A second click, because a deleted recording cannot be brought back.
             <details className="text-xs">
               <summary className="cursor-pointer font-medium text-danger hover:underline">Delete recording</summary>
-              <form action={deleteRecordingAction.bind(null, r.id)} className="mt-2 flex flex-wrap items-center gap-2">
+              <form action={deleteEarlierRecordingAction.bind(null, r.id)} className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-fg-2">The recording is deleted for good.</span>
                 <button
                   type="submit"
@@ -75,19 +74,13 @@ export async function RecordingsSection({ meeting, me, invited, now }: { meeting
 
       {me.isAdmin &&
         stuck.map(({ recording: r, by }) => (
-          <form key={r.id} action={deleteRecordingAction.bind(null, r.id)} className="flex flex-wrap items-center gap-2 text-xs text-warning">
+          <form key={r.id} action={deleteEarlierRecordingAction.bind(null, r.id)} className="flex flex-wrap items-center gap-2 text-xs text-warning">
             An upload by {by ?? "a former member"} on {fmt(r.createdAt)} did not finish.
             <button type="submit" className="font-medium text-danger hover:underline">
               Remove it
             </button>
           </form>
         ))}
-
-      {showRecorder && <MeetingRecorder meetingId={meeting.id} fileBase={fileBase} storageOn={mode !== "none"} />}
-      {showUpload && <RecordingUploadForm meetingId={meeting.id} />}
-      {me.isAdmin && mode === "none" && (
-        <p className="text-xs text-subtle">Recording storage is not set up (RECORDINGS_S3_* variables), so recordings cannot be stored yet. (Only admins see this.)</p>
-      )}
     </div>
   );
 }

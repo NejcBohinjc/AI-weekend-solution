@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { members } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
+import { lastLocation } from "@/lib/hours/queries";
 import { hoursReturnPath, ljubljanaParts, weekStartOf } from "@/lib/hours/time";
 import { saveEntryAction } from "../actions";
 import { EntryForm } from "../entry-form";
@@ -19,6 +20,7 @@ export default async function NewEntryPage({ searchParams }: { searchParams: Pro
   const returnTo = hoursReturnPath(sp.returnTo, forMember ? `/admin/hours/${forMember.id}` : "/hours");
   const now = ljubljanaParts(new Date());
   const anHourAgo = ljubljanaParts(new Date(Date.now() - 3_600_000));
+  const location = await lastLocation(forMember?.id ?? me.id);
 
   return (
     <section className="flex max-w-md flex-col gap-4">
@@ -31,7 +33,7 @@ export default async function NewEntryPage({ searchParams }: { searchParams: Pro
       </div>
       <EntryForm
         action={saveEntryAction.bind(null, null, forMember?.id ?? null)}
-        defaults={{ date: anHourAgo.date, start: anHourAgo.time, end: now.time }}
+        defaults={{ date: anHourAgo.date, start: anHourAgo.time, end: now.time, location }}
         returnTo={returnTo}
         submitLabel="Add time"
         minDate={me.isAdmin ? undefined : weekStartOf(new Date())}

@@ -14,3 +14,8 @@ export const FORGOTTEN_TIMER_HOURS = 12;
 export const MIN_ENTRY_SECONDS = 60;
 /** Longest single entry that can be saved. */
 export const MAX_ENTRY_HOURS = 24;
+
+/** Where the time was worked. Entries from before this existed have none: shown as "unspecified", never guessed. */
+export const WORK_LOCATIONS = ["office", "home"] as const;
+export type WorkLocation = (typeof WORK_LOCATIONS)[number];
+export const LOCATION_LABELS: Record<WorkLocation | "unspecified", string> = { office: "Office", home: "Home", unspecified: "Unspecified" };

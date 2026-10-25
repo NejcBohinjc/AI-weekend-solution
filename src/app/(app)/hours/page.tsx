@@ -2,7 +2,7 @@ import Link from "next/link";
 import { EntryList, WeekHistory, WeekProgress } from "@/components/hours";
 import { secondaryButtonClass } from "@/components/ui";
 import { requireMember } from "@/lib/auth";
-import { memberWeek, weeklyTotals } from "@/lib/hours/queries";
+import { lastLocation, memberWeekAndHistory } from "@/lib/hours/queries";
 import { formatWeek, isWeekStart, weekBounds, weekStartOf } from "@/lib/hours/time";
 import { TimerCard } from "./timer-card";
 
@@ -15,7 +15,7 @@ export default async function HoursPage({ searchParams }: { searchParams: Promis
   const thisWeek = weekStartOf(now);
   const week = sp.week && isWeekStart(sp.week) && sp.week <= thisWeek ? sp.week : thisWeek;
   const isThisWeek = week === thisWeek;
-  const [data, history] = await Promise.all([memberWeek(me.id, week, now), weeklyTotals(me.id, thisWeek, 8, now)]);
+  const [{ data, history }, defaultLocation] = await Promise.all([memberWeekAndHistory(me.id, week, thisWeek, 8, now), lastLocation(me.id)]);
   const weekHref = (w: string) => (w === thisWeek ? "/hours" : `/hours?week=${w}`);
 
   return (
@@ -34,9 +34,9 @@ export default async function HoursPage({ searchParams }: { searchParams: Promis
         )}
       </div>
 
-      {isThisWeek && <TimerCard startedAt={data.running?.startedAt.toISOString() ?? null} renderedAt={now.toISOString()} />}
+      {isThisWeek && <TimerCard startedAt={data.running?.startedAt.toISOString() ?? null} renderedAt={now.toISOString()} location={data.running?.location} defaultLocation={defaultLocation} />}
 
-      <WeekProgress totalMs={data.totalMs} targetHours={me.weeklyHours} label={isThisWeek ? "This week" : formatWeek(week)} />
+      <WeekProgress totalMs={data.totalMs} targetHours={me.weeklyHours} byLocation={data.byLocation} label={isThisWeek ? "This week" : formatWeek(week)} />
       <EntryList entries={data.entries} viewer={me} thisWeekStart={weekBounds(thisWeek).from} returnTo={weekHref(week)} now={now} />
 
       <div className="flex flex-col gap-2">

@@ -7,7 +7,11 @@ import { db } from "@/db";
 import { attendance, meetingInvites, reminderSettings } from "@/db/schema";
 import { requireAdmin, requireMember } from "@/lib/auth";
 import { REMINDER_OPTIONS, STATE_LABELS, type AttendanceState } from "@/lib/meetings/constants";
+import { followUpAbsence } from "@/lib/general-tasks";
+import { isLateNotice } from "@/lib/meetings/absence";
 import { meetingById } from "@/lib/meetings/queries";
+import { notify } from "@/lib/notifications";
+import { TIMEZONE } from "@/lib/app";
 import { memberActions } from "@/lib/meetings/rules";
 
 function refresh(meetingId?: number) {
@@ -65,15 +69,19 @@ export async function setMyAttendanceAction(meetingId: number, _prev: Attendance
   }
 
   const state: AttendanceState = intent.data;
+  // An excuse later than ABSENCE_NOTICE_HOURS before the start is a late notice: an admin decides.
+  const late = state === "excused" && isLateNotice(now, meeting.startsAt);
+  const notice = { lateNotice: late, noticeAt: state === "excused" ? now : null, lateDecision: null, lateDecidedById: null, lateDecidedAt: null };
   await db
     .insert(attendance)
-    .values({ meetingId, memberId: me.id, state, note, source: "self", setById: me.id })
+    .values({ meetingId, memberId: me.id, state, note, source: "self", setById: me.id, ...notice })
     .onConflictDoUpdate({
       target: [attendance.meetingId, attendance.memberId],
-      set: { state, note, source: "self", setById: me.id, updatedAt: new Date() },
+      set: { state, note, source: "self", setById: me.id, updatedAt: now, ...notice },
     });
   refresh(meetingId);
-  return { done: state === "excused" ? "Excuse sent." : `Checked in: ${STATE_LABELS[state].toLowerCase()}.` };
+  if (state !== "excused") return { done: `Checked in: ${STATE_LABELS[state].toLowerCase()}.` };
+  return { done: late ? "Sent as a late notice: an admin decides whether it counts as excused." : "Excuse sent. It counts as excused." };
 }
 
 // ---------- Admin ----------
@@ -89,14 +97,52 @@ export async function adminSetAttendanceAction(meetingId: number, memberId: numb
     await db.delete(attendance).where(and(eq(attendance.meetingId, meetingId), eq(attendance.memberId, memberId)));
   } else {
     const state = parsed.data;
+    const now = new Date();
     await db
       .insert(attendance)
       .values({ meetingId, memberId, state, source: "admin", setById: admin.id })
       .onConflictDoUpdate({
         target: [attendance.meetingId, attendance.memberId],
-        // An admin changing the state keeps the member's excuse reason only if it stays an excuse.
-        set: { state, source: "admin", setById: admin.id, updatedAt: new Date(), note: state === "excused" ? sql`${attendance.note}` : null },
+        // An admin changing the state keeps the member's excuse reason only if it stays an excuse; an
+        // admin choosing "excused" for a late notice accepts it.
+        set: {
+          state,
+          source: "admin",
+          setById: admin.id,
+          updatedAt: now,
+          note: state === "excused" ? sql`${attendance.note}` : null,
+          lateNotice: state === "excused" ? sql`${attendance.lateNotice}` : false,
+          lateDecision: state === "excused" ? sql`case when ${attendance.lateNotice} then 'accepted' else null end` : null,
+          lateDecidedById: state === "excused" ? sql`case when ${attendance.lateNotice} then ${admin.id}::int else null end` : null,
+          lateDecidedAt: state === "excused" ? sql`case when ${attendance.lateNotice} then ${now.toISOString()}::timestamptz else null end` : null,
+        },
       });
+  }
+  // A recorded absence may ask the member to pick a general task (lib/absence-rules.ts).
+  await followUpAbsence(memberId, meetingId);
+  refresh(meetingId);
+}
+
+/** An admin decides whether a late notice counts as excused; the member is told. */
+export async function decideLateNoticeAction(meetingId: number, memberId: number, decision: "accepted" | "rejected"): Promise<void> {
+  const admin = await requireAdmin();
+  const [row] = await db
+    .update(attendance)
+    .set({ lateDecision: decision, lateDecidedById: admin.id, lateDecidedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(attendance.meetingId, meetingId), eq(attendance.memberId, memberId), eq(attendance.state, "excused"), eq(attendance.lateNotice, true)))
+    .returning({ memberId: attendance.memberId });
+  const meeting = await meetingById(meetingId);
+  if (row && meeting) {
+    const when = meeting.startsAt.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: TIMEZONE });
+    await notify(memberId, {
+      type: "late_notice_decision",
+      text:
+        decision === "accepted"
+          ? `Your late notice for ${meeting.title} on ${when} was accepted: it counts as excused.`
+          : `Your late notice for ${meeting.title} on ${when} was not accepted: it counts as unexcused.`,
+      link: `/meetings/${meetingId}`,
+    });
+    await followUpAbsence(memberId, meetingId);
   }
   refresh(meetingId);
 }

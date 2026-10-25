@@ -5,7 +5,7 @@ import { after } from "next/server";
 import { AiBadge, DepartmentBadge, DueDate, PriorityBadge, StatusBadge, TypeBadge } from "@/components/task-badges";
 import { secondaryButtonClass } from "@/components/ui";
 import { db } from "@/db";
-import { departments, meetings, members, projects, taskEvents, tasks } from "@/db/schema";
+import { departments, generalTaskRequests, meetings, members, projects, taskEvents, tasks } from "@/db/schema";
 import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
 import { departmentList } from "@/lib/departments";
@@ -18,20 +18,24 @@ import { activeMembers } from "@/lib/tasks/queries";
 import { normalizeType, todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { runTasksSyncQuietly } from "@/lib/tasks/sheet-sync";
 import { tasksSyncStatus } from "@/lib/tasks/sync-status";
-import { confirmAiTaskAction, deleteAiTaskAction, finishTaskAction, takeTaskAction, updateTaskAction } from "../actions";
+import { confirmAiTaskAction, deleteAiTaskAction, takeTaskAction, updateTaskAction } from "../actions";
+import { DoneToggle } from "../done-toggle";
+import { GeneralTaskDetail } from "./general-detail";
 import { SyncStatus } from "../sync-status";
 import { TaskForm } from "../task-form";
 
 export default async function TaskPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string }> }) {
-  const [me, { id: rawId }, { created }] = await Promise.all([requireMember(), params, searchParams]);
+  const [{ id: rawId }, { created }] = await Promise.all([params, searchParams]);
   const id = Number(rawId);
   if (!Number.isInteger(id)) notFound();
-  after(runTasksSyncQuietly);
 
   const actor = aliasedTable(members, "actor");
   const creator = aliasedTable(members, "creator");
   const triggerer = aliasedTable(members, "triggerer");
-  const [[row], events, memberList, syncStatus, departmentOptions, projectOptions] = await Promise.all([
+  // The task, its history and the lists for the form only need the id from the URL: they are fetched
+  // while the session is checked. Nothing from them is shown before the permission checks below.
+  const [me, [row], events, memberList, syncStatus, departmentOptions, projectOptions] = await Promise.all([
+    requireMember(),
     db
       .select({
         task: tasks,
@@ -62,7 +66,23 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
     departmentList(),
     projectList(),
   ]);
+  after(runTasksSyncQuietly);
   if (!row || row.task.deletedAt) notFound();
+  if (row.task.kind === "general") {
+    const helpers = await db
+      .select({ name: members.name })
+      .from(generalTaskRequests)
+      .innerJoin(members, eq(generalTaskRequests.memberId, members.id))
+      .where(eq(generalTaskRequests.pickedTaskId, row.task.id));
+    return (
+      <GeneralTaskDetail
+        task={row.task}
+        isAdmin={me.isAdmin}
+        helpers={helpers.map((h) => h.name)}
+        events={events.map(({ event: e, actorName }) => ({ id: e.id, createdAt: e.createdAt, kind: e.kind, field: e.field, oldValue: e.oldValue, newValue: e.newValue, actorName }))}
+      />
+    );
+  }
   const { task } = row;
   const editable = canEditTask(me, task);
   const inSheet = sheetState(task);
@@ -157,21 +177,18 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
             </form>
           </div>
         )}
-        {editable && task.status !== "done" && (
-          <div className="flex flex-wrap items-center gap-2">
-            {canTakeTask(me, task) && (
+        {editable && (
+          <div className="flex flex-wrap items-center gap-3">
+            {task.status !== "done" && canTakeTask(me, task) && (
               <form action={takeTaskAction.bind(null, task.id)}>
                 <button type="submit" className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
                   Take it
                 </button>
               </form>
             )}
-            <form action={finishTaskAction.bind(null, task.id)}>
-              <button type="submit" className={secondaryButtonClass}>
-                ✓ Mark as done
-              </button>
-            </form>
-            {canTakeTask(me, task) && (
+            <DoneToggle taskId={task.id} title={task.title} done={task.status === "done"} variant="button" />
+            {task.status === "done" && task.completedAt && <span className="text-xs text-subtle">Done on {fmt(task.completedAt)}</span>}
+            {task.status !== "done" && canTakeTask(me, task) && (
               <p className="w-full text-xs text-subtle">This task is for everyone in {row.departmentName}. Take it to make it yours, so the others know it is handled.</p>
             )}
           </div>
@@ -241,7 +258,9 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
               {": "}
               {e.kind === "created" || e.kind === "confirmed" || e.kind === "deleted"
                 ? e.newValue
-                : e.kind === "conflict"
+                : e.kind === "reopened"
+                  ? `Reopened (${e.oldValue ?? "Done"} → ${e.newValue ?? "empty"})`
+                  : e.kind === "conflict"
                   ? `${fieldLabel(e.field)} was changed in the sheet to “${e.oldValue ?? "empty"}” and here to “${e.newValue ?? "empty"}”; kept “${e.newValue ?? "empty"}”`
                   : `${fieldLabel(e.field)}: ${e.oldValue ?? "empty"} → ${e.newValue ?? "empty"}`}
             </li>

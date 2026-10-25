@@ -13,7 +13,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { SHEET_STATUSES, TIME_ENTRY_SOURCES } from "../lib/hours/constants";
+import { SHEET_STATUSES, TIME_ENTRY_SOURCES, WORK_LOCATIONS } from "../lib/hours/constants";
 import {
   ATTENDANCE_SOURCES,
   ATTENDANCE_STATES,
@@ -24,7 +24,10 @@ import {
   RECORDING_STATUSES,
 } from "../lib/meetings/constants";
 import { DEFAULT_PRIORITY, DEFAULT_TASK_REMINDER_DAYS, TASK_PRIORITIES, TASK_STATUSES } from "../lib/tasks/constants";
+import { LATE_DECISIONS, TASK_KINDS } from "../lib/absence-rules";
 import { TIERS } from "../lib/tiers"; // relative: drizzle-kit does not resolve the @/ alias
+// The meeting recorder's statuses (recordings table); RECORDING_STATUSES above is for meeting_recordings.
+import { RECORDING_STATUSES as RECORDER_STATUSES, SEGMENT_STATUSES } from "../lib/recordings/constants";
 
 export { TIER_HOURS, TIERS, type Tier } from "../lib/tiers";
 
@@ -128,6 +131,10 @@ export const tasks = pgTable(
   {
     id: serial("id").primaryKey(),
     title: text("title").notNull(),
+    // "project" tasks are the normal ones; "general" tasks are standing tasks members pick after missing
+    // a meeting (never done, not synced to the sheet; see lib/absence-rules.ts).
+    kind: text("kind", { enum: TASK_KINDS }).notNull().default("project"),
+    description: text("description"),
     status: text("status", { enum: TASK_STATUSES }).notNull().default("todo"),
     assigneeId: integer("assignee_id").references(() => members.id, { onDelete: "set null" }),
     // Delegated to a whole department instead of one person (never both; see the check below).
@@ -159,6 +166,10 @@ export const tasks = pgTable(
     aiModel: text("ai_model"),
     triggeredById: integer("triggered_by_id").references(() => members.id, { onDelete: "set null" }),
     aiConfirmedAt: timestamp("ai_confirmed_at", { withTimezone: true }),
+    // When the task was last marked done (cleared when it is reopened), and the status it had before,
+    // so unticking puts it back. Set by every path that changes the status (app and sheet sync).
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    statusBeforeDone: text("status_before_done", { enum: TASK_STATUSES }),
     // Soft delete (AI tasks): hidden everywhere; the sync removes its sheet row.
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     // Legacy (read-only import): fields an admin changed in the app. Only used to migrate to the two-way sync.
@@ -169,6 +180,14 @@ export const tasks = pgTable(
   (t) => [
     uniqueIndex("tasks_source_key_idx").on(t.source, t.sourceKey),
     index("tasks_assignee_idx").on(t.assigneeId),
+    // "My open tasks" (dashboard, /tasks): by assignee, soonest due first.
+    index("tasks_open_assignee_idx")
+      .on(t.assigneeId, t.dueDate)
+      .where(sql`${t.deletedAt} is null and ${t.kind} = 'project' and ${t.status} <> 'done'`),
+    // Analytics: tasks created or finished since a date; and the tasks of a meeting.
+    index("tasks_created_idx").on(t.createdAt).where(sql`${t.deletedAt} is null`),
+    index("tasks_completed_idx").on(t.completedAt).where(sql`${t.completedAt} is not null`),
+    index("tasks_source_meeting_idx").on(t.sourceMeetingId).where(sql`${t.sourceMeetingId} is not null`),
     index("tasks_department_idx").on(t.departmentId),
     index("tasks_project_idx").on(t.projectId),
     check("tasks_one_owner", sql`${t.assigneeId} is null or ${t.departmentId} is null`),
@@ -199,13 +218,17 @@ export const taskEvents = pgTable(
       .references(() => tasks.id, { onDelete: "cascade" }),
     actorId: integer("actor_id").references(() => members.id, { onDelete: "set null" }),
     source: text("source", { enum: ["app", "sheet_sync", "ai"] }).notNull(),
-    kind: text("kind", { enum: ["created", "updated", "conflict", "confirmed", "deleted"] }).notNull(),
+    kind: text("kind", { enum: ["created", "updated", "conflict", "confirmed", "deleted", "reopened", "picked"] }).notNull(),
     field: text("field"),
     oldValue: text("old_value"),
     newValue: text("new_value"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("task_events_task_idx").on(t.taskId, t.createdAt)],
+  (t) => [
+    index("task_events_task_idx").on(t.taskId, t.createdAt),
+    // Analytics "active this week": who changed a task from the app in a period.
+    index("task_events_activity_idx").on(t.createdAt).where(sql`${t.actorId} is not null and ${t.source} = 'app'`),
+  ],
 );
 
 // Background jobs (tasks sheet sync, hours sheet sync): a lease so only one runs at a time across
@@ -241,6 +264,8 @@ export const timeEntries = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     source: text("source", { enum: TIME_ENTRY_SOURCES }).notNull(),
+    // "office" or "home"; null for entries from before locations existed ("unspecified").
+    location: text("location", { enum: WORK_LOCATIONS }),
     // Who created or last changed the entry, when it was not the member (an admin).
     editedById: integer("edited_by_id").references(() => members.id, { onDelete: "set null" }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -254,6 +279,8 @@ export const timeEntries = pgTable(
     // At most one running timer per member, so a double tap on Start cannot create two.
     uniqueIndex("time_entries_running_idx").on(t.memberId).where(sql`${t.endedAt} is null and ${t.deletedAt} is null`),
     index("time_entries_member_idx").on(t.memberId, t.startedAt),
+    // Entries of everyone in a period (admin "this week" table, analytics), without a member filter.
+    index("time_entries_started_idx").on(t.startedAt).where(sql`${t.deletedAt} is null`),
     index("time_entries_sheet_idx").on(t.sheetStatus),
     check("time_entries_end_after_start", sql`${t.endedAt} is null or ${t.endedAt} > ${t.startedAt}`),
   ],
@@ -310,12 +337,26 @@ export const attendance = pgTable(
       .references(() => members.id, { onDelete: "cascade" }),
     state: text("state", { enum: ATTENDANCE_STATES }).notNull(),
     note: text("note"), // the reason given with an excuse
+    // An excuse sent less than ABSENCE_NOTICE_HOURS before the start: counts as unexcused until an
+    // admin accepts it (late_decision "accepted").
+    lateNotice: boolean("late_notice").notNull().default(false),
+    noticeAt: timestamp("notice_at", { withTimezone: true }),
+    lateDecision: text("late_decision", { enum: LATE_DECISIONS }),
+    lateDecidedById: integer("late_decided_by_id").references(() => members.id, { onDelete: "set null" }),
+    lateDecidedAt: timestamp("late_decided_at", { withTimezone: true }),
     source: text("source", { enum: ATTENDANCE_SOURCES }).notNull(),
     setById: integer("set_by_id").references(() => members.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.meetingId, t.memberId] }), index("attendance_member_idx").on(t.memberId)],
+  (t) => [
+    primaryKey({ columns: [t.meetingId, t.memberId] }),
+    index("attendance_member_idx").on(t.memberId),
+    // Late notices waiting for an admin's decision (admin meetings page).
+    index("attendance_late_pending_idx")
+      .on(t.meetingId)
+      .where(sql`${t.state} = 'excused' and ${t.lateNotice} and ${t.lateDecision} is null`),
+  ],
 );
 
 export type Attendance = typeof attendance.$inferSelect;
@@ -386,9 +427,9 @@ export const taskReminders = pgTable(
 );
 
 // One row per calendar import (file upload, calendar URL or seed), with the report.
-// Audio/video recordings of meetings: recorded in the browser during an in-person meeting, or uploaded
-// by an admin afterwards. The file itself is in object storage (lib/storage.ts) under storage_key;
-// only the meeting's invitees and admins can play it. Kept for transcription later.
+// Earlier meeting recordings (the first recorder: one file per meeting in an S3-compatible bucket, see
+// lib/storage.ts). No new rows are made: the meeting recorder (recordings + recording_segments below)
+// replaced it. Kept so recordings already stored stay playable for the meeting's invitees and admins.
 export const meetingRecordings = pgTable(
   "meeting_recordings",
   {
@@ -412,14 +453,19 @@ export const meetingRecordings = pgTable(
 
 export type MeetingRecording = typeof meetingRecordings.$inferSelect;
 
-export const meetingImports = pgTable("meeting_imports", {
-  id: serial("id").primaryKey(),
-  actorId: integer("actor_id").references(() => members.id, { onDelete: "set null" }),
-  source: text("source", { enum: ["file", "url", "seed"] }).notNull(),
-  ok: boolean("ok").notNull(),
-  report: jsonb("report").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const meetingImports = pgTable(
+  "meeting_imports",
+  {
+    id: serial("id").primaryKey(),
+    actorId: integer("actor_id").references(() => members.id, { onDelete: "set null" }),
+    source: text("source", { enum: ["file", "url", "seed"] }).notNull(),
+    ok: boolean("ok").notNull(),
+    report: jsonb("report").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // The latest pull of the calendar is looked up on page views; the table gets a row per attempt.
+  (t) => [index("meeting_imports_source_idx").on(t.source, t.id)],
+);
 
 // Meeting notes or a transcript, pasted or uploaded by an attendee. Readable by that meeting's
 // invitees and admins only (enforced in the app).
@@ -462,7 +508,31 @@ export const aiTaskRuns = pgTable(
     outputTokens: integer("output_tokens"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("ai_task_runs_meeting_idx").on(t.meetingId, t.notesHash), index("ai_task_runs_member_idx").on(t.triggeredById, t.createdAt)],
+  (t) => [
+    index("ai_task_runs_meeting_idx").on(t.meetingId, t.notesHash),
+    index("ai_task_runs_member_idx").on(t.triggeredById, t.createdAt),
+    // "Is there a successful run for this note?" (notes waiting on the dashboard, per-note status).
+    index("ai_task_runs_note_idx").on(t.noteId),
+  ],
+);
+
+// One "Ask about a meeting" question: for the per-member rate limit and usage. The question and the
+// answer are not stored.
+export const aiQuestions = pgTable(
+  "ai_questions",
+  {
+    id: serial("id").primaryKey(),
+    memberId: integer("member_id").references(() => members.id, { onDelete: "set null" }),
+    meetingId: integer("meeting_id").references(() => meetings.id, { onDelete: "set null" }),
+    model: text("model"),
+    ok: boolean("ok").notNull(),
+    found: boolean("found"),
+    error: text("error"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ai_questions_member_idx").on(t.memberId, t.createdAt)],
 );
 
 // Every action item ever created for a meeting, by title + assignee. A rerun skips these, so
@@ -481,3 +551,98 @@ export const aiTaskItems = pgTable(
   },
   (t) => [uniqueIndex("ai_task_items_key_idx").on(t.meetingId, t.itemKey)],
 );
+
+// In-app notifications. Each one belongs to one member and is only ever shown to that member, so
+// nothing admin-only may go into the text.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    text: text("text").notNull(),
+    link: text("link"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (t) => [index("notifications_member_idx").on(t.memberId, t.readAt), index("notifications_member_created_idx").on(t.memberId, t.createdAt)],
+);
+
+// After a missed meeting (see GENERAL_TASK_AFTER): the member is asked to pick a general task.
+export const generalTaskRequests = pgTable(
+  "general_task_requests",
+  {
+    id: serial("id").primaryKey(),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(), // "unexcused", "late notice not accepted", ...
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    pickedTaskId: integer("picked_task_id").references(() => tasks.id, { onDelete: "set null" }),
+    pickedAt: timestamp("picked_at", { withTimezone: true }),
+    // The absence was changed (e.g. to present) before a task was picked.
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("general_task_requests_member_meeting_idx").on(t.memberId, t.meetingId)],
+);
+
+// A meeting recording (recorded in the browser, or an imported audio file). Only admins create,
+// transcribe and delete them; admins and the meeting's invitees can play them. The audio lives in the
+// private Supabase Storage bucket "meeting-recordings", one file per segment.
+export const recordings = pgTable(
+  "recordings",
+  {
+    id: serial("id").primaryKey(),
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    startedById: integer("started_by_id").references(() => members.id, { onDelete: "set null" }),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    durationMs: integer("duration_ms").notNull().default(0),
+    status: text("status", { enum: RECORDER_STATUSES }).notNull().default("recording"),
+    error: text("error"),
+    source: text("source", { enum: ["recorded", "uploaded"] }).notNull().default("recorded"),
+    fileName: text("file_name"), // for imported files
+    // Transcription: languages hint ("sl", "sl,en", "" = detect), the joined transcript, usage.
+    languages: text("languages"),
+    transcript: text("transcript"),
+    transcribeModel: text("transcribe_model"),
+    transcribedSeconds: integer("transcribed_seconds").notNull().default(0),
+    transcribeLeaseUntil: timestamp("transcribe_lease_until", { withTimezone: true }),
+    savedNoteId: integer("saved_note_id").references(() => meetingNotes.id, { onDelete: "set null" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("recordings_meeting_idx").on(t.meetingId)],
+);
+
+// One uploaded piece of a recording (~10 minutes). Unique per (recording, index), so a retried upload
+// never adds a second row.
+export const recordingSegments = pgTable(
+  "recording_segments",
+  {
+    id: serial("id").primaryKey(),
+    recordingId: integer("recording_id")
+      .notNull()
+      .references(() => recordings.id, { onDelete: "cascade" }),
+    index: integer("index").notNull(),
+    storagePath: text("storage_path").notNull(),
+    contentType: text("content_type").notNull().default("audio/mpeg"),
+    durationMs: integer("duration_ms").notNull(),
+    bytes: integer("bytes").notNull(),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+    transcript: text("transcript"),
+    transcriptStatus: text("transcript_status", { enum: SEGMENT_STATUSES }),
+    transcriptError: text("transcript_error"),
+    transcriptStartedAt: timestamp("transcript_started_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("recording_segments_recording_index_uq").on(t.recordingId, t.index)],
+);
+
+export type Recording = typeof recordings.$inferSelect;
+export type RecordingSegment = typeof recordingSegments.$inferSelect;

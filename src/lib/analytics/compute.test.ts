@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { computeAnalytics, type Data } from "./compute";
+import { weeklyHours, type Entry } from "./test-helpers";
 
 // Wednesday 28 Oct 2026, noon in Ljubljana (UTC+1 after the clock change on 25 Oct).
 const now = new Date("2026-10-28T11:00:00Z");
 const at = (iso: string) => new Date(iso);
 const h = (memberId: number, startIso: string, hours: number) => ({ memberId, startedAt: at(startIso), endedAt: new Date(at(startIso).getTime() + hours * 3_600_000) });
+
+const entries: Entry[] = [
+  h(1, "2026-10-26T08:00:00Z", 30), // this week: 30 of 70, pro-rated target ~ 70*0.36*0.75 -> on track
+  h(2, "2026-10-26T08:00:00Z", 0.5), // this week: behind
+  // last 4 weeks: Bor under 50% every week, Cene at target
+  ...["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19"].flatMap((d) => [h(2, `${d}T08:00:00Z`, 1), h(3, `${d}T08:00:00Z`, 10), h(1, `${d}T08:00:00Z`, 70)]),
+];
 
 const data: Data = {
   now,
@@ -15,12 +23,9 @@ const data: Data = {
     { id: 3, name: "Cene", tier: "Impact", weeklyHours: 10, active: true },
     { id: 4, name: "Gone", tier: "Impact", weeklyHours: 10, active: false },
   ],
-  entries: [
-    h(1, "2026-10-26T08:00:00Z", 30), // this week: 30 of 70, pro-rated target ~ 70*0.36*0.75 -> on track
-    h(2, "2026-10-26T08:00:00Z", 0.5), // this week: behind
-    // last 4 weeks: Bor under 50% every week, Cene at target
-    ...["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19"].flatMap((d) => [h(2, `${d}T08:00:00Z`, 1), h(3, `${d}T08:00:00Z`, 10), h(1, `${d}T08:00:00Z`, 70)]),
-  ],
+  hours: weeklyHours(entries, now),
+  firstEntryAt: new Date(Math.min(...entries.map((e) => e.startedAt.getTime()))),
+  anyAiTask: true,
   meetings: [
     { id: 10, title: "Grants", series: "Grants", startsAt: at("2026-10-01T15:00:00Z"), endsAt: at("2026-10-01T16:00:00Z"), status: "confirmed" },
     { id: 11, title: "Grants", series: "Grants", startsAt: at("2026-10-15T15:00:00Z"), endsAt: at("2026-10-15T16:00:00Z"), status: "confirmed" },
@@ -38,17 +43,15 @@ const data: Data = {
     // Bor: no answers -> unexcused for the past meetings
   ],
   tasks: [
-    { id: 100, assigneeId: 1, createdAt: at("2026-10-26T09:00:00Z"), createdByAi: false, aiConfirmedAt: null, deletedAt: null },
-    { id: 101, assigneeId: 3, createdAt: at("2026-10-26T09:00:00Z"), createdByAi: true, aiConfirmedAt: null, deletedAt: null }, // unconfirmed AI
-    { id: 102, assigneeId: 3, createdAt: at("2026-10-19T09:00:00Z"), createdByAi: true, aiConfirmedAt: at("2026-10-20T09:00:00Z"), deletedAt: null },
-    { id: 103, assigneeId: 1, createdAt: at("2026-10-19T09:00:00Z"), createdByAi: false, aiConfirmedAt: null, deletedAt: at("2026-10-27T09:00:00Z") },
-  ],
-  doneEvents: [
-    { taskId: 100, at: at("2026-10-27T09:00:00Z") },
-    { taskId: 100, at: at("2026-10-27T10:00:00Z") }, // reopened and done again: counted once
-    { taskId: 101, at: at("2026-10-27T09:00:00Z") }, // unconfirmed AI: not counted
-    { taskId: 102, at: at("2026-10-21T09:00:00Z") },
-    { taskId: 103, at: at("2026-10-21T09:00:00Z") }, // deleted: not counted
+    // Done this week (it was done, reopened and done again: counted once, at the latest time).
+    { id: 100, assigneeId: 1, status: "done", createdAt: at("2026-10-26T09:00:00Z"), completedAt: at("2026-10-27T10:00:00Z"), createdByAi: false, aiConfirmedAt: null, deletedAt: null },
+    // Unconfirmed AI task, done: not counted.
+    { id: 101, assigneeId: 3, status: "done", createdAt: at("2026-10-26T09:00:00Z"), completedAt: at("2026-10-27T09:00:00Z"), createdByAi: true, aiConfirmedAt: null, deletedAt: null },
+    { id: 102, assigneeId: 3, status: "done", createdAt: at("2026-10-19T09:00:00Z"), completedAt: at("2026-10-21T09:00:00Z"), createdByAi: true, aiConfirmedAt: at("2026-10-20T09:00:00Z"), deletedAt: null },
+    // Deleted: not counted.
+    { id: 103, assigneeId: 1, status: "done", createdAt: at("2026-10-19T09:00:00Z"), completedAt: at("2026-10-21T09:00:00Z"), createdByAi: false, aiConfirmedAt: null, deletedAt: at("2026-10-27T09:00:00Z") },
+    // Done last week, then reopened: completed_at cleared, no longer counted anywhere.
+    { id: 104, assigneeId: 2, status: "in_progress", createdAt: at("2026-10-19T09:00:00Z"), completedAt: null, createdByAi: false, aiConfirmedAt: null, deletedAt: null },
   ],
   taskActivity: [{ memberId: 2, at: at("2026-10-27T09:00:00Z") }],
 };
@@ -73,6 +76,23 @@ test("hours: this week per member sorted, and per week by tier", () => {
   assert.deepEqual(core.hoursThisWeek.map((r) => r.name), ["Ana"]);
 });
 
+test("office vs home: per week and per tier; entries without a location stay unspecified", () => {
+  const withLocation: Data = {
+    ...data,
+    hours: weeklyHours(entries.map((e, i) => ({ ...e, location: i === 0 ? ("office" as const) : i === 1 ? ("home" as const) : null })), now),
+  };
+  const a = computeAnalytics(withLocation, { tier: null, series: null, range: "4w" });
+  assert.deepEqual(a.locationByWeek.at(-1), { week: "2026-10-26", office: 30, home: 0.5, unspecified: 0 });
+  assert.deepEqual(a.locationByWeek.at(-2), { week: "2026-10-19", office: 0, home: 0, unspecified: 81 });
+  assert.deepEqual(a.locationByTier, [
+    { tier: "Core", office: 30, home: 0, unspecified: 210 },
+    { tier: "Impact", office: 0, home: 0, unspecified: 30 },
+    { tier: "GO!", office: 0, home: 0.5, unspecified: 3 },
+  ]);
+  const core = computeAnalytics(withLocation, { tier: "Core", series: null, range: "4w" });
+  assert.deepEqual(core.locationByTier.map((r) => r.tier), ["Core"]);
+});
+
 test("attendance: rate per series, heatmap of past meetings with unanswered as unexcused", () => {
   const a = computeAnalytics(data, { tier: null, series: null, range: "8w" });
   assert.deepEqual(a.attendanceBySeries, [
@@ -91,7 +111,8 @@ test("tasks: finished per member and created vs finished per week, AI as its own
   assert.deepEqual(a.finishedPerMember.map((r) => [r.name, r.n]), [["Ana", 1], ["Cene", 1]]);
   assert.ok(a.anyAi);
   assert.deepEqual(a.tasksPerWeek.at(-1), { week: "2026-10-26", created: 1, aiCreated: 1, finished: 1 });
-  assert.deepEqual(a.tasksPerWeek.at(-2), { week: "2026-10-19", created: 0, aiCreated: 1, finished: 1 }, "deleted task 103 is not counted");
+  assert.deepEqual(a.tasksPerWeek.at(-2), { week: "2026-10-19", created: 1, aiCreated: 1, finished: 1 }, "deleted task 103 is not counted; reopened 104 is not finished");
+  assert.ok(!a.finishedPerMember.some((r) => r.name === "Bor"), "a reopened task no longer counts for its assignee");
 });
 
 test("drifting: under 50% for 2+ weeks, or 2+ unexcused in the last 6 meetings", () => {

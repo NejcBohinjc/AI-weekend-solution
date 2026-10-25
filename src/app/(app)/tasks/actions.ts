@@ -8,12 +8,13 @@ import { z } from "zod";
 import { db } from "@/db";
 import { departments, members, projects, reminderSettings, taskEvents, tasks, type Task } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
-import { PRIORITY_LABELS, STATUS_LABELS, TASK_PRIORITIES, TASK_REMINDER_OPTIONS, TASK_STATUSES, TASK_TYPES } from "@/lib/tasks/constants";
+import { TASK_PRIORITIES, TASK_REMINDER_OPTIONS, TASK_STATUSES, TASK_TYPES, type TaskStatus } from "@/lib/tasks/constants";
+import { applyTaskChanges, setTaskDone, TaskRuleError, type TaskField } from "@/lib/tasks/changes";
 import { parseOwner } from "@/lib/tasks/owner";
 import { canConfirmAiTask, canDeleteAiTask, canEditTask, canTakeTask } from "@/lib/tasks/permissions";
 import { runTasksSync } from "@/lib/tasks/sheet-sync";
 
-type Field = "title" | "status" | "assigneeId" | "departmentId" | "projectId" | "type" | "dueDate" | "priority";
+type Field = TaskField;
 
 /** owner: "m:<member id>", "d:<department id>" or "" (see lib/tasks/owner.ts). */
 export type TaskFormValues = { title: string; status: string; priority: string; owner: string; projectId: string; type: string; dueDate: string };
@@ -99,41 +100,6 @@ export async function createTaskAction(_prev: TaskFormState, formData: FormData)
   redirect(`/tasks/${task.id}?created=1`);
 }
 
-/** Saves the changed fields, one history row each. Returns false if nothing changed. */
-async function applyChanges(task: Task, next: Partial<Pick<Task, Field>>, actorId: number): Promise<boolean> {
-  const names = new Map((await db.select({ id: members.id, name: members.name }).from(members)).map((m) => [m.id, m.name]));
-  const departmentNames = new Map((await db.select({ id: departments.id, name: departments.name }).from(departments)).map((d) => [d.id, d.name]));
-  const projectNames = new Map((await db.select({ id: projects.id, name: projects.name }).from(projects)).map((p) => [p.id, p.name]));
-  const show = (f: Field, v: unknown): string | null => {
-    if (v === null || v === undefined) return null;
-    if (f === "status") return STATUS_LABELS[v as Task["status"]];
-    if (f === "priority") return PRIORITY_LABELS[v as Task["priority"]];
-    if (f === "assigneeId") return names.get(v as number) ?? null;
-    if (f === "departmentId") return departmentNames.get(v as number) ?? null;
-    if (f === "projectId") return projectNames.get(v as number) ?? null;
-    return String(v);
-  };
-  const changed = (Object.keys(next) as Field[]).filter((f) => task[f] !== next[f]);
-  if (!changed.length) return false;
-  await db.transaction(async (tx) => {
-    await tx
-      .update(tasks)
-      .set({ ...Object.fromEntries(changed.map((f) => [f, next[f]])), updatedAt: new Date() })
-      .where(eq(tasks.id, task.id));
-    await tx.insert(taskEvents).values(
-      changed.map((field) => ({
-        taskId: task.id,
-        actorId,
-        source: "app" as const,
-        kind: "updated" as const,
-        field,
-        oldValue: show(field, task[field]),
-        newValue: show(field, next[field]),
-      })),
-    );
-  });
-  return true;
-}
 
 async function loadTask(taskId: number) {
   const me = await requireMember();
@@ -179,7 +145,12 @@ export async function updateTaskAction(taskId: number, _prev: TaskFormState, for
   if (!task) return { error: "You can't edit this task." };
   const result = await parse(formData, task.type);
   if ("error" in result) return result;
-  if (await applyChanges(task, result.data, me.id)) pushToSheetLater(me.id);
+  try {
+    if (await applyTaskChanges(task, result.data, me.id)) pushToSheetLater(me.id);
+  } catch (err) {
+    if (err instanceof TaskRuleError) return { error: err.message, values: undefined };
+    throw err;
+  }
   refresh(taskId);
   return { saved: true };
 }
@@ -187,15 +158,29 @@ export async function updateTaskAction(taskId: number, _prev: TaskFormState, for
 /** Someone in the department takes a task delegated to it: it becomes theirs alone. */
 export async function takeTaskAction(taskId: number): Promise<void> {
   const { me, task } = await loadTask(taskId);
-  if (task && canTakeTask(me, task) && (await applyChanges(task, { assigneeId: me.id, departmentId: null }, me.id))) pushToSheetLater(me.id);
+  if (task && canTakeTask(me, task) && (await applyTaskChanges(task, { assigneeId: me.id, departmentId: null }, me.id))) pushToSheetLater(me.id);
   refresh(taskId);
 }
 
-/** One-tap finish from the list or the task page. */
-export async function finishTaskAction(taskId: number): Promise<void> {
+export type DoneResult = { ok: boolean; error?: string; title?: string; status?: TaskStatus };
+
+/**
+ * Ticks or unticks a task (list, task page, dashboard). Same rule as editing: assignee, creator or
+ * admin. Unticking puts the task back to the status it had before.
+ */
+export async function setTaskDoneAction(taskId: number, done: boolean): Promise<DoneResult> {
   const { me, task } = await loadEditable(taskId);
-  if (task && (await applyChanges(task, { status: "done" }, me.id))) pushToSheetLater(me.id);
+  if (!task) return { ok: false, error: "You can't change this task." };
+  let status: TaskStatus | null;
+  try {
+    status = await setTaskDone(task, done, me.id);
+  } catch (err) {
+    if (err instanceof TaskRuleError) return { ok: false, error: err.message };
+    throw err;
+  }
+  if (status) pushToSheetLater(me.id);
   refresh(taskId);
+  return { ok: true, title: task.title, status: status ?? task.status };
 }
 
 export type TaskReminderSettingsState = { saved?: boolean };

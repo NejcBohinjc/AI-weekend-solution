@@ -2,9 +2,13 @@ import Link from "next/link";
 import { AdminBadge } from "@/components/badges";
 import { NavLinks, type NavItem } from "@/components/nav-links";
 import { APP_NAME } from "@/lib/app";
-import { requireMember } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { logoutAction } from "@/lib/auth/actions";
 import { ThemeSwitch } from "@/components/theme-switch";
+import { UndoToastProvider } from "@/components/undo-toast";
+import { NotificationBell } from "@/components/notification-bell";
+import { RecorderProvider } from "@/components/recorder/recorder-provider";
+import { RecordingIndicator } from "@/components/recorder/recording-indicator";
 import { themePref } from "@/lib/theme-server";
 
 const MEMBER_NAV: NavItem[] = [
@@ -25,9 +29,9 @@ const ADMIN_NAV: NavItem[] = [
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const member = await requireMember();
+  const { member, unread } = await requireSession();
 
-  return (
+  const page = (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-10 border-b border-line bg-surface/95 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2.5">
@@ -35,8 +39,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {APP_NAME}
           </Link>
           <div className="ml-auto flex min-w-0 items-center gap-2">
+            {member.isAdmin && (
+              <span className="hidden sm:flex">
+                <RecordingIndicator />
+              </span>
+            )}
             <span className="hidden truncate text-sm text-fg-2 sm:inline">{member.name}</span>
-            {member.isAdmin && <AdminBadge />}
+            {/* On phones the admin nav row already says ADMIN; the badge would push "Log out" off-screen. */}
+            {member.isAdmin && (
+              <span className="hidden sm:inline-flex">
+                <AdminBadge />
+              </span>
+            )}
+            <NotificationBell unread={unread} />
             <ThemeSwitch initial={await themePref()} />
             <form action={logoutAction}>
               <button type="submit" className="whitespace-nowrap rounded-lg px-2.5 py-1 text-sm font-medium text-subtle hover:bg-surface-3 hover:text-fg">
@@ -57,8 +72,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </div>
           )}
         </nav>
+        {member.isAdmin && (
+          <div className="sm:hidden">
+            <RecordingIndicator variant="bar" />
+          </div>
+        )}
       </header>
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">{children}</main>
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+        <UndoToastProvider>{children}</UndoToastProvider>
+      </main>
     </div>
   );
+  // The meeting recorder lives here so a recording keeps running across pages. Admins only.
+  return member.isAdmin ? <RecorderProvider>{page}</RecorderProvider> : page;
 }

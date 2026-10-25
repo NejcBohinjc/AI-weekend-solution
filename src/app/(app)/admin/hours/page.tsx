@@ -11,7 +11,6 @@ import { SheetPanel } from "./sheet-panel";
 const PACE_ORDER: Record<Pace, number> = { behind: 0, below: 1, on_track: 2, met: 3 };
 
 export default async function AdminHoursPage({ searchParams }: { searchParams: Promise<{ week?: string }> }) {
-  await requireAdmin();
   const sp = await searchParams;
   const now = new Date();
   const thisWeek = weekStartOf(now);
@@ -20,7 +19,8 @@ export default async function AdminHoursPage({ searchParams }: { searchParams: P
   const { from, to } = weekBounds(week);
   const elapsed = isThisWeek ? (now.getTime() - from.getTime()) / (to.getTime() - from.getTime()) : 1;
 
-  const [team, queue] = await Promise.all([teamWeek(week, now), hoursSheetQueue()]);
+  // Queries start together with the admin check (they do not depend on who is asking).
+  const [, team, queue] = await Promise.all([requireAdmin(), teamWeek(week, now), hoursSheetQueue()]);
   const rows = team
     .map((m) => ({ ...m, pace: weekPace(m.totalMs, m.weeklyHours, elapsed), pct: Math.round((m.totalMs / 3_600_000 / m.weeklyHours) * 100) }))
     .sort((a, b) => PACE_ORDER[a.pace] - PACE_ORDER[b.pace] || a.pct - b.pct);

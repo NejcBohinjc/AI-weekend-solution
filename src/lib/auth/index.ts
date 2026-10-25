@@ -12,7 +12,9 @@ import { clearFailures, isRateLimited, recordFailure } from "./rate-limit";
 import {
   createSession,
   invalidateSession,
+  SESSION_CHECK_COOKIE,
   SESSION_COOKIE,
+  sessionCheckCookieOptions,
   sessionCookieOptions,
   validateSessionToken,
   type SessionMember,
@@ -20,17 +22,30 @@ import {
 
 export type { SessionMember };
 
-/** The signed-in member for this request, or null. Cached per request. */
-export const getCurrentMember = cache(async (): Promise<SessionMember | null> => {
+/**
+ * The signed-in member (and their unread notification count) for this request, or null. One query,
+ * cached for the whole request: the layout, the page and any component below them share it.
+ */
+export const getCurrentSession = cache(async (): Promise<{ member: SessionMember; unread: number } | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  return (await validateSessionToken(token))?.member ?? null;
+  const session = await validateSessionToken(token);
+  return session && { member: session.member, unread: session.unread };
 });
 
+/** The signed-in member for this request, or null. Cached per request. */
+export async function getCurrentMember(): Promise<SessionMember | null> {
+  return (await getCurrentSession())?.member ?? null;
+}
+
+export async function requireSession(): Promise<{ member: SessionMember; unread: number }> {
+  const session = await getCurrentSession();
+  if (!session) redirect("/login");
+  return session;
+}
+
 export async function requireMember(): Promise<SessionMember> {
-  const member = await getCurrentMember();
-  if (!member) redirect("/login");
-  return member;
+  return (await requireSession()).member;
 }
 
 /** Middleware already guards /admin/*; this also guards admin server actions. */
@@ -72,7 +87,9 @@ export async function signInWithPassword(rawEmail: string, password: string): Pr
 
 export async function startSession(memberId: number): Promise<void> {
   const { token, expiresAt } = await createSession(memberId);
-  (await cookies()).set(SESSION_COOKIE, token, sessionCookieOptions(expiresAt));
+  const store = await cookies();
+  store.set(SESSION_COOKIE, token, sessionCookieOptions(expiresAt));
+  store.set(SESSION_CHECK_COOKIE, "1", sessionCheckCookieOptions());
 }
 
 export async function signOut(): Promise<void> {
@@ -80,4 +97,5 @@ export async function signOut(): Promise<void> {
   const token = store.get(SESSION_COOKIE)?.value;
   if (token) await invalidateSession(token);
   store.delete(SESSION_COOKIE);
+  store.delete(SESSION_CHECK_COOKIE);
 }

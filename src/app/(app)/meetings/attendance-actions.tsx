@@ -13,10 +13,12 @@ type Props = {
   can: { checkIn: boolean; excuse: boolean };
   /** An admin recorded this member's attendance; only admins change it now. */
   lockedByAdmin: boolean;
+  /** The 72-hour rule, the deadline and the time left (lib/meetings/absence.ts). */
+  noticeHint?: { late: boolean; text: string };
 };
 
 /** The member's own buttons for one meeting: check in (present / remote), send an excuse, or take it back. */
-export function AttendanceActions({ action, current, note, can, lockedByAdmin }: Props) {
+export function AttendanceActions({ action, current, note, can, lockedByAdmin, noticeHint }: Props) {
   const [state, formAction, pending] = useActionState(action, {} as AttendanceActionState);
 
   if (lockedByAdmin) return <p className="text-sm text-muted">An admin recorded your attendance. Ask them if it needs changing.</p>;
@@ -54,10 +56,15 @@ export function AttendanceActions({ action, current, note, can, lockedByAdmin }:
         <details className="rounded-xl border border-line bg-surface px-4 py-3" open={state.error !== undefined && !can.checkIn}>
           <summary className="cursor-pointer text-sm font-medium">Can&apos;t come? Send an excuse</summary>
           <form action={formAction} className="mt-3 flex flex-col gap-2">
+            {noticeHint && (
+              <p className={`rounded-lg px-3 py-2 text-xs ${noticeHint.late ? "bg-warning-bg text-warning" : "bg-surface-3 text-fg-2"}`} data-testid="notice-rule">
+                {noticeHint.text}
+              </p>
+            )}
             <input type="hidden" name="intent" value="excused" />
             <textarea name="note" required minLength={3} maxLength={500} rows={2} placeholder="Reason, e.g. exam that afternoon" className={inputClass} />
             <button type="submit" disabled={pending} className={secondaryButtonClass}>
-              {pending ? "Sending…" : "Send excuse"}
+              {pending ? "Sending…" : noticeHint?.late ? "Send late notice" : "Send excuse"}
             </button>
           </form>
         </details>

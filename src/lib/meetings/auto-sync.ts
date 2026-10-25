@@ -2,9 +2,12 @@
 // and after the response is sent the calendar is pulled if the last pull is older than 15 minutes.
 // The scheduled job (/api/cron/reminders) does the same, so quiet periods are covered too.
 import { after } from "next/server";
+import { sweepAbsenceFollowUpsQuietly } from "@/lib/general-tasks";
 import { calendarUrl, syncCalendarIfStale } from "./import";
 
 export function syncCalendarInBackground(): void {
+  // Also: ask for general tasks for absences decided before their meeting, once it has ended.
+  after(sweepAbsenceFollowUpsQuietly);
   if (!calendarUrl()) return;
   after(async () => {
     try {

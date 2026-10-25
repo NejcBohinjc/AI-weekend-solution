@@ -1,5 +1,5 @@
 // Reads for the meetings pages.
-import { and, asc, desc, eq, ne } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { attendance, emailLog, meetingImports, meetingInvites, meetings, members, reminderSettings } from "@/db/schema";
 import { DEFAULT_REMINDER_MINUTES } from "./constants";
@@ -9,7 +9,14 @@ import { effectiveState } from "./rules";
 /** The member's meetings (not removed from the calendar) with what they recorded, oldest first. */
 export async function myMeetings(memberId: number) {
   return db
-    .select({ meeting: meetings, state: attendance.state, note: attendance.note, source: attendance.source })
+    .select({
+      meeting: meetings,
+      state: attendance.state,
+      note: attendance.note,
+      source: attendance.source,
+      lateNotice: attendance.lateNotice,
+      lateDecision: attendance.lateDecision,
+    })
     .from(meetingInvites)
     .innerJoin(meetings, eq(meetingInvites.meetingId, meetings.id))
     .leftJoin(attendance, and(eq(attendance.meetingId, meetings.id), eq(attendance.memberId, memberId)))
@@ -35,6 +42,9 @@ export async function meetingAttendees(meetingId: number) {
         source: attendance.source,
         setById: attendance.setById,
         updatedAt: attendance.updatedAt,
+        lateNotice: attendance.lateNotice,
+        lateDecision: attendance.lateDecision,
+        noticeAt: attendance.noticeAt,
       })
       .from(meetingInvites)
       .innerJoin(members, eq(meetingInvites.memberId, members.id))
@@ -52,7 +62,7 @@ export async function meetingsWithCounts(now: Date) {
   const [all, rows] = await Promise.all([
     db.select().from(meetings).where(ne(meetings.status, "removed")).orderBy(asc(meetings.startsAt)),
     db
-      .select({ meetingId: meetingInvites.meetingId, state: attendance.state })
+      .select({ meetingId: meetingInvites.meetingId, state: attendance.state, lateNotice: attendance.lateNotice, lateDecision: attendance.lateDecision })
       .from(meetingInvites)
       .leftJoin(attendance, and(eq(attendance.meetingId, meetingInvites.meetingId), eq(attendance.memberId, meetingInvites.memberId))),
   ]);
@@ -61,7 +71,7 @@ export async function meetingsWithCounts(now: Date) {
     for (const r of rows) {
       if (r.meetingId !== m.id) continue;
       counts.invited++;
-      const s = effectiveState(r.state, m, now);
+      const s = effectiveState(r.state, m, now, { lateNotice: !!r.lateNotice, lateDecision: r.lateDecision });
       if (s) counts[s]++;
       else counts.open++;
     }
@@ -72,7 +82,7 @@ export async function meetingsWithCounts(now: Date) {
 /** Attendance per member and series over meetings that are over (not cancelled). */
 export async function attendanceBySeries(now: Date) {
   const rows = await db
-    .select({ memberId: members.id, name: members.name, meeting: meetings, state: attendance.state })
+    .select({ memberId: members.id, name: members.name, meeting: meetings, state: attendance.state, lateNotice: attendance.lateNotice, lateDecision: attendance.lateDecision })
     .from(meetingInvites)
     .innerJoin(meetings, eq(meetingInvites.meetingId, meetings.id))
     .innerJoin(members, and(eq(meetingInvites.memberId, members.id), eq(members.active, true)))
@@ -80,7 +90,7 @@ export async function attendanceBySeries(now: Date) {
     .where(eq(meetings.status, "confirmed"))
     .orderBy(asc(members.name));
   return rows
-    .map((r) => ({ memberId: r.memberId, name: r.name, series: r.meeting.series, state: effectiveState(r.state, r.meeting, now) }))
+    .map((r) => ({ memberId: r.memberId, name: r.name, series: r.meeting.series, state: effectiveState(r.state, r.meeting, now, { lateNotice: !!r.lateNotice, lateDecision: r.lateDecision }) }))
     .filter((r) => r.state !== null);
 }
 
@@ -101,4 +111,15 @@ export async function lastMeetingImport() {
 
 export async function recentEmails(limit = 8) {
   return db.select().from(emailLog).orderBy(desc(emailLog.id)).limit(limit);
+}
+
+/** Late notices an admin has not decided on yet, oldest meeting first. */
+export async function pendingLateNotices() {
+  return db
+    .select({ meetingId: meetings.id, title: meetings.title, startsAt: meetings.startsAt, memberId: members.id, name: members.name, note: attendance.note, noticeAt: attendance.noticeAt })
+    .from(attendance)
+    .innerJoin(meetings, eq(attendance.meetingId, meetings.id))
+    .innerJoin(members, eq(attendance.memberId, members.id))
+    .where(and(eq(attendance.state, "excused"), eq(attendance.lateNotice, true), isNull(attendance.lateDecision)))
+    .orderBy(asc(meetings.startsAt));
 }

@@ -1,14 +1,16 @@
-import { eq } from "drizzle-orm";
+import { eq, ne } from "drizzle-orm";
+import { union } from "drizzle-orm/pg-core";
 import Link from "next/link";
 import { meetingWhen, SeriesBadge } from "@/components/meetings";
+import { ABSENCE_NOTICE_HOURS } from "@/lib/absence-rules";
 import { TIMEZONE } from "@/lib/app";
 import { db } from "@/db";
-import { meetingRecordings } from "@/db/schema";
+import { meetingRecordings, recordings } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { emailSettings } from "@/lib/email";
 import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
 import { CALENDAR_SYNC_MINUTES, calendarUrl, lastCalendarSync } from "@/lib/meetings/import";
-import { attendanceBySeries, lastMeetingImport, meetingsWithCounts, recentEmails } from "@/lib/meetings/queries";
+import { attendanceBySeries, lastMeetingImport, meetingsWithCounts, pendingLateNotices, recentEmails } from "@/lib/meetings/queries";
 import { attendanceSummary, meetingPhase } from "@/lib/meetings/rules";
 import { ImportPanel } from "./import-panel";
 import { RemindersPanel } from "./reminders-panel";
@@ -16,19 +18,26 @@ import { RemindersPanel } from "./reminders-panel";
 type Search = { view?: string; series?: string };
 
 export default async function AdminMeetingsPage({ searchParams }: { searchParams: Promise<Search> }) {
-  await requireAdmin();
-  syncCalendarInBackground();
   const sp = await searchParams;
   const view = sp.view === "past" ? "past" : "upcoming";
   const now = new Date();
-  const [all, last, emails, bySeries, lastPull, withRecording] = await Promise.all([
+  // The queries do not depend on who is asking, so they run while the session is being checked; if the
+  // member is not an admin, requireAdmin() redirects and their results are never used.
+  const [, all, last, emails, bySeries, lastPull, lateNotices, withRecording] = await Promise.all([
+    requireAdmin(),
     meetingsWithCounts(now),
     lastMeetingImport(),
     recentEmails(),
     attendanceBySeries(now),
     lastCalendarSync(),
-    db.selectDistinct({ id: meetingRecordings.meetingId }).from(meetingRecordings).where(eq(meetingRecordings.status, "ready")),
+    pendingLateNotices(),
+    // Meetings with a recording: from the meeting recorder, or an earlier one (meeting_recordings).
+    union(
+      db.selectDistinct({ id: meetingRecordings.meetingId }).from(meetingRecordings).where(eq(meetingRecordings.status, "ready")),
+      db.selectDistinct({ id: recordings.meetingId }).from(recordings).where(ne(recordings.status, "recording")),
+    ),
   ]);
+  syncCalendarInBackground();
   const recorded = new Set(withRecording.map((r) => r.id));
   const auto = calendarUrl()
     ? { minutes: CALENDAR_SYNC_MINUTES, last: lastPull && { at: lastPull.at.toISOString(), ok: lastPull.ok, error: lastPull.error } }
@@ -61,6 +70,27 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
           {all.length} meetings in {seriesList.length} series · open a meeting to record attendance
         </p>
       </div>
+
+      {lateNotices.length > 0 && (
+        <section className="flex flex-col gap-2 rounded-xl border border-warning-line bg-warning-bg p-4" data-testid="late-notices">
+          <h2 className="font-semibold text-warning">Late notices to decide ({lateNotices.length})</h2>
+          <p className="text-sm text-fg-2">
+            Excuses sent less than {ABSENCE_NOTICE_HOURS} h before the start. They count as unexcused until you accept them on the meeting page.
+          </p>
+          <ul className="divide-y divide-warning-line text-sm">
+            {lateNotices.map((n) => (
+              <li key={`${n.meetingId}:${n.memberId}`} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span>
+                  <span className="font-medium">{n.name}</span> · {n.note ? `“${n.note}”` : "no reason"}
+                </span>
+                <Link href={`/meetings/${n.meetingId}`} className="font-medium text-link underline underline-offset-2">
+                  {n.title}, {n.startsAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: TIMEZONE })} →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ImportPanel last={last?.report ?? null} lastBy={last?.by ?? null} auto={auto} />

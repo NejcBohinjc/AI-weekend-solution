@@ -92,6 +92,13 @@
       "when": 1792866378242,
       "tag": "0012_closed_stranger",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792917215194,
+      "tag": "0013_exotic_killraven",
+      "breakpoints": true
     }
   ]
 }

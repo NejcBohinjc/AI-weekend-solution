@@ -2,8 +2,8 @@
 // Database tests get their own database, never the one the app uses: TEST_DATABASE_URL if set, else
 // the local DATABASE_URL with "_test" added to the database name (e.g. shapers -> shapers_test). It is
 // created if missing and migrated first. Without a local database, the database tests are skipped.
-// Google, email and the calendar address are blanked for tests, so nothing reaches the real Sheet or
-// sends mail (the tests use a fake Sheets API).
+// Google, email, the calendar address, Supabase Storage and OpenAI are blanked for tests, so nothing
+// reaches the real Sheet, sends mail or touches real recordings (the tests use fakes).
 import "dotenv/config";
 import { execSync } from "node:child_process";
 import { readdirSync } from "node:fs";
@@ -47,6 +47,10 @@ const env = {
   MEETINGS_ICS_URL: "",
   SMTP_HOST: "",
   MAIL_REDIRECT_TO: "",
+  // Recordings and transcription: tests use a fake store and a mocked provider, never the real ones.
+  SUPABASE_URL: "",
+  SUPABASE_SERVICE_ROLE_KEY: "",
+  OPENAI_API_KEY: "",
 };
 
 if (dbUrl) {

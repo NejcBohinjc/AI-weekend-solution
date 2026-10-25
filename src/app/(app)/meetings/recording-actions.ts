@@ -1,112 +1,142 @@
 "use server";
 
-// Recording uploads in three steps, so large files never pass through the app:
-// 1. startRecordingUploadAction checks who may store what, creates the row and returns an upload URL;
-// 2. the browser PUTs the file to that URL (storage directly, or /api/recordings/<id>/upload locally);
-// 3. finishRecordingUploadAction checks the file arrived whole and marks the recording ready.
-import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+// Server actions for meeting recordings. Audio never passes through here (Vercel's ~4.5 MB body
+// limit): the browser gets a signed upload URL, uploads to Supabase Storage itself, then confirms.
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
+import { after } from "next/server";
 import { db } from "@/db";
-import { meetingInvites, meetingRecordings } from "@/db/schema";
+import { meetingRecordings } from "@/db/schema";
 import { requireAdmin, requireMember } from "@/lib/auth";
-import { RECORDING_SOURCES } from "@/lib/meetings/constants";
-import { meetingById } from "@/lib/meetings/queries";
-import { canUploadRecording, extensionFor, recordedUploadOpen, recordingFileProblem } from "@/lib/meetings/recordings";
-import { deleteStored, storageMode, storedSize, uploadUrl } from "@/lib/storage";
+import { transcribeEnabled } from "@/lib/ai/transcribe";
+import { RecordingError, confirmSegment, createRecording, deleteRecording, finishRecording, playbackUrls, prepareSegmentUpload } from "@/lib/recordings/service";
+import { runTranscription, saveTranscriptAsNotes, startTranscription, transcriptionProgress, type Progress } from "@/lib/recordings/transcription";
+import { deleteStored } from "@/lib/storage";
+import { StorageError, storageConfigured } from "@/lib/storage/supabase";
 
-export type StartUploadResult = { error: string } | { recordingId: number; url: string; contentType: string };
+type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
-const inputSchema = z.object({
-  source: z.enum(RECORDING_SOURCES),
-  fileName: z.string().max(200).nullable(),
-  contentType: z.string().min(1).max(100),
-  size: z.number().int().nonnegative(),
-  durationSeconds: z.number().nonnegative().max(24 * 3600).nullable(),
-});
-
-function refresh(meetingId: number) {
-  revalidatePath(`/meetings/${meetingId}`);
-  revalidatePath("/admin/meetings");
-}
-
-export async function startRecordingUploadAction(meetingId: number, input: z.input<typeof inputSchema>): Promise<StartUploadResult> {
-  const me = await requireMember();
-  const parsed = inputSchema.safeParse(input);
-  if (!parsed.success) return { error: "That file cannot be stored." };
-  const { source, fileName, size, durationSeconds } = parsed.data;
-  const contentType = parsed.data.contentType.trim();
-
-  const meeting = await meetingById(meetingId);
-  if (!meeting) return { error: "This meeting no longer exists." };
-  const times = { ...meeting, cancelled: meeting.status !== "confirmed" };
-  const now = new Date();
-
-  if (source === "recorded") {
-    const [invite] = await db
-      .select({ id: meetingInvites.memberId })
-      .from(meetingInvites)
-      .where(and(eq(meetingInvites.meetingId, meetingId), eq(meetingInvites.memberId, me.id)))
-      .limit(1);
-    if (!invite && !me.isAdmin) return { error: "Only people invited to this meeting can record it." };
-    if (!recordedUploadOpen(times, now)) return { error: "It is too long after the meeting to save a room recording. Download it and ask an admin to upload it." };
-  } else {
-    if (!me.isAdmin) return { error: "Only admins upload recordings." };
-    const [ready] = await db
-      .select({ id: meetingRecordings.id })
-      .from(meetingRecordings)
-      .where(and(eq(meetingRecordings.meetingId, meetingId), eq(meetingRecordings.status, "ready")))
-      .limit(1);
-    if (!canUploadRecording(times, !!ready, now)) {
-      return { error: ready ? "This meeting already has a recording. Delete it first to replace it." : "Recordings can be uploaded once the meeting is over." };
-    }
+async function guarded<T>(what: string, fn: () => Promise<T>): Promise<Result<T>> {
+  try {
+    return { ok: true, ...(await fn()) };
+  } catch (err) {
+    if (err instanceof RecordingError || err instanceof StorageError) return { ok: false, error: err.message };
+    console.error(`[recordings] ${what}:`, (err as Error).message);
+    return { ok: false, error: "Something went wrong. Please try again." };
   }
-
-  const problem = recordingFileProblem({ contentType, size });
-  if (problem) return { error: problem };
-  if (storageMode() === "none") return { error: "Recording storage is not set up yet, so the file cannot be saved here. Keep the file and upload it later." };
-
-  const storageKey = `meetings/${meetingId}/${randomUUID()}.${extensionFor(contentType, fileName)}`;
-  const [row] = await db
-    .insert(meetingRecordings)
-    .values({
-      meetingId,
-      uploadedById: me.id,
-      source,
-      storageKey,
-      fileName: fileName?.trim() || null,
-      contentType,
-      sizeBytes: size,
-      durationSeconds: durationSeconds === null ? null : Math.round(durationSeconds),
-    })
-    .returning({ id: meetingRecordings.id });
-  const url = await uploadUrl(storageKey, contentType, `/api/recordings/${row.id}/upload`);
-  return { recordingId: row.id, url, contentType };
 }
 
-export async function finishRecordingUploadAction(recordingId: number): Promise<{ error?: string }> {
+function needStorage() {
+  if (!storageConfigured()) throw new RecordingError("Recording is not set up (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).");
+}
+
+export async function startRecordingAction(meetingId: number, source: "recorded" | "uploaded", fileName: string | null): Promise<Result<{ recordingId: number }>> {
   const me = await requireMember();
-  const [row] = await db
-    .select()
-    .from(meetingRecordings)
-    .where(and(eq(meetingRecordings.id, recordingId), eq(meetingRecordings.uploadedById, me.id), eq(meetingRecordings.status, "uploading")))
-    .limit(1);
-  if (!row) return { error: "This upload is not waiting to be finished." };
-  const size = await storedSize(row.storageKey);
-  if (size === null) return { error: "The file did not arrive in storage. Try again." };
-  if (size !== row.sizeBytes) return { error: "Only part of the file arrived. Try again." };
-  await db.update(meetingRecordings).set({ status: "ready", readyAt: new Date() }).where(eq(meetingRecordings.id, row.id));
-  refresh(row.meetingId);
-  return {};
+  return guarded("start", async () => {
+    needStorage();
+    const rec = await createRecording(me, meetingId, { source, fileName });
+    revalidatePath(`/meetings/${meetingId}`);
+    return { recordingId: rec.id };
+  });
 }
 
-/** Admins delete a recording (also an upload that never finished); the file is removed from storage. */
-export async function deleteRecordingAction(recordingId: number): Promise<void> {
+export async function segmentUploadUrlAction(recordingId: number, index: number, ext: string): Promise<Result<{ url: string }>> {
+  const me = await requireMember();
+  return guarded("upload link", async () => {
+    needStorage();
+    const { uploadUrl } = await prepareSegmentUpload(me, recordingId, index, ext);
+    return { url: uploadUrl };
+  });
+}
+
+export async function confirmSegmentAction(recordingId: number, index: number, ext: string, durationMs: number): Promise<Result<{ parts: number }>> {
+  const me = await requireMember();
+  return guarded("confirm", async () => {
+    needStorage();
+    const t = await confirmSegment(me, recordingId, { index, ext, durationMs });
+    return { parts: t.parts };
+  });
+}
+
+export async function finishRecordingAction(recordingId: number, meetingId: number): Promise<Result<{ removed: boolean }>> {
+  const me = await requireMember();
+  return guarded("finish", async () => {
+    const r = await finishRecording(me, recordingId);
+    revalidatePath(`/meetings/${meetingId}`);
+    return r;
+  });
+}
+
+export async function deleteRecordingAction(recordingId: number, meetingId: number): Promise<Result> {
+  const me = await requireMember();
+  return guarded("delete", async () => {
+    needStorage();
+    await deleteRecording(me, recordingId);
+    revalidatePath(`/meetings/${meetingId}`);
+    return {};
+  });
+}
+
+export async function playbackUrlsAction(recordingId: number): Promise<Result<{ parts: { index: number; url: string | null; contentType: string; durationMs: number }[] }>> {
+  const me = await requireMember();
+  return guarded("playback", async () => {
+    needStorage();
+    return { parts: (await playbackUrls(me, recordingId)).map(({ index, url, contentType, durationMs }) => ({ index, url, contentType, durationMs })) };
+  });
+}
+
+/** Transcription runs in the background after the response; the page polls progress. */
+function runInBackground(recordingId: number) {
+  after(async () => {
+    try {
+      await runTranscription(recordingId);
+    } catch (err) {
+      console.error("[recordings] transcription:", (err as Error).message);
+    }
+  });
+}
+
+export async function startTranscriptionAction(recordingId: number, meetingId: number, languages: string, onlyFailed: boolean): Promise<Result> {
+  const me = await requireMember();
+  return guarded("transcribe", async () => {
+    needStorage();
+    if (!transcribeEnabled()) throw new RecordingError("Transcription is not set up (OPENAI_API_KEY).");
+    await startTranscription(me, recordingId, { languages, onlyFailed });
+    runInBackground(recordingId);
+    revalidatePath(`/meetings/${meetingId}`);
+    return {};
+  });
+}
+
+export async function transcriptionProgressAction(recordingId: number): Promise<Result<{ progress: Progress }>> {
+  const me = await requireMember();
+  return guarded("progress", async () => {
+    const progress = await transcriptionProgress(me, recordingId);
+    // The last run used its time budget (or crashed): continue with another one.
+    if (progress.needsRun) runInBackground(recordingId);
+    return { progress };
+  });
+}
+
+export async function saveTranscriptAction(recordingId: number, text: string): Promise<Result<{ noteId: number }>> {
+  const me = await requireMember();
+  return guarded("save transcript", async () => {
+    const { noteId, meetingId } = await saveTranscriptAsNotes(me, recordingId, text);
+    revalidatePath(`/meetings/${meetingId}`);
+    revalidatePath("/dashboard");
+    return { noteId };
+  });
+}
+
+/**
+ * Earlier recordings (the first recorder, table meeting_recordings): admins delete one (also an upload that
+ * never finished); the file is removed from its bucket. New recordings are made with the recorder above.
+ */
+export async function deleteEarlierRecordingAction(recordingId: number): Promise<void> {
   await requireAdmin();
   const [row] = await db.select().from(meetingRecordings).where(eq(meetingRecordings.id, recordingId)).limit(1);
   if (!row) return;
   await deleteStored(row.storageKey);
   await db.delete(meetingRecordings).where(eq(meetingRecordings.id, row.id));
-  refresh(row.meetingId);
+  revalidatePath(`/meetings/${row.meetingId}`);
 }

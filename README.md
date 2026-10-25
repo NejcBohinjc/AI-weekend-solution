@@ -78,16 +78,26 @@ Meetings come from the Google Calendar (read-only). Each member sees the meeting
 - **Reminders by email:** 1 day and 10 minutes before by default; each member chooses on the Meetings page. Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` (e.g. a Google Workspace account with an app password). Without SMTP, reminders are only recorded and shown on Admin → Meetings. `MAIL_REDIRECT_TO` sends every email to one address, for demos.
 - **Scheduled job:** set `CRON_SECRET` and call `GET /api/cron/reminders` with header `Authorization: Bearer <CRON_SECRET>` every 5 minutes, for example with a free [cron-job.org](https://cron-job.org) job (Vercel Cron on the Hobby plan runs only once a day, too rarely for 10-minute reminders). Locally: `npm run reminders -- --watch`.
 
-## Meeting recordings
+## Earlier meeting recordings
 
-- **Record in the room:** while a meeting is on (from 15 minutes before the start to the end), its invitees and admins can record it on the meeting's page with the phone's or laptop's microphone: Start, Pause/Resume, **Stop and save**. The recording is compressed audio (about 45 MB per hour) and is saved with the meeting. Keep the page open while recording; the screen stays on. If saving fails, **Try again** or download the file so it is not lost.
-- **Upload afterwards:** for a meeting that has happened and has no recording, admins upload an audio file or an MP4/WebM/MOV video (up to 500 MB) on its page. **Admin → Meetings → Past** shows which meetings have a recording.
-- Recordings can be played by the meeting's invitees and admins; admins can delete them. (Transcription and tasks from recordings will come later.)
-- **Storage:** recordings go to an S3-compatible bucket, uploaded and played directly by the browser (Vercel cannot take large uploads). For example with Cloudflare R2 (10 GB free): create a bucket, add a CORS policy allowing your site, e.g. `[{"AllowedOrigins":["https://your-app.vercel.app"],"AllowedMethods":["PUT","GET"],"AllowedHeaders":["Content-Type"],"MaxAgeSeconds":3600}]`, create an API token with Object Read & Write on that bucket, and set `RECORDINGS_S3_ENDPOINT` (`https://<account id>.r2.cloudflarestorage.com`), `RECORDINGS_S3_BUCKET`, `RECORDINGS_S3_ACCESS_KEY_ID` and `RECORDINGS_S3_SECRET_ACCESS_KEY`. Locally, without these, recordings are stored in `.data/recordings`. In production without them, members can still record and download the file, but nothing is stored and admins see why.
+Meetings are recorded with the **meeting recorder** (below). Recordings made earlier with the first recorder (one audio or video file per meeting) still play on the meeting's page under **Earlier recordings**, for the meeting's invitees and admins; admins can delete them, and **Admin → Meetings → Past** shows which meetings have a recording. These files stay in their S3-compatible bucket (e.g. Cloudflare R2), so keep `RECORDINGS_S3_ENDPOINT`, `RECORDINGS_S3_REGION`, `RECORDINGS_S3_BUCKET`, `RECORDINGS_S3_ACCESS_KEY_ID` and `RECORDINGS_S3_SECRET_ACCESS_KEY` set as long as they should play (the bucket's CORS policy needs GET for your site). Locally, without them, they are read from `.data/recordings`.
 
 ## Meeting notes and AI tasks
 
 On a meeting's page, attendees (and admins) can add the meeting notes or a transcript (paste it, or upload a .txt, .md, .vtt or .srt file). With `ANTHROPIC_API_KEY` set, **Create tasks from notes** asks Claude for the action items and creates them as tasks, assigned to the people from the meeting where it is clear and unassigned otherwise. These tasks are marked **AI** until the assignee confirms them; they can also be changed, handed over or deleted in one click. Running it again on the same notes creates nothing new. Without the key the button is hidden and admins see why.
+
+**Ask about a meeting** (Meetings → ✦ Ask about a meeting, or the link under a meeting's notes): pick a meeting or a date, or just ask "what was discussed on 14 October?". The answer comes only from that meeting's stored notes, in the language of the question, with the lines it relied on quoted; if the notes don't say, it says so. Only the meeting's invitees and admins can ask; 10 questions per member per hour.
+
+## Meeting recorder (admins)
+
+On a meeting's page (or the dashboard, which picks the meeting happening now) admins can **record the meeting** in the browser, or import an audio file (mp3, m4a, wav, webm, ogg). Before recording, the admin confirms that everyone was told the meeting is recorded. The recording is encoded to MP3 in the browser (mono, 16 kHz, 32 kbps, about 14 MB an hour) in 10-minute parts; each part is uploaded as soon as it is done, straight from the browser to a private Supabase Storage bucket, so a crashed tab or a dead phone loses at most the current part, and the next visit offers to finish uploading what is left. A red "Recording" mark stays in the header on every page. Maximum 3 hours. On a phone, keep the screen on.
+
+Admins and the meeting's attendees can play recordings and download them as one MP3. With `OPENAI_API_KEY`, admins can **transcribe** a recording (Slovenian by default; part by part in the background, failed parts can be retried). The admin fixes the transcript and clicks **Save as meeting notes**; only then can tasks be created from it with "Create tasks from notes". Tasks are never created from a raw transcript.
+
+Setup (once):
+1. In Supabase: **Storage → New bucket**, name `meeting-recordings`, **Public: off** (private). No policies are needed: the app uses the service role key on the server and gives the browser short-lived signed upload/download links.
+2. In Vercel (Settings → Environment Variables): `SUPABASE_URL` (Project Settings → API → Project URL) and `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → API → service_role secret; server-side only, never prefix it with `NEXT_PUBLIC_`).
+3. Optional, for transcripts: `OPENAI_API_KEY` (platform.openai.com → API keys) and `TRANSCRIBE_MODEL` (default `gpt-transcribe`). The provider is behind one function, `src/lib/ai/transcribe.ts`.
 
 ## Licence
 

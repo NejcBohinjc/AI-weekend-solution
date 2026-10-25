@@ -4,6 +4,8 @@ import { and, asc, desc, eq, gt, isNotNull, isNull, lt, ne, or } from "drizzle-o
 import { db } from "@/db";
 import { members, timeEntries, type TimeEntry } from "@/db/schema";
 import { getSyncState } from "@/lib/sync-state";
+import type { WorkLocation } from "./constants";
+import { locationTotals } from "./location";
 import { HOURS_SYNC } from "./sheet-sync";
 import { addDays, overlapMs, weekBounds } from "./time";
 
@@ -38,11 +40,35 @@ export function totalMs(entries: Pick<TimeEntry, "startedAt" | "endedAt">[], fro
   return entries.reduce((sum, e) => sum + overlapMs(e.startedAt, e.endedAt, from, to, now), 0);
 }
 
-/** One member's week: its entries, total, and the running timer if any. */
+/** One member's week: its entries, total (also split by office / home / unspecified), and the running timer if any. */
 export async function memberWeek(memberId: number, weekStart: string, now: Date) {
   const { from, to } = weekBounds(weekStart);
-  const [entries, running] = await Promise.all([entriesBetween(memberId, from, to), runningEntry(memberId)]);
-  return { entries, running, totalMs: totalMs(entries, from, to, now), from, to };
+  const entries = await entriesBetween(memberId, from, to);
+  // A running timer has no end, so it is in the entries of every week from the one it started in onwards:
+  // for the current week no second query is needed.
+  const running = from <= now && now < to ? (entries.find((e) => !e.endedAt) ?? null) : await runningEntry(memberId);
+  return { entries, running, totalMs: totalMs(entries, from, to, now), byLocation: locationTotals(entries, from, to, now), from, to };
+}
+
+/**
+ * The selected week (as memberWeek) plus the totals of the last `count` weeks up to `lastWeek`, from ONE
+ * query of the member's entries: the selected week is nearly always one of those weeks.
+ */
+export async function memberWeekAndHistory(memberId: number, week: string, lastWeek: string, count: number, now: Date) {
+  const weeks = Array.from({ length: count }, (_, i) => addDays(lastWeek, -7 * i));
+  const oldest = weeks[count - 1] < week ? weeks[count - 1] : week; // ISO dates sort as text
+  const entries = await entriesBetween(memberId, weekBounds(oldest).from, weekBounds(lastWeek).to);
+  const { from, to } = weekBounds(week);
+  // Same rule as entriesBetween() for one week.
+  const inWeek = entries.filter((e) => e.startedAt < to && (!e.endedAt || e.endedAt > from));
+  // A running timer has no end, so the window always contains it.
+  const running = entries.find((e) => !e.endedAt) ?? null;
+  const data = { entries: inWeek, running, totalMs: totalMs(inWeek, from, to, now), byLocation: locationTotals(inWeek, from, to, now), from, to };
+  const history = weeks.map((w) => {
+    const b = weekBounds(w);
+    return { week: w, totalMs: totalMs(entries, b.from, b.to, now), byLocation: locationTotals(entries, b.from, b.to, now) };
+  });
+  return { data, history };
 }
 
 /** Totals for the last `count` weeks up to and including `lastWeek`, newest first. */
@@ -53,7 +79,7 @@ export async function weeklyTotals(memberId: number, lastWeek: string, count: nu
   const entries = await entriesBetween(memberId, from, to);
   return weeks.map((week) => {
     const b = weekBounds(week);
-    return { week, totalMs: totalMs(entries, b.from, b.to, now) };
+    return { week, totalMs: totalMs(entries, b.from, b.to, now), byLocation: locationTotals(entries, b.from, b.to, now) };
   });
 }
 
@@ -118,4 +144,15 @@ export async function findOverlap(memberId: number, startedAt: Date, endedAt: Da
     )
     .limit(1);
   return row ?? null;
+}
+
+/** The location of the member's most recent entry that has one: the default for the next one. */
+export async function lastLocation(memberId: number): Promise<WorkLocation> {
+  const [row] = await db
+    .select({ location: timeEntries.location })
+    .from(timeEntries)
+    .where(and(eq(timeEntries.memberId, memberId), isNotNull(timeEntries.location), notDeleted))
+    .orderBy(desc(timeEntries.startedAt))
+    .limit(1);
+  return row?.location ?? "office";
 }

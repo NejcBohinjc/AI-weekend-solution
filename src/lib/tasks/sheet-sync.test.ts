@@ -8,6 +8,8 @@ import { closeDb, db } from "@/db";
 import { departments, members, syncState, taskEvents, tasks, taskSyncs } from "@/db/schema";
 import { FakeSheets } from "@/lib/google/fake-sheets";
 import { testDatabaseSkip } from "@/lib/test-db";
+import { setTaskDone } from "./changes";
+import { formatStatus } from "./sheet-mapping";
 import { runTasksSync, syncTasks, TASKS_SYNC } from "./sheet-sync";
 
 const TAB = "List1";
@@ -147,6 +149,34 @@ describe("two-way tasks sync", { skip: testDatabaseSkip() }, () => {
     assert.equal((await sync()).unchanged, 3, "stable afterwards");
   });
 
+  test("unticking in the app and changing the status back in the sheet both reopen the task", async () => {
+    // App: tick then untick -> the sheet gets "done", then the earlier status again.
+    let objava = await taskBy("Objava na IG");
+    const before = objava.status;
+    await setTaskDone(objava, true, ids.ziga);
+    await sync();
+    assert.equal(rowOf("Objava na IG")[1], "done");
+    await setTaskDone(await taskBy("Objava na IG"), false, ids.ziga);
+    await sync();
+    objava = await taskBy("Objava na IG");
+    assert.equal(objava.status, before);
+    assert.equal(rowOf("Objava na IG")[1], formatStatus(before));
+
+    // Sheet: "done" -> the app finishes it (completion time, earlier status); back to "in progress" -> reopened.
+    const r = rows().findIndex((x) => x[0] === "Objava na IG");
+    sheets.tabs.get(TAB)!.grid[r][1] = "done";
+    await sync();
+    objava = await taskBy("Objava na IG");
+    assert.ok(objava.status === "done" && objava.completedAt && objava.statusBeforeDone === before);
+    sheets.tabs.get(TAB)!.grid[r][1] = "in progress";
+    await sync();
+    objava = await taskBy("Objava na IG");
+    assert.deepEqual([objava.status, objava.completedAt, objava.statusBeforeDone], ["in_progress", null, null]);
+    const events = await db.select().from(taskEvents).where(eq(taskEvents.taskId, objava.id));
+    assert.ok(events.some((e) => e.kind === "reopened" && e.source === "sheet_sync" && e.oldValue === "Done" && e.newValue === "In progress"));
+    assert.ok(events.some((e) => e.kind === "reopened" && e.source === "app"));
+  });
+
   test("priority syncs both ways; an empty cell gets the app's priority, an unknown one is reported", async () => {
     const r = () => rows().findIndex((x) => x[0] === "Objava na IG");
     // Sheet -> app (a Slovenian word), with history.
@@ -222,6 +252,22 @@ describe("two-way tasks sync", { skip: testDatabaseSkip() }, () => {
     assert.ok(rows().some((r) => r[0] === "=Nova naloga"), "other rows intact");
     const again = await sync();
     assert.equal(again.created.length + again.appended.length + again.removedFromSheet.length, 0, "stable, not re-imported");
+  });
+
+  test("general tasks never go to the sheet, and a 'done' from the sheet never finishes one", async () => {
+    const [g] = await db.insert(tasks).values({ kind: "general", title: "Support an event", status: "todo", source: "app" }).returning();
+    let report = await sync();
+    assert.ok(!rows().some((r) => r[0] === "Support an event"), "not appended");
+    assert.equal(report.appended.length, 0);
+    // Even if a row with its key appears in the sheet marked done, the app keeps it open.
+    await db.update(tasks).set({ sheetKey: "t-general01", sheetSnapshot: { title: g.title, status: "todo", assigneeId: null, type: null, dueDate: null } }).where(eq(tasks.id, g.id));
+    sheets.tabs.get(TAB)!.grid.push(["Support an event", "done", "", "", "", "", "t-general01"]);
+    report = await sync();
+    const after = await taskBy("Support an event");
+    assert.deepEqual([after.status, after.completedAt], ["todo", null]);
+    assert.ok(report.warnings.some((w) => w.message.includes("general tasks can't be done")));
+    sheets.tabs.get(TAB)!.grid.pop();
+    await db.delete(tasks).where(eq(tasks.id, g.id));
   });
 
   test("runTasksSync: one at a time, and background syncs wait 60 s unless forced", async () => {

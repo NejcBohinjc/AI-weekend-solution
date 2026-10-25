@@ -167,6 +167,80 @@ export function HBarChart({ rows, max, ariaLabel, unit = "" }: { rows: BarRow[];
   );
 }
 
+// ---------- Stacked horizontal bars ----------
+
+export type StackPart = { key: string; label: string; color: string };
+
+/** One bar per row split into parts (2px surface gap between parts), total at the tip. Rows are the hover targets. */
+export function StackedBarChart({
+  parts,
+  rows,
+  ariaLabel,
+  unit = "",
+}: {
+  parts: StackPart[];
+  rows: { key: string; label: string; values: Record<string, number> }[];
+  ariaLabel: string;
+  unit?: string;
+}) {
+  const [ref, width] = useWidth<HTMLDivElement>();
+  const [tip, setTip] = useState<Tip>(null);
+  const labelW = Math.min(132, Math.round(width * 0.3));
+  const valueW = 64;
+  const plotW = Math.max(40, width - labelW - valueW);
+  const sum = (r: (typeof rows)[number]) => parts.reduce((s, p) => s + (r.values[p.key] ?? 0), 0);
+  const top = Math.max(1, ...rows.map(sum));
+  const x = (v: number) => (Math.max(0, v) / top) * plotW;
+  const fmt = (n: number) => `${compact(n)}${unit ? ` ${unit}` : ""}`;
+
+  if (!rows.some((r) => sum(r) > 0)) return <p className="rounded-lg bg-surface-2 px-3 py-6 text-center text-sm text-subtle">Nothing to show yet.</p>;
+  return (
+    <div ref={ref} className="relative w-full" onPointerLeave={() => setTip(null)}>
+      <Legend kind="rect" items={parts.map((p) => ({ label: p.label, color: p.color }))} />
+      {width > 0 && (
+        <svg width={width} height={rows.length * ROW} role="img" aria-label={ariaLabel} className="mt-2 block overflow-visible">
+          <line x1={labelW} x2={labelW} y1={0} y2={rows.length * ROW} stroke="var(--viz-axis)" strokeWidth={1} />
+          {rows.map((r, i) => {
+            const y = i * ROW + (ROW - BAR) / 2;
+            const total = sum(r);
+            const show = () =>
+              setTip({ x: labelW + x(total) / 2, y: i * ROW, title: `${r.label}: ${fmt(total)}`, rows: parts.map((p) => ({ label: p.label, value: fmt(r.values[p.key] ?? 0), color: p.color })) });
+            let at = labelW;
+            return (
+              <g
+                key={r.key}
+                tabIndex={0}
+                aria-label={`${r.label}: ${parts.map((p) => `${p.label} ${fmt(r.values[p.key] ?? 0)}`).join(", ")}`}
+                onPointerMove={show}
+                onFocus={show}
+                onBlur={() => setTip(null)}
+                className="outline-none focus-visible:[&>rect:first-child]:fill-surface-3"
+              >
+                <rect x={0} y={i * ROW} width={width} height={ROW} fill="transparent" />
+                <text x={labelW - 8} y={i * ROW + ROW / 2} dominantBaseline="middle" textAnchor="end" className="fill-fg-2 text-xs">
+                  {r.label}
+                </text>
+                {parts.map((p) => {
+                  const w = x(r.values[p.key] ?? 0);
+                  if (w <= 0) return null;
+                  const start = at;
+                  at += w;
+                  const gap = start > labelW ? 2 : 0; // surface gap between neighbouring parts
+                  return <rect key={p.key} x={start + gap} y={y} width={Math.max(1, w - gap)} height={BAR} rx={start + w >= labelW + x(total) - 0.5 ? 4 : 0} fill={p.color} />;
+                })}
+                <text x={labelW + x(total) + 8} y={i * ROW + ROW / 2} dominantBaseline="middle" className="fill-fg text-xs tabular-nums">
+                  {fmt(total)}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      )}
+      <Tooltip tip={tip} />
+    </div>
+  );
+}
+
 // ---------- Lines ----------
 
 export type LineSeries = { key: string; label: string; color: string; values: number[] };

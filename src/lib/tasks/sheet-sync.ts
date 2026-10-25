@@ -28,6 +28,7 @@ import { departments, members, taskEvents, tasks, taskSyncs, type Task, type Tas
 import { columnLetter, describeGoogleError, openTab, plainText, type Cell, type SheetsApi } from "@/lib/google/sheets";
 import { acquireSync, finishSync } from "@/lib/sync-state";
 import { DEFAULT_PRIORITY, PRIORITY_LABELS, STATUS_LABELS, type TaskPriority, type TaskStatus } from "./constants";
+import { completionFields, isReopen } from "./done";
 import {
   buildRowKeys,
   detectAssigneeStyle,
@@ -220,6 +221,7 @@ export async function syncTasks({
   const cellRange = (f: Field, row: number) => `${columnLetter(columns[COLUMN_OF[f]]!)}${row}`;
   const idRange = (row: number) => `${columnLetter(idCol)}${row}`;
 
+  // General tasks never go to the sheet (lib/absence-rules.ts); they are only looked up to guard them.
   const allTasks = await db.select().from(tasks);
   const byKey = new Map(allTasks.filter((t) => t.sheetKey).map((t) => [t.sheetKey!, t]));
 
@@ -298,6 +300,11 @@ export async function syncTasks({
   const merge = (r: SheetRow, task: Task, key: string, writeKey: boolean) => {
     handled.add(task.id);
     const { ref, values: s, raw, reportUnassigned } = mapRow(r, task);
+    if (task.kind === "general" && s.status === "done") {
+      // General tasks are never done: keep the app's status, whatever the sheet says.
+      s.status = task.status;
+      report.warnings.push({ ...ref, message: "general tasks can't be done; kept its status" });
+    }
     // Base: the sheet as of the last sync. Tasks from the earlier read-only import have none yet: there,
     // fields an admin had edited (locked) count as app changes and everything else follows the sheet.
     const base = pick(
@@ -321,7 +328,9 @@ export async function syncTasks({
           if (s[f] === app[f]) continue;
           (final as Record<Field, unknown>)[f] = s[f];
           fromSheet.push(f);
-          events.push({ taskId: task.id, actorId, source: "sheet_sync", kind: "updated", field: f, oldValue: show[f](app[f]), newValue: show[f](s[f]) });
+          // Done -> not done from the sheet is a reopen, as in the app.
+          const kind = f === "status" && isReopen(app.status, s.status) ? "reopened" : "updated";
+          events.push({ taskId: task.id, actorId, source: "sheet_sync", kind, field: f, oldValue: show[f](app[f]), newValue: show[f](s[f]) });
         }
       } else if (appChanged && differs(s, app) && writable(unit[0])) {
         for (const f of unit) {
@@ -352,6 +361,8 @@ export async function syncTasks({
       taskId: task.id,
       set: {
         ...Object.fromEntries(fromSheet.map((f) => [f, final[f]])),
+        // Ticked or unticked in the sheet: completion time and earlier status as for a change in the app.
+        ...(fromSheet.includes("status") ? completionFields(task, final.status, new Date()) : null),
         ...raw,
         sheetKey: key,
         sheetSnapshot: snapshotNow,
@@ -415,7 +426,7 @@ export async function syncTasks({
   const goneFromSheet: Task[] = [];
   let nextRow = height + 2;
   for (const task of allTasks) {
-    if (handled.has(task.id) || task.deletedAt) continue;
+    if (handled.has(task.id) || task.deletedAt || task.kind === "general") continue;
     if (!task.sheetSnapshot && task.source === "app") {
       const key = task.sheetKey ?? newKey();
       const row = nextRow++;
