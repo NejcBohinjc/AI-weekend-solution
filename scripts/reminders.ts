@@ -9,7 +9,7 @@ import { runSlackSync } from "../src/lib/slack/announcements";
 import { sendDueTaskReminders } from "../src/lib/tasks/reminders";
 
 const summary = (label: string, r: ReminderRun) =>
-  r.ran ? `${label}: ${r.emails} emails (${r.sent} sent, ${r.logged} logged, ${r.failed} failed)` : `${label}: another run is busy`;
+  r.ran ? `${label}: ${r.emails} emails (${r.sent} sent, ${r.logged} logged, ${r.failed} failed${r.deferred ? `, ${r.deferred} deferred` : ""})` : `${label}: another run is busy`;
 
 async function runOnce() {
   const calendar = await syncCalendarIfStale();

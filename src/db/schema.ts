@@ -19,6 +19,7 @@ import {
   ATTENDANCE_STATES,
   DEFAULT_REMINDER_MINUTES,
   EMAIL_STATUSES,
+  REMINDER_STATUSES,
   MEETING_STATUSES,
   RECORDING_SOURCES,
   RECORDING_STATUSES,
@@ -403,6 +404,11 @@ export const meetingReminders = pgTable(
       .references(() => members.id, { onDelete: "cascade" }),
     minutesBefore: integer("minutes_before").notNull(),
     emailId: integer("email_id").references(() => emailLog.id, { onDelete: "set null" }),
+    // Claimed as "pending" in a short transaction, the email is sent outside it, then the row becomes
+    // "sent" or "failed". A pending row older than 10 minutes (a run that died) is claimed again.
+    // Rows from before this column count as sent.
+    status: text("status", { enum: REMINDER_STATUSES }).notNull().default("sent"),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.meetingId, t.memberId, t.minutesBefore] })],
@@ -422,6 +428,9 @@ export const taskReminders = pgTable(
     dueDate: date("due_date").notNull(),
     daysBefore: integer("days_before").notNull(),
     emailId: integer("email_id").references(() => emailLog.id, { onDelete: "set null" }),
+    // As in meeting_reminders: claimed pending, sent outside the transaction, then sent or failed.
+    status: text("status", { enum: REMINDER_STATUSES }).notNull().default("sent"),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.taskId, t.memberId, t.dueDate, t.daysBefore] })],

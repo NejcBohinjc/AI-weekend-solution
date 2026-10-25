@@ -20,6 +20,10 @@ export const ATTENDANCE_SOURCES = ["self", "admin", "seed"] as const;
 export const EMAIL_STATUSES = ["sent", "logged", "failed"] as const;
 export type EmailStatus = (typeof EMAIL_STATUSES)[number];
 
+/** A reminder row: claimed ("pending", before the email is sent), then "sent" (also when only recorded) or "failed". */
+export const REMINDER_STATUSES = ["pending", "sent", "failed"] as const;
+export type ReminderStatus = (typeof REMINDER_STATUSES)[number];
+
 /** Members can check in (present or remote) from this long before the start until this long after the end. */
 export const CHECKIN_OPENS_MINUTES = 15;
 export const CHECKIN_CLOSES_MINUTES = 15;
