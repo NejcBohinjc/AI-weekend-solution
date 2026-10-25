@@ -1,0 +1,1562 @@
+/* ========================================================================
+   components.css — the new-page component kit
+   Loaded AFTER css/style.css, so everything here may rely on (and override)
+   what the main sheet already set. Nothing in style.css is edited.
+
+   Rules this file keeps to:
+   - Only the existing tokens: --ink, --ink-soft, --ice, --lift, --line,
+     --blue, --ease, --nav-h, --pad. No new colour, no new font, no new
+     radius or shadow language. Dark mode rides the same tokens through
+     html.mode-dark, exactly as the main sheet does.
+   - Every selector carries its own block prefix (.subhero__, .pcard__,
+     .erow__, .edition__, .person__, .quote__, .nextev__, .gallery__,
+     .lightbox__, .subnav__, .tags__, .placeholder__, .tail__, .legal__),
+     so nothing here can collide with style.css.
+   - Hover states live only inside @media (hover: hover) and (pointer: fine),
+     so a finger tap never leaves a component stuck in its hover look.
+   - Everything works down to 360px with no horizontal page scroll.
+   - Reuse first. .section, .section__head, .section__index, .section__title,
+     .split / .split-lines, .btn (+ --primary/--small/--outline/--ghost),
+     .btn__arrow, .offer__grid + .offer__card, .offer__numbers, .process*,
+     .promises, .ticker, .webinar__box, .marquee*, .footer*, .apply__* all
+     stay as they are and are used by the new pages unchanged.
+   ======================================================================== */
+
+
+/* ------------------------------------------------------------------------
+   00 · Shared surface and helpers
+   The frosted recipe is copied verbatim from the main sheet's card rule so
+   a programme card, a person card and a quote card are visibly the same
+   material as .offer__card sitting next to them on the front page.
+   ------------------------------------------------------------------------ */
+.pcard,
+.person,
+.quote,
+.nextev__empty,
+.placeholder,
+.subnav,
+.group,
+.partners__cta {
+  background: color-mix(in srgb, #ffffff 45%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 80%, transparent) inset,
+              0 20px 50px -34px color-mix(in srgb, var(--ink) 34%, transparent);
+}
+html.mode-dark .pcard,
+html.mode-dark .person,
+html.mode-dark .quote,
+html.mode-dark .nextev__empty,
+html.mode-dark .placeholder,
+html.mode-dark .subnav,
+html.mode-dark .group,
+html.mode-dark .partners__cta {
+  background: color-mix(in srgb, #fff 5%, transparent);
+  border-color: color-mix(in srgb, #fff 11%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 8%, transparent) inset;
+}
+
+/* One focus ring for every interactive part of this kit. The main sheet uses
+   an ink ring in the header and a blue ring in the form; blue is the one that
+   reads on both the aurora and a frosted card. */
+.pcard__link:focus-visible,
+.erow__link:focus-visible,
+.gallery__item:focus-visible,
+.subnav__link:focus-visible,
+.lightbox__btn:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Every box in this kit that takes its height from an aspect-ratio is also a
+   grid or flex child somewhere. Such a box keeps an automatic minimum size, and
+   in a grid row that mixes ratios (a 16:9 tile beside a 1:1 tile) it can resolve
+   its width from the row's height and blow the whole track past the viewport.
+   Measured: one 1:1 placeholder in a 3-column grid pushed the document to
+   1812px at a 1440px viewport. Opting out of the automatic minimum fixes it and
+   costs nothing, because every one of these boxes is sized by its container. */
+.subhero__media,
+.pcard__media,
+.person__photo,
+.gallery__item,
+.placeholder,
+.erow__thumb,
+.quote {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Anchor landing, once for the whole site.
+   The header is fixed and `--nav-h` tall, so a section reached by a hash — from
+   another page, from the footer, or with JS off — would otherwise open with its
+   label hidden under the bar. Every linkable section on every page is a
+   `.section` carrying an id, so one rule covers them all instead of the four
+   separate lists of page ids the page stylesheets used to keep.
+   `.group` and `.go` are the two link targets on about.html that are not
+   sections (a card and the join panel), and .archive__part restates the value
+   further down because that page stacks a second bar under the first. */
+.section[id],
+.group,
+.go {
+  scroll-margin-top: calc(var(--nav-h) + 24px);
+}
+
+/* The skip link is NOT defined here. style.css already owns `.skip-link`, and
+   index.html and partials/header-sub.html both use that name. A second
+   implementation under a second class name would only drift from it.
+
+   One thing is corrected: style.css parks the focused pill at top: 8px, which
+   is inside the fixed bar, so while it had focus it sat on top of the wordmark
+   on every page. The bar is exactly --nav-h tall, so dropping the pill just
+   below it clears the brand and the menu word and changes nothing else. */
+.skip-link:focus { top: calc(var(--nav-h) + 8px); }
+
+/* For labels that must exist for a screen reader and nowhere else. */
+.vishidden {
+  position: absolute !important; width: 1px; height: 1px;
+  margin: -1px; padding: 0; overflow: hidden; white-space: nowrap;
+  clip: rect(0 0 0 0); clip-path: inset(50%); border: 0;
+}
+
+
+/* ------------------------------------------------------------------------
+   01a · Subpage header
+   The apply.html header is the pattern: wordmark left, "Back to site" right,
+   no menu, no star. It is reused exactly as partials/header-sub.html writes
+   it; the only thing added here is the below-600px brand repair, explained
+   with the rule itself.
+   ------------------------------------------------------------------------ */
+/* style.css hides .nav__logo below 600px because on the index the four-point
+   star takes the brand's place there. A subpage header has no star, so the
+   brand disappeared entirely. Rather than depend on every page remembering a
+   modifier, the rule keys off the star itself: a header that has no .nav__star
+   keeps its wordmark. index.html has one, so it is untouched. .nav--sub is
+   accepted too, for a page that wants to be explicit.
+   Measured at 360px: wordmark 153px + gap 16px + pill 118px + gutter 40px =
+   327px, so the bar fits and the brand needs no further shrinking.
+
+   The two selectors are deliberately separate rules, not one comma list: a
+   comma list is unforgiving, so in a browser without :has() support the whole
+   rule would be dropped and the explicit fallback would go down with it. */
+@media (max-width: 600px) {
+  .nav--sub .nav__logo { display: block; font-size: 0.8rem; }
+  .nav:not(:has(.nav__star)) .nav__logo { display: block; font-size: 0.8rem; }
+
+  /* The other half of the same repair, for the header that DOES have a star.
+     style.css line 147 hides .nav__logo here and promotes .nav__star to be the
+     permanent brand — but the base `.nav__star { opacity: 0; visibility:
+     hidden }` rule is written LATER in that file at equal specificity, so it
+     wins on order and re-hides it. index.html therefore opened at 390px with
+     no brand at all: just "menu" and the Apply pill until the first scroll
+     brought .nav--compact in. Restated here, one class deeper, so it outranks
+     the base rule instead of racing it. Matches nothing on a subpage, which
+     has no star. */
+  .nav .nav__star {
+    opacity: 1; visibility: visible; pointer-events: auto;
+    transform: none;
+  }
+}
+
+
+/* ------------------------------------------------------------------------
+   01b · Subpage hero
+   Eyebrow, H1 with one italic word, lead, then one wide photo. The H1 reuses
+   the .apply__title step of the ramp rather than the hero's display size: a
+   subpage opens under a fixed bar, not on a full-viewport stage.
+   ------------------------------------------------------------------------ */
+.subhero {
+  max-width: 1500px; margin: 0 auto;
+  padding: calc(var(--nav-h) + clamp(44px, 8vh, 104px)) var(--pad) clamp(40px, 7vh, 80px);
+}
+.subhero__title {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(2.6rem, 7vw, 5.2rem); line-height: 1; letter-spacing: -0.02em;
+  margin: 0 0 22px; max-width: 18ch;
+}
+/* style.css only paints em blue inside .section__title, .hero__title and
+   .cta__title, so the subpage H1 has to claim it for itself. */
+.subhero__title em { color: var(--blue); }
+.subhero__lead {
+  max-width: 760px;
+  font-size: clamp(1.05rem, 1.6vw, 1.35rem); line-height: 1.55; opacity: 0.85;
+}
+.subhero__lead + .subhero__lead { margin-top: 18px; }
+/* 16:9 on desktop, 4:3 on a phone: a letterbox loses the room at 360px. */
+.subhero__media {
+  margin: clamp(34px, 6vh, 72px) 0 0;
+  aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden;
+}
+.subhero__caption {
+  margin-top: 12px; font-size: 0.82rem; line-height: 1.5; color: var(--ink-soft);
+}
+@media (max-width: 700px) {
+  .subhero__media { aspect-ratio: 4 / 3; }
+  .subhero__title { max-width: none; }
+}
+
+
+/* ------------------------------------------------------------------------
+   02 · Programme card grid
+   Four cards: photo 4:3, eyebrow, H3, one sentence, a three-phrase ✦ tape and
+   an arrow link. The link is stretched over the whole card, so the card is one
+   click target while the accessible name stays on the real anchor. Card 4 is
+   the "Coming soon" variant: a badge, no photo, no link.
+   index.html runs five cards with the Academy featured: `.pcards--five`,
+   `.pcard--feature` and `.pcard__badge--live` are in section 15.
+   ------------------------------------------------------------------------ */
+.pcards {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+  margin-top: clamp(40px, 7vh, 80px);
+}
+.pcard {
+  position: relative; isolation: isolate;
+  display: flex; flex-direction: column;
+  border-radius: 16px; overflow: hidden;
+  transition: border-color 0.4s var(--ease), transform 0.4s var(--ease);
+}
+.pcard__media { aspect-ratio: 4 / 3; overflow: hidden; margin: 0; }
+.pcard__media img { transition: transform 0.8s var(--ease); }
+.pcard__body {
+  display: flex; flex-direction: column; flex: 1 1 auto;
+  gap: 10px; padding: clamp(20px, 2.5vw, 32px);
+}
+/* Same micro-label as .offer__card h3, one step quieter than the title. */
+.pcard__eyebrow {
+  font-size: 0.78rem; font-weight: 500; text-transform: uppercase;
+  letter-spacing: 0.14em; opacity: 0.55;
+}
+.pcard__title {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1.1rem, 1.6vw, 1.4rem); line-height: 1.2;
+}
+.pcard__text { font-size: 0.95rem; line-height: 1.6; color: var(--ink-soft); }
+/* The ✦ tape, card sized. .ticker keeps the section-sized version. */
+.pcard__tape {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  margin-top: 4px;
+  font-family: 'Clash Display', sans-serif; font-weight: 500; font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.pcard__tape i { font-style: normal; font-size: 0.7rem; color: var(--blue); }
+.pcard__link {
+  margin-top: auto; padding-top: 14px;
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 0.95rem;
+  color: var(--blue);
+}
+/* The whole card is the hit area. */
+.pcard__link::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+.pcard__link .btn__arrow { transition: transform 0.35s var(--ease); }
+/* Coming soon: no photo, no link, a badge where the eyebrow sits. */
+.pcard__badge {
+  align-self: flex-start;
+  padding: 7px 14px; border-radius: 100px;
+  border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent);
+  color: var(--blue);
+  font-size: 0.72rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em;
+}
+.pcard--soon .pcard__body {
+  padding-top: clamp(26px, 3vw, 40px);
+  /* The other three cards carry a photo, a tape and a link, so all four cards
+     stretching to one height left this one with ~300px of nothing under its
+     last line at desktop, which read as a photo that had failed to load.
+     Centring its three lines in the card turns that space into margin instead
+     of a hole, and keeps the row of four the same height. */
+  justify-content: center;
+}
+/* Focus lands on the stretched anchor, so ring the card, not the text. */
+.pcard:has(.pcard__link:focus-visible) { outline: 2px solid var(--blue); outline-offset: 3px; }
+.pcard__link:focus-visible { outline: none; }
+/* …but only where :has() exists to draw that ring. Without it the line above
+   would suppress the link's own outline and put nothing in its place, leaving
+   the three programme links with no visible focus at all. */
+@supports not (selector(:has(*))) {
+  .pcard__link:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+}
+
+/* The cursor spotlight, the same one style.css gives .offer__card and
+   .community__card. js/site.js feeds --mx/--my on pointermove, exactly as
+   main.js already does for the offer cards, so the new card families behave
+   like the ones a visitor met on the front page instead of inventing a second
+   hover language. Painted above the stretched .pcard__link::after, which is
+   why it must not take pointer events. */
+@media (hover: hover) {
+  .pcard, .person { position: relative; }
+  .pcard::after, .person::after {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    opacity: 0; transition: opacity 0.4s;
+    background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%), rgba(0, 65, 255, 0.13), transparent 65%);
+  }
+  .pcard:hover::after, .person:hover::after { opacity: 1; }
+  /* The card that leads nowhere does not light up either. */
+  .pcard--soon:hover::after { opacity: 0; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .pcard:hover { border-color: var(--blue); transform: translateY(-4px); }
+  .pcard:hover .pcard__media img { transform: scale(1.04); }
+  .pcard:hover .pcard__link .btn__arrow { transform: translateX(5px); }
+  /* No hover lift on the card that leads nowhere. */
+  .pcard--soon:hover { transform: none; border-color: color-mix(in srgb, var(--ink) 10%, transparent); }
+  html.mode-dark .pcard--soon:hover { border-color: color-mix(in srgb, #fff 11%, transparent); }
+
+  /* The ✦ tape steps in from the centre outwards on hover and on focus, the
+     one detail borrowed from the Cyd Stumpel thumbnails. It is declared ONLY
+     inside this query: a touch device or a keyboard-only visitor never sees
+     the dimmed resting state, it simply reads the tape finished. Three phrases,
+     so centre-out is 2nd, then 1st, then 3rd. Pure CSS — no JS, so it cannot
+     get stuck half-played. */
+  .pcard__tape span {
+    opacity: 0.55; transform: translateY(4px);
+    transition: opacity 0.35s var(--ease), transform 0.35s var(--ease);
+  }
+  .pcard:hover .pcard__tape span,
+  .pcard:focus-within .pcard__tape span { opacity: 1; transform: none; }
+  .pcard:hover .pcard__tape span:nth-of-type(2),
+  .pcard:focus-within .pcard__tape span:nth-of-type(2) { transition-delay: 0s; }
+  .pcard:hover .pcard__tape span:nth-of-type(1),
+  .pcard:focus-within .pcard__tape span:nth-of-type(1) { transition-delay: 0.05s; }
+  .pcard:hover .pcard__tape span:nth-of-type(3),
+  .pcard:focus-within .pcard__tape span:nth-of-type(3) { transition-delay: 0.1s; }
+}
+@media (max-width: 1024px) { .pcards { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px)  { .pcards { grid-template-columns: 1fr; } }
+
+
+/* ------------------------------------------------------------------------
+   03 · Event row list (the archive)
+   Hairline rows in the language of .tracklane and .promise: date, title, one
+   line, place. On desktop, hovering or focusing a row fades its photo into a
+   fixed slot in the right column; the list reserves that column so nothing
+   ever sits under the photo. On phones the same <img> becomes a 64px thumb
+   inside the row, so the picture is never keyboard-only content.
+   ------------------------------------------------------------------------ */
+.erows {
+  list-style: none; margin: clamp(36px, 6vh, 72px) 0 0;
+  border-top: 1px solid var(--line);
+}
+.erow {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(92px, 11%) minmax(0, 1fr) minmax(110px, 16%);
+  grid-template-areas:
+    "date  title place"
+    "date  note  place";
+  column-gap: clamp(14px, 2.4vw, 40px); row-gap: 6px;
+  padding: clamp(20px, 2.6vw, 34px) 0;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.4s var(--ease);
+}
+.erow__date {
+  grid-area: date;
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: 0.82rem; letter-spacing: 0.06em; color: var(--blue);
+  font-variant-numeric: tabular-nums;
+}
+.erow__title {
+  grid-area: title;
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1.1rem, 1.6vw, 1.4rem); line-height: 1.2;
+}
+.erow__note { grid-area: note; font-size: 0.95rem; line-height: 1.55; color: var(--ink-soft); max-width: 62ch; }
+.erow__place { grid-area: place; font-size: 0.85rem; line-height: 1.5; color: var(--ink-soft); opacity: 0.85; }
+.erow__link { color: inherit; }
+.erow__link::after { content: ''; position: absolute; inset: 0; }
+/* Off by default: a plain row on a plain page shows no photo at all. */
+.erow__thumb { display: none; margin: 0; }
+
+/* Desktop: the fixed preview slot, aligned to the 1500px container's right
+   gutter so it lines up with the section edge instead of the window edge. */
+@media (min-width: 901px) {
+  .erows--preview { padding-right: calc(min(32vw, 420px) + clamp(24px, 4vw, 64px)); }
+  /* The reserved photo column takes roughly a third of the width, and 11% of
+     what is left came to ~99px: not enough for "24 September 2025", so the
+     dates broke onto two lines here while the plain .erows list one section
+     above kept the very same dates on one, and one component read two ways on
+     one page. The date track gets a fixed FLOOR, and the floor is the part that
+     does the work: the middle track is 1fr, an fr track absorbs all the free
+     space in the row, so a minmax(x, max-content) track never actually grows
+     past x. 165px clears the longest date in the list (measured at 146px) with
+     room for the webfont to land a little differently. */
+  .erows--preview .erow {
+    grid-template-columns: minmax(165px, max-content) minmax(0, 1fr) minmax(110px, 16%);
+  }
+  .erows--preview .erow__thumb {
+    display: block; position: fixed; z-index: 1; pointer-events: none;
+    top: calc(var(--nav-h) + clamp(28px, 12vh, 110px));
+    right: max(var(--pad), calc(50vw - 750px + var(--pad)));
+    width: min(32vw, 420px); aspect-ratio: 4 / 3;
+    border-radius: 16px; overflow: hidden;
+    opacity: 0; transform: translateY(10px);
+    transition: opacity 0.4s var(--ease), transform 0.4s var(--ease);
+  }
+  /* Keyboard parity: focus anywhere in the row raises the same photo. */
+  .erows--preview .erow:focus-within .erow__thumb,
+  .erows--preview .erow:focus-visible .erow__thumb { opacity: 1; transform: none; }
+  /* The same state, set by js/site.js from pointerenter and focusin, so the
+     script has one class to drive instead of re-implementing the CSS. The
+     CSS rules above stay the no-JS path and keep working on their own. */
+  .erows--preview .erow.is-preview .erow__thumb { opacity: 1; transform: none; }
+
+  /* Event posters are 4:5, not 4:3 (1080x1350 and 1200x1500). Cropping one to
+     the photo slot would cut its title off, so a poster row gets a slot of its
+     own and is shown whole. Narrower as well, so a 4:5 preview does not outgrow
+     a short window: 320px wide is 400px tall. */
+  .erows--preview .erow__thumb--poster {
+    width: min(24vw, 320px);
+    aspect-ratio: 4 / 5;
+  }
+}
+@media (min-width: 901px) and (hover: hover) and (pointer: fine) {
+  .erows--preview .erow:hover .erow__thumb { opacity: 1; transform: none; }
+  .erow:hover .erow__title { color: var(--blue); }
+}
+
+/* Phone: one column, a 64px thumb beside the date and title. */
+@media (max-width: 700px) {
+  .erow {
+    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-areas:
+      "thumb date"
+      "thumb title"
+      "note  note"
+      "place place";
+    column-gap: 14px;
+  }
+  .erow__thumb {
+    display: block; grid-area: thumb; align-self: start;
+    width: 64px; height: 64px; border-radius: 12px; overflow: hidden;
+  }
+  /* A row with no photo must not leave a 64px hole. */
+  .erow:not(:has(.erow__thumb)) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "date" "title" "note" "place"; }
+  .erow__note { max-width: none; }
+  /* The 64px thumb becomes 64x80 for a poster, so it is uncropped here too.
+     The grid column stays 64px wide, so nothing else in the row moves. */
+  .erow__thumb--poster { width: 64px; height: 80px; }
+}
+
+
+/* ------------------------------------------------------------------------
+   04 · Edition module (one summer school year)
+   Year heading, four info cards (the existing .offer__grid > .offer__card),
+   a speaker list as hairline rows, and a small gallery.
+   ------------------------------------------------------------------------ */
+.edition {
+  margin-top: clamp(48px, 8vh, 96px);
+  padding-top: clamp(30px, 5vh, 56px);
+  border-top: 1px solid var(--line);
+}
+.edition__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: clamp(24px, 4vh, 44px); }
+.edition__year {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1.4rem, 2.6vw, 2.1rem); line-height: 1.1; letter-spacing: -0.015em;
+}
+.edition__name { font-family: 'Satoshi', system-ui, sans-serif; font-weight: 400; font-size: 0.95rem; color: var(--ink-soft); }
+.edition__cards { margin-bottom: clamp(28px, 5vh, 56px); }
+/* Speakers: name and topic on one hairline rule each, the same rhythm as the
+   lanes on the front page but without the blue fill, because this is a record
+   rather than a choice. */
+.edition__speakers { list-style: none; border-top: 1px solid var(--line); }
+.edition__speaker {
+  display: grid; grid-template-columns: minmax(150px, 28%) minmax(0, 1fr);
+  gap: 4px clamp(14px, 2.4vw, 36px);
+  padding: 14px 0; border-bottom: 1px solid var(--line);
+}
+.edition__speaker-name { font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 1rem; }
+.edition__speaker-topic { font-size: 0.92rem; line-height: 1.5; color: var(--ink-soft); }
+.edition__gallery { margin-top: clamp(28px, 5vh, 56px); }
+.edition__note { margin-top: clamp(20px, 3vh, 32px); font-size: 0.92rem; line-height: 1.6; color: var(--ink-soft); }
+@media (max-width: 560px) {
+  .edition__speaker { grid-template-columns: minmax(0, 1fr); }
+}
+
+
+/* ------------------------------------------------------------------------
+   05 · Person card
+   A square portrait, a name, a role or topic, and on a guest card the event
+   the guest came for and its date.
+
+   There is NO no-photo variant here any more. The monogram that used to fill
+   that slot kept the portrait's 1:1 box, so a card without a photo became a
+   near-empty pastel panel: eight of them in a row on summer-school.html, and
+   four beside two real portraits on talks.html, where they read as images that
+   had failed to load rather than as a decision. A person with no photo is now
+   written as a hairline `.edition__speaker` row (section 04) instead — the same
+   restrained typographic treatment archive.html already uses for exactly this
+   data. Publish a name or a portrait only where consent is confirmed.
+   ------------------------------------------------------------------------ */
+.people { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: clamp(36px, 6vh, 72px); }
+.people--three { grid-template-columns: repeat(3, 1fr); }
+/* Two portraits and nothing else: talks.html section 04, where only two of the
+   six recent guests have one. A pair in a three-column grid left a hole where
+   a third card should have been. */
+.people--two { grid-template-columns: repeat(2, 1fr); }
+.person {
+  border-radius: 16px; overflow: hidden;
+  display: flex; flex-direction: column;
+  transition: border-color 0.4s var(--ease), transform 0.4s var(--ease);
+}
+.person__photo { aspect-ratio: 1 / 1; overflow: hidden; margin: 0; }
+.person__body { display: flex; flex-direction: column; gap: 6px; padding: clamp(18px, 2.2vw, 28px); }
+.person__name { font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: clamp(1.05rem, 1.5vw, 1.25rem); line-height: 1.2; }
+.person__role { font-size: 0.88rem; line-height: 1.45; color: var(--ink-soft); }
+.person__quote { margin-top: 8px; font-size: 0.95rem; line-height: 1.6; color: var(--ink-soft); }
+/* A guest card carries one line the person card has no slot for: which event
+   the guest came for, and when. The event title is separated by the same
+   hairline the kit uses between rows, and the date takes the blue tabular
+   figures of .erow__date, so a date looks the same on every page. */
+.person__event {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.person__when {
+  display: block;
+  margin-top: 5px;
+  font-family: 'Clash Display', sans-serif;
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  color: var(--blue);
+  font-variant-numeric: tabular-nums;
+}
+@media (hover: hover) and (pointer: fine) {
+  .person:hover { border-color: var(--blue); transform: translateY(-4px); }
+}
+@media (max-width: 1024px) { .people, .people--three { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px)  { .people, .people--three, .people--two { grid-template-columns: 1fr; } }
+
+
+/* ------------------------------------------------------------------------
+   06 · Quote card, and the big figure variant (9.4 / 10)
+   The figure uses the counter's ramp and blue, so an aggregate number on a
+   subpage reads as the same species as the counters on the front page.
+   ------------------------------------------------------------------------ */
+.quotes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: clamp(36px, 6vh, 72px); }
+.quote { border-radius: 16px; padding: clamp(22px, 2.6vw, 36px); display: flex; flex-direction: column; gap: 12px; }
+.quote__text { font-family: 'Clash Display', sans-serif; font-weight: 500; font-size: clamp(1.05rem, 1.5vw, 1.35rem); line-height: 1.35; }
+/* The Slovenian original sits under the translation, quieter. */
+.quote__orig { font-size: 0.88rem; line-height: 1.5; color: var(--ink-soft); opacity: 0.85; }
+.quote__source { margin-top: auto; padding-top: 8px; font-size: 0.82rem; letter-spacing: 0.04em; color: var(--ink-soft); }
+/* Figure variant: one big number, a small unit, one line of label. */
+.quote--figure { grid-column: span 1; justify-content: center; }
+.quote__value {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(3.2rem, 7vw, 6.6rem); line-height: 1; letter-spacing: -0.03em;
+  color: var(--blue); font-variant-numeric: tabular-nums;
+}
+.quote__unit { font-size: 0.3em; letter-spacing: 0; opacity: 0.7; margin-left: 0.1em; }
+.quote__label { font-size: 0.88rem; line-height: 1.45; color: var(--ink-soft); max-width: 26ch; }
+@media (max-width: 900px) { .quotes { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .quotes { grid-template-columns: 1fr; } }
+
+
+/* ------------------------------------------------------------------------
+   07 · Next event
+   The split card is the existing .webinar__box, unchanged. This adds the pill
+   row (date, time, venue) in the hero-deadline pill language, and the empty
+   state for when there is no next date to show.
+   ------------------------------------------------------------------------ */
+.nextev__pills { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 8px; }
+.nextev__pill {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 10px 18px; border-radius: 100px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  font-size: 0.82rem; letter-spacing: 0.04em; opacity: 0.85;
+}
+/* The live dot marks the date pill only, the same mark as the hero deadline. */
+.nextev__pill--date::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: var(--blue); animation: livepulse 2.2s var(--ease) infinite;
+}
+.nextev__empty {
+  border-radius: 24px; padding: clamp(28px, 4vw, 56px);
+  display: flex; flex-direction: column; align-items: flex-start; gap: 14px;
+}
+.nextev__empty p { max-width: 56ch; font-size: clamp(1rem, 1.4vw, 1.2rem); line-height: 1.55; color: var(--ink-soft); }
+@media (max-width: 420px) {
+  .nextev__pill { width: 100%; }
+}
+/* At 390px "Join the WhatsApp channel" wraps to two lines inside the pill while
+   the arrow stayed vertically centred beside the pair, which read as an
+   accident in an otherwise deliberate panel. Pinning the button's items to the
+   bottom puts the arrow beside the LAST line, where it belongs. The copy is
+   spec B0.5 empty-state wording and is not touched. */
+@media (max-width: 480px) {
+  .nextev__empty .btn { align-items: flex-end; text-align: left; }
+}
+
+
+/* ------------------------------------------------------------------------
+   08 · Photo gallery and lightbox
+   A plain responsive grid of 6 to 12 images. Each tile is a real <button>, so
+   the lightbox opens from the keyboard too. The lightbox is a native <dialog>
+   opened with showModal(): Escape and the focus trap come from the browser,
+   arrows and the counter come from js/site.js. No library.
+   ------------------------------------------------------------------------ */
+.gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(12px, 1.6vw, 20px); margin-top: clamp(36px, 6vh, 72px); }
+.gallery--four { grid-template-columns: repeat(4, 1fr); }
+.gallery__item {
+  /* Button reset, kept explicit: all:unset would drop the grid placement. */
+  display: block; width: 100%; padding: 0; margin: 0; border: 0; background: none;
+  font: inherit; color: inherit; cursor: zoom-in;
+  aspect-ratio: 4 / 3; border-radius: 16px; overflow: hidden;
+}
+.gallery__item img { transition: transform 0.8s var(--ease); }
+@media (hover: hover) and (pointer: fine) {
+  .gallery__item:hover img { transform: scale(1.04); }
+}
+/* One line under a gallery saying where the photos were taken. Same size and
+   colour as .subhero__caption, the kit's photo credit, so the two read as the
+   same kind of line. */
+.gallery__note {
+  margin-top: 18px;
+  max-width: 78ch;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+@media (max-width: 900px) { .gallery, .gallery--four { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 420px) { .gallery, .gallery--four { gap: 10px; } }
+
+/* The dialog fills the viewport; the page behind it keeps its own scroll
+   position because showModal() locks it for us. */
+.lightbox {
+  /* Percentages, not 100vw/100vh: vw includes the scrollbar, so a viewport-unit
+     dialog is wider than the space it has and adds a sideways scroll. */
+  width: 100%; max-width: 100%; height: 100%; max-height: 100%;
+  margin: 0; padding: 0; border: 0; background: transparent;
+  color: var(--ice); overscroll-behavior: contain;
+}
+html.mode-dark .lightbox { color: var(--ink); }
+.lightbox::backdrop { background: color-mix(in srgb, var(--ink) 88%, transparent); }
+html.mode-dark .lightbox::backdrop { background: color-mix(in srgb, var(--ice) 92%, transparent); }
+.lightbox__inner {
+  height: 100%; display: grid; grid-template-rows: auto 1fr auto;
+  gap: 14px; padding: clamp(12px, 2vh, 24px) var(--pad);
+}
+.lightbox__bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.lightbox__count { font-size: 0.82rem; letter-spacing: 0.04em; opacity: 0.7; font-variant-numeric: tabular-nums; }
+.lightbox__fig { margin: 0; min-height: 0; display: grid; grid-template-rows: 1fr auto; gap: 12px; justify-items: center; }
+/* The global img rule stretches and crops; a lightbox must do neither. */
+.lightbox__img {
+  width: auto; height: auto; max-width: 100%; max-height: 100%;
+  object-fit: contain; border-radius: 16px;
+}
+.lightbox__cap { font-size: 0.85rem; line-height: 1.5; opacity: 0.75; max-width: 70ch; text-align: center; }
+.lightbox__nav { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.lightbox__btn {
+  display: inline-grid; place-items: center;
+  min-width: 44px; min-height: 44px; padding: 0 18px;
+  border-radius: 100px; cursor: pointer;
+  font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 0.95rem;
+  color: inherit; background: color-mix(in srgb, currentColor 10%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  transition: background 0.3s var(--ease), border-color 0.3s var(--ease);
+}
+.lightbox__btn[disabled] { opacity: 0.35; cursor: default; }
+@media (hover: hover) and (pointer: fine) {
+  .lightbox__btn:not([disabled]):hover { background: color-mix(in srgb, currentColor 20%, transparent); border-color: currentColor; }
+}
+
+
+/* ------------------------------------------------------------------------
+   09 · Sub navigation (archive anchors)
+   The header menu's language: Clash 600 links divided by hairline bars. It
+   sticks directly under the fixed bar and never overlaps it. Below 560px it
+   wraps onto a second row and drops the bars.
+   ------------------------------------------------------------------------ */
+.subnav {
+  position: sticky; top: var(--nav-h); z-index: 40;
+  margin: 0 auto; max-width: 1500px;
+  border-radius: 0; border-left: 0; border-right: 0; border-top: 0;
+  box-shadow: none;
+}
+.subnav__list {
+  list-style: none; display: flex; align-items: center; flex-wrap: wrap;
+  gap: 0 clamp(10px, 1.2vw, 18px);
+  padding: 12px var(--pad);
+  font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 0.95rem;
+}
+.subnav__link { display: inline-block; padding: 4px 0; transition: color 0.25s var(--ease); }
+.subnav__sep { font-style: normal; font-weight: 400; opacity: 0.25; transform: scaleY(1.1); }
+.subnav__link.is-active { color: var(--blue); }
+.subnav__link[aria-current='true'] { color: var(--blue); }
+@media (hover: hover) and (pointer: fine) {
+  .subnav__link:hover { color: var(--blue); }
+}
+@media (max-width: 560px) {
+  /* This was a sideways scroll strip, and at 390px that put the third item
+     ("Talks & workshops") outside the viewport, sliced mid-word, with nothing
+     on screen to say it could be scrolled to: a primary navigation control that
+     was neither readable nor tappable. The bar wraps onto a second row instead.
+     The hairline bars go with it — a divider that lands at the end of a line
+     divides nothing — and they are decorative, inside aria-hidden list items,
+     so a screen reader loses nothing either. */
+  .subnav__list {
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    font-size: 0.88rem;
+  }
+  .subnav__list li[aria-hidden='true'] { display: none; }
+}
+
+
+/* ------------------------------------------------------------------------
+   10 · Tag row (topics)
+   Standalone version of the lane chips, so a topic list can live outside a
+   .tracklane. The "practical" four-card row needs nothing new: it is
+   .offer__grid > .offer__card, exactly as on the front page.
+   ------------------------------------------------------------------------ */
+.tags { list-style: none; display: flex; flex-wrap: wrap; gap: 9px; margin-top: clamp(28px, 4vh, 48px); }
+.tags__item {
+  font-size: 0.9rem; font-weight: 500; line-height: 1;
+  padding: 10px 16px; border-radius: 100px;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, #fff 40%, transparent);
+  transition: border-color 0.3s var(--ease), color 0.3s var(--ease),
+    background 0.3s var(--ease), transform 0.3s var(--ease);
+}
+html.mode-dark .tags__item {
+  background: color-mix(in srgb, #fff 5%, transparent);
+  border-color: color-mix(in srgb, #fff 12%, transparent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .tags__item:hover {
+    border-color: var(--blue); color: var(--blue);
+    background: color-mix(in srgb, var(--blue) 7%, transparent);
+    transform: translateY(-2px);
+  }
+}
+@media (max-width: 420px) { .tags__item { font-size: 0.85rem; padding: 9px 14px; } }
+
+
+/* ------------------------------------------------------------------------
+   11 · Placeholder tile
+   For the rare spot where a photo is genuinely missing. Glass, the right
+   aspect ratio, the four-point ✦ and one short label. It must never be used
+   twice in one section: two of these read as an unfinished page.
+   ------------------------------------------------------------------------ */
+.placeholder {
+  display: grid; place-items: center; align-content: center; gap: 10px;
+  border-radius: 16px; padding: clamp(18px, 2.5vw, 32px); text-align: center;
+  aspect-ratio: 4 / 3;
+}
+.placeholder--wide { aspect-ratio: 16 / 9; }
+.placeholder--square { aspect-ratio: 1 / 1; }
+.placeholder--portrait { aspect-ratio: 4 / 5; }
+.placeholder__mark { font-size: 1.1rem; line-height: 1; color: var(--blue); }
+.placeholder__label {
+  font-size: 0.78rem; font-weight: 500; text-transform: uppercase;
+  letter-spacing: 0.14em; opacity: 0.55; max-width: 24ch;
+}
+
+
+/* ------------------------------------------------------------------------
+   12a · Page tail
+   Every programme subpage ends the same way: H2 with one italic word, one
+   line, one arrow button. Sits between the last section and the footer.
+   ------------------------------------------------------------------------ */
+.tail { max-width: 1500px; margin: 0 auto; padding: clamp(80px, 12vh, 150px) var(--pad); }
+.tail__line { margin-top: 20px; max-width: 60ch; font-size: clamp(1.05rem, 1.6vw, 1.35rem); line-height: 1.55; opacity: 0.85; }
+.tail .btn { margin-top: clamp(28px, 4vh, 44px); }
+.tail__note { margin-top: 22px; max-width: 60ch; font-size: 0.92rem; line-height: 1.6; color: var(--ink-soft); }
+.tail__note a { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }
+
+/* Three buttons that close a section instead of a tail, and so have to bring
+   their own air: the archive link under a list of rows (shape-talks), the one
+   under the guest grid (talks, where B7.6 replaces the tail block), and the
+   "Back to ..." link at the foot of an archive part. .erows ends on a hairline
+   rule, so without this the button sits on the rule. */
+.pasttalks__cta,
+.guests__more,
+.archive__back { margin-top: clamp(28px, 4vh, 44px); }
+
+/* A back link points the other way, and style.css moves .btn__arrow +5px on
+   hover, which would send it forwards. This is the only rule that flips it. */
+@media (hover: hover) and (pointer: fine) {
+  .archive__back:hover .btn__arrow { transform: translateX(-5px); }
+}
+
+/* 12b · Legal block (about.html, under the last section, above the footer) */
+.legal {
+  max-width: 1500px; margin: 0 auto;
+  padding: clamp(28px, 4vh, 44px) var(--pad) 0;
+}
+.legal__inner { border-top: 1px solid var(--line); padding-top: clamp(20px, 3vh, 30px); }
+.legal__name { font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 0.95rem; margin-bottom: 8px; }
+.legal__lines { font-size: 0.85rem; line-height: 1.7; color: var(--ink-soft); }
+.legal__lines span { display: block; }
+.legal__link { color: var(--ink-soft); border-bottom: 1px solid color-mix(in srgb, currentColor 40%, transparent); transition: color 0.3s var(--ease); }
+@media (hover: hover) and (pointer: fine) {
+  .legal__link:hover { color: var(--blue); }
+}
+
+
+/* ------------------------------------------------------------------------
+   13 · The shared footer's two orphans
+   partials/footer.html is written into all seven pages and uses these two
+   class names, which no stylesheet defined: the fourth "Programmes" column's
+   list rendered with browser bullets against the global `* { padding: 0 }`
+   reset, and the legal line rendered at full body size, louder than the
+   copyright above it. Both live here rather than in style.css because the
+   fourth column and the legal line are what spec B3.4 added to that footer.
+   ------------------------------------------------------------------------ */
+.footer__list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+/* .footer__cols p has a bottom margin that assumed one link per column; the
+   list sits directly under it, so it needs no top margin of its own. */
+.footer__list a { align-self: flex-start; }
+.footer__legal {
+  margin-top: 20px;
+  font-size: 0.72rem; line-height: 1.6;
+  color: var(--ink-soft); opacity: 0.75;
+  max-width: 90ch;
+}
+/* A third orphan: the bottom row's three institute links had no rule at all, so
+   they ran together as one string — "About & team Join us Instagram", separated
+   by a word space while every other item in that row was spaced apart. */
+.footer__links { display: flex; flex-wrap: wrap; gap: clamp(14px, 2vw, 28px); }
+/* And a fourth: assets/logo-mark.png is a white-on-transparent mark, so in dark
+   mode it reads as a clean white ring and in light mode it all but vanished on
+   the off-white ground — the brand mark was missing from every page in the
+   default theme. Same device the partner row uses for a one-colour mark
+   (.partners__item--mark): flatten it to ink on light, leave the artwork alone
+   on dark. The file is RGBA, so only the glyphs are painted, not a plate. */
+.footer__mark { filter: brightness(0); opacity: 0.55; }
+html.mode-dark .footer__mark { filter: none; opacity: 0.95; }
+
+
+/* ------------------------------------------------------------------------
+   14 · About: the three community groups, the join panel, the partner row
+   B8.5 publishes neither a member name nor a portrait, so the kit's .person
+   card (built around exactly those) cannot carry a group. .go only places the
+   existing .webinar__box and sizes its heading. .partners is a static row of
+   logo links: the front page's strip is an animated marquee whose marks are
+   not links, so it cannot be reused where someone is looking for a partner.
+   The frosted surface of .group and .partners__cta comes from section 00,
+   which now lists them, so the recipe exists once on the site.
+   ------------------------------------------------------------------------ */
+.groups {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;
+  margin-top: clamp(36px, 6vh, 72px);
+}
+.group {
+  border-radius: 16px;
+  padding: clamp(22px, 2.8vw, 40px);
+  min-width: 0;
+  display: flex; flex-direction: column; gap: 12px;
+  transition: border-color 0.4s var(--ease), transform 0.4s var(--ease);
+}
+/* The .promise heading step of the ramp: below the section's H2, above body. */
+.group__title {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1.35rem, 2.5vw, 2.15rem); line-height: 1.08; letter-spacing: -0.015em;
+}
+.group__text {
+  max-width: 46ch;
+  font-size: clamp(1rem, 1.3vw, 1.15rem); line-height: 1.6; color: var(--ink-soft);
+}
+
+/* A community group that carries a people grid. Spacing only: the grid is the
+   object, so the group does not also get the card treatment of .group. */
+.people-group { margin-top: clamp(40px, 7vh, 88px); }
+.people-group .group__title { margin-bottom: 10px; }
+.people-group .people { margin-top: clamp(24px, 3.4vh, 40px); }
+
+/* The second way into Shapers GO, for people who would rather write than fill a form. */
+.go__note { margin-top: 14px; font-size: 0.95rem; line-height: 1.6; color: var(--ink-soft); }
+
+/* The way from the home page to the institute page, under the community list. */
+.community__cta { margin: clamp(32px, 5vh, 56px) 0 0; }
+@media (hover: hover) and (pointer: fine) {
+  .group:hover { border-color: var(--blue); transform: translateY(-4px); }
+}
+@media (max-width: 760px) { .groups { grid-template-columns: 1fr; } }
+
+.go { margin-top: clamp(24px, 3.4vh, 44px); }
+/* An H3 that closes the section, so it takes the .city__sub step of the ramp.
+   The group names are set plain, with no <em>: "Shapers GO" is a name, and the
+   three names should look like each other. */
+.go__title {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(2rem, 4.5vw, 3.8rem); line-height: 1.06; letter-spacing: -0.02em;
+}
+
+.partners__row {
+  list-style: none;
+  /* flex-end, not center: every item is now a mark stacked over a name, and the
+     two marks are deliberately different heights, so aligning the bottoms is
+     what puts the written names on one line. */
+  display: flex; flex-wrap: wrap; align-items: flex-end;
+  gap: clamp(26px, 5vw, 72px);
+  margin-top: clamp(36px, 6vh, 72px);
+}
+.partners__item { flex: 0 0 auto; }
+/* Mark above, name below. The marks alone were not identifiable: Technology
+   Park supplied a bare roundel with no wordmark, and this row flattens every
+   mark to a single colour, so its green carried no clue either. */
+.partners__link {
+  display: flex; flex-direction: column; align-items: center;
+  gap: clamp(8px, 0.9vw, 12px);
+  transition: opacity 0.3s var(--ease), color 0.3s var(--ease);
+}
+/* The fixed box the artwork is sized against. This height used to sit on
+   .partners__link; it has to live on the mark now, or `height: 100%` on the
+   image would resolve against the link's whole column, name included. */
+.partners__mark {
+  display: flex; align-items: center; justify-content: center;
+  height: clamp(26px, 2.8vw, 38px);
+}
+/* A logo link is not a card, so it keeps its own ring: wider offset, because
+   the mark has no border of its own to sit inside. */
+.partners__link:focus-visible {
+  outline: 2px solid var(--blue); outline-offset: 8px; border-radius: 6px;
+}
+/* style.css sets a global `img { width: 100%; height: 100%; object-fit: cover }`
+   which stretches and crops; a logo must do neither. Same three lines
+   .marquee__logo img uses. */
+.partners__mark img { width: auto; height: 100%; max-width: none; object-fit: contain; }
+
+/* The written name. The images are decorative (alt="", aria-hidden) so the
+   partner is announced once, from this text, not twice. --ink-soft is defined
+   for both themes in style.css, so no second rule is needed for dark. */
+.partners__name {
+  font-family: 'Inter Tight', 'Satoshi', sans-serif; font-weight: 600;
+  font-size: clamp(0.8rem, 1.05vw, 0.95rem);
+  letter-spacing: -0.005em; line-height: 1.2;
+  color: var(--ink-soft); white-space: nowrap; text-align: center;
+  transition: color 0.3s var(--ease);
+}
+
+/* One-colour marks, the device the marquee already uses: the artwork is
+   flattened to ink in light mode and to the page's light in dark mode, so a
+   partner's own colour never has to survive two backgrounds. The files are
+   RGBA, so only the glyphs are painted, not a plate. */
+.partners__item--mark img { filter: brightness(0); opacity: 0.58; }
+html.mode-dark .partners__item--mark img { filter: brightness(0) invert(1); opacity: 0.7; }
+
+/* Impact Hub ships its own light and dark artwork, so it is swapped rather
+   than flattened, exactly as style.css does it in the strip. */
+.partners__item--swap img { filter: none; opacity: 0.9; }
+.partners__item--swap .logo-dark { display: none; }
+html.mode-dark .partners__item--swap .logo-light { display: none; }
+html.mode-dark .partners__item--swap .logo-dark { display: block; }
+/* Impact Hub is a badge plus a wordmark, so its glyphs read smaller than a
+   pure wordmark at the same box height. The same trim the strip gives it. */
+.partners__item--swap .partners__mark { height: clamp(30px, 3.2vw, 44px); }
+
+/* Kept for a partner that supplies no logo file at all: their name set large
+   in the interface face, an honest stand-in rather than a hole in the row.
+   No partner uses it at the moment -- both now have a mark and a name. */
+.partners__link--type {
+  font-family: 'Inter Tight', 'Satoshi', sans-serif; font-weight: 600;
+  font-size: clamp(1.1rem, 2vw, 1.5rem); letter-spacing: -0.01em; line-height: 1;
+  color: var(--ink-soft); white-space: nowrap;
+}
+@media (hover: hover) and (pointer: fine) {
+  .partners__item--mark:hover img,
+  .partners__item--swap:hover img { opacity: 1; }
+  .partners__link:hover .partners__name { color: var(--blue); }
+  .partners__link--type:hover { color: var(--blue); }
+}
+/* At 360px "Technology Park Ljubljana" is the widest thing in the row; letting
+   it wrap keeps the page from scrolling sideways. */
+@media (max-width: 480px) {
+  .partners__row { gap: 24px 32px; }
+  .partners__name { white-space: normal; max-width: 16ch; }
+  .partners__link--type { white-space: normal; }
+}
+
+.partners__cta {
+  margin-top: clamp(36px, 6vh, 72px);
+  max-width: 720px;
+  border-radius: 16px;
+  padding: clamp(22px, 2.8vw, 40px);
+  min-width: 0;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 14px;
+}
+.partners__cta-title {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1.35rem, 2.5vw, 2.15rem); line-height: 1.08; letter-spacing: -0.015em;
+}
+.partners__cta-text {
+  font-size: clamp(1rem, 1.3vw, 1.15rem); line-height: 1.6; color: var(--ink-soft);
+}
+.partners__cta .btn { margin-top: 8px; }
+
+
+/* ------------------------------------------------------------------------
+   15 · Page-shaped exceptions
+   Three things that belong to one page each, kept here so the site has one
+   stylesheet rather than one per page. Each says which page and why.
+   ------------------------------------------------------------------------ */
+
+/* about.html / sl/about.html, "01 — The bridge": the two doors under the new
+   section, one per audience.
+
+   No new widget and no JavaScript. These are .choice--wide pills — which the
+   kit already renders as a title over a sub-label — used as links instead of
+   as labels wrapping a checkbox. An anchor needs only the link defaults
+   cleared; do NOT restate `display` on the inner span, because style.css:1101
+   stacks the title over the sub-label via `.choice--wide span:has(em)` and a
+   later same-specificity `display: block` silently outranks it, running the
+   two together on one line.
+
+   A dropdown from the header was deliberately rejected: js/main.js binds the
+   nav menu to four singleton IDs so it cannot be instantiated twice, and that
+   file carries no focus management at all, so a second menu would be the only
+   focus-trapped control on the site with no precedent to copy. */
+.bridge__actions { margin-top: clamp(26px, 4vh, 44px); max-width: 720px; }
+a.choice--wide { text-decoration: none; color: inherit; }
+
+/* index.html / sl/index.html, inside "04 — Who we are": the same two doors,
+   one column per audience. This replaced the section's old button pair rather
+   than being added beside it — the page already ended with three join routes
+   in a row, and a fourth block would have been the fourth "join us" in a
+   screen and a half.
+
+   The header pill anchors at #who, not at an id on this block: the anchor
+   landing rule in section 00 covers only .section[id], .group and .go, so a
+   bare div id would open underneath the fixed header. */
+/* academy.html / sl/academy.html, the final CTA: the same two-audience choice
+   the home page offers, but that section is centred, so it takes two pills
+   rather than the two-column grid. The pills keep their own left-aligned text
+   while the block stays centred in the section. */
+/* archive.html stacks a second bar (.subnav) under the fixed header, so its
+   parts need more clearance than the site-wide rule in section 00 gives.
+   Two classes, so it outranks `.section[id]` (which is also two) and wins on
+   order; a single class would lose to it. */
+.section.archive__part { scroll-margin-top: calc(var(--nav-h) + 56px); }
+
+/* summer-school.html: the week is five steps and .process__steps in style.css
+   is a grid of four, so a fifth step would drop to a second row under a rail
+   that only spans the first. The stepper is re-columned for that page alone:
+   five across, then three, two, one. Every breakpoint has to be restated,
+   because `#the-week .process__steps` outranks the class-only rules in
+   style.css that would otherwise collapse the grid. From three columns down
+   the rail is dropped and each step carries its own hairline, exactly what
+   style.css does at its own 900px step. */
+#the-week .process__steps { grid-template-columns: repeat(5, 1fr); }
+@media (max-width: 1180px) {
+  #the-week .process__steps {
+    grid-template-columns: repeat(3, 1fr);
+    row-gap: clamp(34px, 5vw, 56px);
+  }
+  /* one continuous rail cannot span two rows */
+  #the-week .process__rail { display: none; }
+  #the-week .process__step { border-top: 1px solid var(--line); }
+}
+@media (max-width: 900px) { #the-week .process__steps { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { #the-week .process__steps { grid-template-columns: 1fr; } }
+
+/* Two or more lead paragraphs in a row. style.css resets every margin to 0 and
+   gives .offer__lead no rhythm of its own, because on the front page it is
+   always a single paragraph. summer-school.html section 01 runs three, and
+   without this they render as one unbroken block. Same 18px step
+   .subhero__lead uses above, so the two stacks read alike. */
+.offer__lead + .offer__lead { margin-top: 18px; }
+
+/* The quiet line under the speaker grid (the Shape Tank jury). The kit has
+   such a line only inside an edition module (.edition__note), and that page
+   has no edition module, so it gets its own name rather than borrowing a class
+   from a component it is not part of. */
+.ss-note {
+  margin-top: clamp(20px, 3vh, 32px);
+  max-width: 60ch;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+/* talks.html section 04: the four guests with no portrait are listed as speaker
+   rows directly under the two who have one. Inside an edition module that list
+   already sits under a block with its own margin; here it follows a card grid
+   and has to bring its own air. */
+#guests .edition__speakers { margin-top: clamp(24px, 3.5vh, 44px); }
+
+/* --- index.html, the institute's home -------------------------------------
+   The home page is built from the kit plus the front-page patterns in
+   style.css; the rules below are the handful of modifiers it needs on top.
+   Same contract as the rest of the file: only the existing tokens (--ink,
+   --ink-soft, --ice, --lift, --line, --blue, --ease, --nav-h, --pad), no new
+   colour, font, radius or shadow, every hover inside the hover query, every
+   movement cancelled under reduced motion (section 17), and nothing that
+   moves on x. Each block says which part of the page it is for. */
+
+/* Hero. style.css caps .hero__sub at 30ch, which fitted the Academy's one
+   line and is too narrow for the institute's three sentences: 52ch keeps the
+   lead to four or five lines beside the buttons at 1440 and lets .hero__bottom
+   keep its two-column, bottom-aligned composition. */
+.hero__sub--lead { max-width: 52ch; }
+
+/* Two doors side by side. style.css stacks .hero__cta as a column because the
+   Academy hero pairs one button with the "open year-round" pill; two buttons
+   read as a row. On a phone they go full width, so the stack lines up with
+   the lead above it. */
+.hero__cta--row { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px; }
+@media (max-width: 760px) {
+  .hero__cta--row { width: 100%; }
+  .hero__cta--row .btn { width: 100%; justify-content: center; }
+}
+
+/* 01 What we do: the numbers band and the eyebrow before the list. Tabular
+   figures so the numerals do not jitter while site.js counts them up; a bold
+   noun at the head of each label (Fontshare loads Satoshi at 400, 500 and
+   700, so 700 is the weight that exists; 600 would be synthesised). */
+.offer__numbers--facts .offer__num-val { font-variant-numeric: tabular-nums; }
+.offer__numbers--facts .offer__num-label strong { font-weight: 700; color: var(--ink); }
+
+/* "How we work" sits between the band and the three points. The band already
+   brings its own 90px below it, so the eyebrow hugs its list instead of
+   adding .promises' full top margin on top of its own. */
+.what__how { margin-bottom: 0; }
+.what__how + .promises { margin-top: 20px; }
+
+/* 02 Our projects: five cards, the Academy card featured. The four-card grid
+   of section 02 re-cut as three columns with the first card spanning two, so
+   the row reads "the newest one, then the rest". At 761px and up the featured
+   card lays its photo on the left and its copy on the right, so its height
+   follows the 4:3 card beside it instead of stretching the row. Below that it
+   stacks like every other card. Everything else about the card (the hover
+   lift, the image scale, the tape, the stretched link, the spotlight, the
+   reveal from js/site.js) is the existing .pcard. */
+.pcards--five { grid-template-columns: repeat(3, 1fr); }
+.pcard--feature { grid-column: span 2; }
+@media (min-width: 761px) {
+  .pcard--feature { flex-direction: row; }
+  .pcard--feature .pcard__media { flex: 0 0 50%; aspect-ratio: auto; }
+  .pcard--feature .pcard__media img { height: 100%; object-fit: cover; }
+  /* The copy centres in the taller card; the link therefore joins the stack
+     instead of being pushed to the bottom edge by its auto margin. */
+  .pcard--feature .pcard__body { justify-content: center; }
+  .pcard--feature .pcard__link { margin-top: 6px; }
+}
+/* "Newest project": the coming-soon badge plus the site's live dot, the same
+   mark the next-event date pill carries. The keyframes (livepulse) are in
+   style.css; section 17 stops the dot under reduced motion. */
+.pcard__badge--live { display: inline-flex; align-items: center; gap: 8px; }
+.pcard__badge--live::before {
+  content: ''; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  background: var(--blue);
+  animation: livepulse 2.2s var(--ease) infinite;
+}
+@media (max-width: 1024px) { .pcards--five { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) {
+  .pcards--five { grid-template-columns: 1fr; }
+  .pcard--feature { grid-column: auto; }
+}
+
+/* 04 Who we are: three cells, two doors, one note. .groups in section 14 is
+   two columns because about.html shows Core and Impact as cards and Shapers
+   GO as the join panel; the home page shows all three as cards. The phone
+   rule is restated because this modifier sits later in the file than section
+   14's own 760px rule and would otherwise outrank it. */
+.groups--three { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 760px) { .groups--three { grid-template-columns: 1fr; } }
+
+.who__actions {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  margin-top: clamp(28px, 4vh, 44px);
+}
+/* The e-mail line under the doors, the same line as about.html's .go__note
+   but outside a panel, so its link has to show itself as one. */
+.who__note {
+  margin-top: 18px; max-width: 56ch;
+  font-size: 0.95rem; line-height: 1.6; color: var(--ink-soft);
+}
+.who__note a { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 560px) {
+  .who__actions .btn { width: 100%; justify-content: center; }
+}
+
+/* Archive teaser: one hairline row. The kit's .tail without its H2: eyebrow
+   and one sentence on the left, one door on the right, between two hairlines
+   that stay inside the content width like every other rule on the page. The
+   section's own vertical padding is dropped; the neighbours' section padding
+   is the air around it. */
+.tail--row { padding-top: 0; padding-bottom: 0; }
+.tail__row {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 24px 40px; flex-wrap: wrap;
+  padding: clamp(36px, 6vh, 64px) 0;
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.tail__copy { min-width: 0; }
+.tail--row .section__index { margin-bottom: 10px; }
+.tail--row .tail__line { margin-top: 0; }
+.tail--row .btn { margin-top: 0; flex: 0 0 auto; }
+@media (max-width: 560px) {
+  .tail--row .btn { width: 100%; justify-content: center; }
+}
+
+
+/* ------------------------------------------------------------------------
+   18 · Forced colours
+   Windows High Contrast (and any forced-colors mode) throws box-shadow away.
+   apply.html's text fields, its select and its choice pills all suppress the
+   native outline and show focus as a blue box-shadow halo instead, which is a
+   real ring in normal rendering and nothing at all there. This is the only
+   rule in this file that reaches into style.css's form, and it only adds a
+   fallback ring in a mode where the authored one cannot be drawn: the normal
+   look is untouched. apply.html loads this sheet through the shared head.
+   ------------------------------------------------------------------------ */
+@media (forced-colors: active) {
+  .field input:focus-visible,
+  .field select:focus-visible,
+  .field textarea:focus-visible,
+  .choice:has(input:focus-visible) {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
+
+/* ------------------------------------------------------------------------
+   16 · Between pages
+   The site is seven real HTML files, so navigation gets the browser's own
+   cross-document View Transitions rather than a router: old content fades in
+   0.22s, new content rises 24px in 0.5s on the house curve, and the fixed
+   header is its own named group so the bar never flashes. Chrome/Edge 126+ and
+   Safari 18.2+; Firefox simply navigates, which is the same page either way.
+
+   THE COLLISION, and how it is kept apart. style.css lines 743-747 already own
+   bare `::view-transition-old(root)` / `::view-transition-new(root)` for the
+   dark-mode star wipe — a SAME-document transition. Those selectors cannot
+   tell a theme flip from a page navigation, so without a guard every click
+   would circle-wipe out of the last star's coordinates. js/main.js therefore
+   puts `mode-wipe` on <html> for exactly as long as the theme transition runs,
+   and every rule below is scoped `html:not(.mode-wipe)`. During a wipe these
+   rules do not match and style.css's modewipe keyframes are untouched; during
+   a navigation the class is absent (a fresh document never has it) and these
+   win on specificity. Neither ever sees the other's animation.
+
+   Everything sits inside `prefers-reduced-motion: no-preference`, so a visitor
+   who asked for less motion gets a plain, instant navigation.
+   ------------------------------------------------------------------------ */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+
+  html:not(.mode-wipe)::view-transition-old(root) {
+    animation: vt-out 0.22s var(--ease) both;
+  }
+  html:not(.mode-wipe)::view-transition-new(root) {
+    animation: vt-in 0.5s var(--ease) 0.12s both;
+  }
+
+  /* The frosted bar is on every page in the same place, so it is carried
+     across instead of being faded out and back in with the page under it. */
+  html:not(.mode-wipe) .nav { view-transition-name: site-nav; }
+  html:not(.mode-wipe)::view-transition-group(site-nav) { animation-duration: 0.35s; }
+}
+/* Named outside the query so a skipped or unsupported transition still has
+   them defined; unused keyframes cost nothing. 24px is the same rise the stat
+   band and the process steps already use. */
+@keyframes vt-out { to { opacity: 0; } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(24px); } }
+
+
+/* ------------------------------------------------------------------------
+   17 · Reduced motion
+   style.css already clamps every duration to 0.01ms, which handles fades.
+   What it cannot do is cancel a transform that a hover state applies, so every
+   movement in this kit is switched off here, and anything that was revealed by
+   a transform is put in its resting position instead.
+   ------------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  .pcard:hover,
+  .person:hover,
+  .group:hover,
+  .tags__item:hover { transform: none; }
+  .pcard:hover .pcard__media img,
+  .gallery__item:hover img,
+  .pcard:hover .pcard__link .btn__arrow { transform: none; }
+  .erows--preview .erow__thumb { transform: none; transition: none; }
+  .erows--preview .erow:hover .erow__thumb,
+  .erows--preview .erow.is-preview .erow__thumb,
+  .erows--preview .erow:focus-within .erow__thumb { transform: none; }
+  .nextev__pill--date::before { animation: none; }
+  /* The "Newest project" badge on index.html carries the same dot. */
+  .pcard__badge--live::before { animation: none; }
+  /* A back link's arrow points the other way; with no motion it just sits. */
+  .archive__back:hover .btn__arrow { transform: none; }
+  /* The tape settles instantly instead of stepping in from the centre. */
+  .pcard__tape span { opacity: 1; transform: none; transition: none; }
+}
+
+/* A visitor who asked for less transparency gets flat surfaces, the same
+   bargain the buttons already make in style.css. */
+@media (prefers-reduced-transparency: reduce) {
+  .pcard, .person, .quote, .nextev__empty, .placeholder, .subnav,
+  .group, .partners__cta {
+    background: var(--lift);
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+}
+
+/* ==========================================================================
+   18. PHONE POLISH (2026-09-18 mobile audit)
+   Touch targets: on coarse pointers every control gets at least 44 px of
+   hit area. Padding grows, negative margins keep the visual position, so the
+   desktop look is untouched. Dark mode: three muted labels sat below 4.5:1
+   on the dark ground; only their dark-mode opacity changes.
+   ========================================================================== */
+@media (hover: none) and (pointer: coarse) {
+  .nav__logo { padding-block: 14px; margin-block: -14px; }
+  .nav__star { padding: 5px; margin: -5px; }
+  .btn--small { min-height: 44px; }
+  .footer__list a, .footer__links a, .footer__bottom a, .footer__brandline a { display: inline-block; padding-block: 8px; margin-block: -8px; }
+  .subnav__link { padding-block: 9px; }
+  .partners__link { min-height: 44px; display: inline-flex; align-items: center; }
+  .pcard__link { padding-block: 6px; margin-block: -6px; }
+}
+html.mode-dark .marquee-label { opacity: 0.66; }
+html.mode-dark .webinar__box .section__index,
+html.mode-dark .go .section__index { opacity: 1; }
+html.mode-dark .faq__a p { opacity: 0.88; }
+
+
+/* ==========================================================================
+   19. SIX PROJECT CARDS (home): the sixth card closes the grid full width.
+   ========================================================================== */
+.pcards--six .pcard--soon { grid-column: 1 / -1; }
+@media (min-width: 1025px) {
+  .pcards--six .pcard--soon .pcard__body {
+    flex-direction: row; flex-wrap: wrap;
+    align-items: center; justify-content: flex-start;
+    gap: 12px clamp(20px, 2.4vw, 40px);
+    padding-top: clamp(20px, 2.5vw, 32px);
+  }
+  .pcards--six .pcard--soon .pcard__badge { align-self: center; }
+  .pcards--six .pcard--soon .pcard__text { flex: 1 1 32ch; }
+}
+@media (max-width: 560px) {
+  .pcards--six .pcard--soon { grid-column: auto; }
+}
+
+
+/* ==========================================================================
+   20. LANGUAGE SWITCH: the SLO/ENG text link beside the header pill.
+   ========================================================================== */
+.nav__lang {
+  display: inline-flex; align-items: center;
+  font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 0.95rem;
+  letter-spacing: 0.01em; line-height: 1;
+  color: var(--ink);
+  transition: color 0.25s var(--ease);
+}
+.nav__lang:hover { color: var(--blue); }
+.nav__lang:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+/* The hairline sits between the label and the pill; ink, not currentColor,
+   so it stays quiet while the label turns blue on hover. .nav__actions adds
+   its own 12px gap on the pill's side, so the line is centred in the gap. */
+.nav__lang::after {
+  content: ''; display: inline-block; width: 1px; height: 1.1em;
+  margin-left: 12px;
+  background: var(--ink); opacity: 0.25;
+}
+/* Phone: the subpage bar carries the wordmark, the switch and the pill in
+   one row, so the switch gives back a few pixels on each side of its line. */
+@media (max-width: 600px) {
+  .nav__lang::after { margin-left: 8px; }
+  .nav__actions { gap: 8px; }
+}
+/* Touch targets, the same treatment section 18 of components.css gives the
+   wordmark and the pill: 44px of hit area, no change to the look. */
+@media (hover: none) and (pointer: coarse) {
+  .nav__lang { padding-block: 15px; margin-block: -15px; }
+}
+
+
+/* ------------------------------------------------------------------------
+   16 · The join menu (index.html and academy.html, both languages)
+   One button in the bar, and the routes open directly underneath it.
+
+   Built on <details>/<summary>, which opens, closes and keyboard-operates
+   with no JavaScript at all: if site.js never arrives the menu still works.
+   site.js adds only Escape, click-outside and close-on-choose.
+
+   This is NOT .nav__menu. That one is the centred wordmark and its hover row,
+   bound once by main.js through singleton ids (navMenu, menuToggle, menuHit).
+   This carries its own namespace and is bound by class, so a page may hold
+   more than one without the two interfering.
+   ------------------------------------------------------------------------ */
+/* inline-block so the centred CTA stays centred; inside the bar and the
+   hero it is a flex item, where this blockifies harmlessly. */
+.drop { position: relative; display: inline-block; }
+/* summary is display:list-item by default; .btn makes it inline-flex, but the
+   marker needs suppressing in its own right for older WebKit. */
+.drop__btn { list-style: none; cursor: pointer; user-select: none; white-space: nowrap; }
+.drop__btn::-webkit-details-marker { display: none; }
+.drop__btn::marker { content: ''; }
+.drop__btn:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+
+.drop__caret {
+  width: 7px; height: 7px; flex: none;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.3s var(--ease);
+}
+.drop[open] .drop__caret { transform: translateY(1px) rotate(-135deg); }
+
+/* "Join the network" is 165px wide at .btn--small; the bar at 390px has 350px
+   for the wordmark, the language link and this. The long half goes, and the
+   button reads "Join" — the panel underneath says the rest. */
+@media (max-width: 600px) { .drop__more { display: none; } }
+
+/* Right-aligned: the button sits at the right end of the bar, so a panel that
+   grows leftwards stays on screen where one growing rightwards would not. */
+.drop__panel {
+  position: absolute; z-index: 5;
+  top: calc(100% + 10px); right: 0;
+  width: min(330px, calc(100vw - 2 * var(--pad)));
+  padding: 8px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--ice);
+  box-shadow: 0 18px 40px -12px color-mix(in srgb, var(--ink) 30%, transparent);
+  text-align: left;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .drop[open] .drop__panel { animation: dropin 0.26s var(--ease) both; }
+}
+@keyframes dropin { from { opacity: 0; transform: translateY(-6px); } }
+
+.drop__who {
+  font-family: 'Inter Tight', 'Satoshi', sans-serif; font-weight: 600;
+  font-size: 0.68rem; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--ink-soft);
+  padding: 12px 12px 6px;
+}
+.drop__panel > .drop__who:first-child { padding-top: 6px; }
+
+.drop__item {
+  display: block; padding: 10px 12px; border-radius: 10px;
+  transition: background 0.2s var(--ease);
+}
+/* The global em is Instrument Serif italic; inside a menu row it is the
+   quiet second line, so it is reclaimed here. */
+.drop__item b { display: block; font-weight: 500; font-size: 0.92rem; }
+.drop__item em {
+  display: block; margin-top: 2px;
+  font-family: 'Satoshi', system-ui, sans-serif; font-style: normal;
+  font-size: 0.78rem; line-height: 1.4; color: var(--ink-soft);
+}
+.drop__item:hover { background: color-mix(in srgb, var(--blue) 8%, transparent); }
+.drop__item:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+  box-shadow: inset 0 0 0 2px var(--blue);
+}
+
+/* --- the same menu on the hero and closing buttons ----------------------
+   .hero is overflow:hidden and its button sits low inside it, so a panel
+   opening downward is sliced off: in the hero it opens upward. .cta has no
+   overflow clip, so there it opens downward over the footer, which is what a
+   menu at the foot of a page should do. */
+.drop--up .drop__panel { top: auto; bottom: calc(100% + 10px); }
+@media (prefers-reduced-motion: no-preference) {
+  .drop--up[open] .drop__panel { animation: dropup 0.26s var(--ease) both; }
+}
+@keyframes dropup { from { opacity: 0; transform: translateY(6px); } }
+
+/* The closing CTA is centre-aligned, so the panel is centred under the button
+   instead of hung from its right edge. `translate` rather than `transform`,
+   so it composes with the open animation instead of overwriting it. */
+.drop--cta .drop__panel { left: 50%; right: auto; translate: -50% 0; }
+
+/* The arrow the button already carries IS the disclosure indicator — nothing
+   is added, so the trigger is exactly as wide as the link it replaced and the
+   1280px hero row cannot wrap again. It only moves once opened, which is why
+   the page at rest is unchanged. (.btn:hover .btn__arrow is the same
+   specificity and sits earlier, so these win while open.) */
+.drop[open] .btn__arrow { transform: rotate(90deg); }
+.drop--up[open] .btn__arrow { transform: rotate(-90deg); }
+
+/* On a phone .hero__cta--row stretches its buttons edge to edge; the wrapper
+   has to stretch with them or the trigger shrinks back to its text. */
+@media (max-width: 760px) {
+  .hero__cta--row .drop { width: 100%; }
+  .hero__cta--row .drop .drop__btn { width: 100%; justify-content: center; }
+}
+
+/* --- placement decided at open time -------------------------------------
+   .drop--up stays as the no-JS fallback (with scripts blocked the hero menu
+   still opens the only way it can). These two carry three classes to the
+   modifier's two, so they win the moment site.js has measured. */
+.drop.is-up .drop__panel { top: auto; bottom: calc(100% + 10px); }
+.drop.is-down .drop__panel { top: calc(100% + 10px); bottom: auto; }
+.drop.is-up[open] .btn__arrow { transform: rotate(-90deg); }
+.drop.is-down[open] .btn__arrow { transform: rotate(90deg); }
+
+/* When even the better side is too short — a laptop in a small window, a
+   phone in landscape — the panel scrolls inside itself rather than putting a
+   route off screen. overscroll-behavior stops that scroll from continuing
+   into the page behind it. */
+.drop__panel { overflow-y: auto; overscroll-behavior: contain; }
+
+/* --- the closing menu has to clear the footer ---------------------------
+   .cta is position:relative + isolation:isolate, so its positioned children
+   sit in a layer the plain in-flow footer paints over: with the menu open,
+   the footer's own paragraphs printed straight through the panel (27-point
+   hit test: FOOTER:p on 4 of 27 samples at 1440x900, 2 of 27 at 390x780).
+   The panel's own z-index cannot fix that — it only orders siblings inside
+   the trapped layer.
+
+   So the SECTION is raised, and only while a menu inside it is open, which
+   leaves the page at rest untouched. 45 is deliberate: above the footer,
+   below the fixed header at 50, so an open menu never covers the site bar. */
+.cta:has(.drop[open]) { z-index: 45; }
+
+/* --- short windows: all four routes, or three routes explained? ---------
+   Four routes with their second lines need 333px. A 1280x720 laptop leaves
+   250px above the hero button and 315px below the closing one, so the sweep
+   found routes 3/4 in both places — the panel scrolled, but it cut mid-row
+   with no sign there was more, and "Apply to Shapers Academy" was simply not
+   on screen. Below 760px of window height the descriptions go and every
+   route stays visible. 760 keeps a 780-tall phone's descriptions, which the
+   sweep passed. */
+@media (max-height: 760px) {
+  .drop__panel { padding: 6px; }
+  .drop__item { padding: 9px 12px; }
+  .drop__item em { display: none; }
+  .drop__who { padding: 10px 12px 4px; }
+}
+
+/* --- the bar carries the full lockup ------------------------------------
+   Mark and words together, the client's own artwork, as asked for directly.
+
+   NOT a mask. A mask paints one flat colour and would throw away the blue of
+   INSTITUTE. He supplied a black version and a white one, so both ship and
+   the theme chooses between them — the same device the partner row uses for
+   two-colour marks.
+
+   44px is the largest the bar can hold: 72px tall, so this leaves 14px above
+   and below. At 44px the lockup is 46px wide, 18px more than the mark it
+   replaces, so nothing else in the bar reflows.
+
+   For the record, measured rather than guessed: the INSTITUTE line is 38px
+   of the artwork's 673, so at 44px it lands at a 2.5px cap height. Readable
+   UI text starts near 9-10px. The words are faithfully present and cannot be
+   read at any size this bar can hold; that trade was the client's call. */
+.nav__star:has(.nav__lockup) { width: auto; height: auto; }
+.nav__lockup { display: block; height: 44px; width: auto; }
+.nav__lockup--dark { display: none; }
+html.mode-dark .nav__lockup--light { display: none; }
+html.mode-dark .nav__lockup--dark { display: block; }
+
+/* Below 600px style.css hides the wordmark and makes this the permanent
+   brand, so it stays — just smaller, to leave the bar its room. */
+@media (max-width: 600px) {
+  .nav__lockup { height: 34px; }
+}
+
+/* Phone pass (22. 9. 2026): the group labels in the join/apply dropdowns
+   render at 10.9px on a phone. Nothing on a phone should be under 12px. */
+@media (max-width: 760px) {
+  .drop__who { font-size: 0.75rem; }
+}

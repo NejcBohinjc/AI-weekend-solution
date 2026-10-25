@@ -1,0 +1,1761 @@
+/* ========================================================================
+   Shapers Academy — redesign
+   Editorial dark/light theme flips · Clash Display + Satoshi + Instrument Serif
+   ======================================================================== */
+
+/* The hidden attribute only works through the browser's own [hidden]{display:none},
+   which any author rule carrying a class beats. Giving .apply__done a display:grid
+   silently un-hid the confirmation screen and it rendered underneath the live form.
+   This guard means setting `hidden` always wins, whatever a component declares. */
+[hidden] { display: none !important; }
+
+/* Skip link: parked off-screen, a pill at the top-left once focused. */
+.skip-link {
+  position: fixed; left: 8px; top: -60px; z-index: 300;
+  padding: 10px 16px; border-radius: 100px;
+  background: #14130f; color: #fbfaf9;
+  font-family: 'Satoshi', system-ui, sans-serif; font-size: 0.85rem; font-weight: 500;
+}
+.skip-link:focus { top: 8px; outline: 2px solid #0b3ae0; outline-offset: 2px; }
+
+:root {
+  /* One stable palette. Porcelain base — warmer than white, never beige,
+     never icy — ink type, blue reserved for accents and the closing act. */
+  --ink: #14130f;
+  --ink-soft: #4a4740;
+  --ice: #fbfaf9;
+  --lift: #fafaf9;
+  --well: #ebebe9;
+  --line: #dbdad7;
+  --blue: #0b3ae0;
+  --blue-soft: color-mix(in srgb, var(--blue) 72%, #ffffff);
+  --ease: cubic-bezier(0.65, 0.05, 0, 1);
+  --nav-h: 72px;
+  --pad: clamp(20px, 5vw, 80px);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* overflow-x: clip, not hidden: it stops a reveal that starts off-screen
+   from widening the layout viewport, without making <html> a scroller. */
+html { scroll-behavior: auto; overflow-x: clip; }
+html.lenis, html.lenis body { height: auto; }
+.lenis.lenis-smooth { scroll-behavior: auto !important; }
+
+body {
+  font-family: 'Satoshi', system-ui, sans-serif;
+  background: var(--ice);
+  color: var(--ink);
+  transition: background-color 0.7s var(--ease), color 0.7s var(--ease);
+  /* clip, not hidden: hidden turns <body> into a scroll container and
+     position: sticky descendants (the archive sub navigation) stop sticking
+     on phones. <html> already clips horizontal overflow. */
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--blue); color: var(--ice); }
+
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: 200; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.05; mix-blend-mode: multiply;
+}
+
+img { display: block; width: 100%; height: 100%; object-fit: cover; }
+a { color: inherit; text-decoration: none; }
+em { font-family: 'Instrument Serif', serif; font-style: italic; font-weight: 400; }
+
+/* ---------- Loader ----------
+   Just the percentage, centred on the blue field — no wordmark, no spinning
+   mark. Tabular figures so the number doesn't shudder as it counts. */
+.loader {
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--blue); color: var(--ice);
+  display: grid; place-items: center;
+}
+.loader__count {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(3.5rem, 10vw, 8rem); line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Nav ---------- */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+  height: var(--nav-h);
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 0 var(--pad);
+  transition: transform 0.5s var(--ease);
+}
+.nav__actions { display: flex; align-items: center; gap: 12px; }
+
+/* On narrower viewports the inline row would collide with the brand and the
+   Apply pill, so the open menu drops below the bar instead, wrapping freely.
+   (.nav__menu prefix out-specifies the base rule, which sits later in the
+   file — without it white-space:nowrap wins and the dropdown can't wrap.) */
+@media (max-width: 1024px) {
+  .nav__menu .nav__menu-links {
+    position: fixed; top: var(--nav-h); left: 0; right: 0;
+    justify-content: center; flex-wrap: wrap; white-space: normal;
+    row-gap: 4px; padding: 14px var(--pad) 18px;
+    background: color-mix(in srgb, #ffffff 88%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    backdrop-filter: blur(16px) saturate(160%);
+    border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  }
+  html.mode-dark .nav__menu-links {
+    background: color-mix(in srgb, #0d0d11 92%, transparent);
+    border-bottom-color: color-mix(in srgb, #fff 10%, transparent);
+  }
+}
+/* Phone: the HardCuore treatment. The word moves beside Apply and swaps to
+   "close" while open; the links stack tall over the blurred page below. */
+@media (max-width: 760px) {
+  /* .nav prefix out-specifies the base rule, which sits later in the file —
+     without it the word stays absolutely centred on the bar while the actions
+     flow in from the right, and a wide pill walks straight into it. Slovenian
+     broke first ("Pridruži se" is 26px wider than "Join us"), but English had
+     only 1px of clearance at 360px. In flex flow the two can't collide.
+     flex: 0 0 auto keeps the word from being squeezed narrower than itself,
+     which would let it spill out of its own box again. */
+  .nav .nav__menu {
+    position: static; inset: auto;
+    flex: 0 0 auto;
+    margin-left: auto; margin-right: 2px;
+  }
+  .nav__menu .nav__menu-links {
+    /* The bar's backdrop-filter makes it the containing block for this fixed
+       panel, so bottom:0 would resolve against the 72px bar — size it off the
+       viewport explicitly instead. */
+    top: var(--nav-h); border-bottom: 0;
+    height: calc(100vh - var(--nav-h));
+    height: calc(100dvh - var(--nav-h));
+    flex-direction: column; align-items: flex-start; justify-content: flex-start;
+    row-gap: 2px; padding: clamp(18px, 4vh, 34px) var(--pad);
+    font-size: clamp(2rem, 8.5vw, 2.6rem); letter-spacing: -0.015em;
+    /* 68% let the hero headline read straight through the open menu on a
+       phone: "o nas" and "arhiv" landed on top of the intro paragraph and the
+       two sets of words tangled. The panel is full-height here, so it should
+       read as a sheet with the page ghosted behind it, not as a wash. */
+    background: color-mix(in srgb, #ffffff 93%, transparent);
+    -webkit-backdrop-filter: blur(26px) saturate(160%);
+    backdrop-filter: blur(26px) saturate(160%);
+  }
+  html.mode-dark .nav__menu .nav__menu-links {
+    background: color-mix(in srgb, #0d0d11 93%, transparent);
+  }
+  .nav__menu-links i { display: none; }
+  /* The word stays put while open — it just reads "close". Scoped through
+     .nav so it outranks the later desktop rule that hides the word while
+     the menu is open; without that the open mobile menu had no visible
+     close control at all. */
+  .nav .nav__menu.is-open .nav__menu-word {
+    opacity: 1; transform: none;
+    visibility: visible; pointer-events: auto;
+  }
+  .nav .nav__menu.is-open .nav__menu-label--open { display: none; }
+  .nav .nav__menu.is-open .nav__menu-label--close { display: inline; }
+}
+/* Below this the wordmark can't share the bar with the menu word and Apply,
+   so the brand is permanently the star. */
+@media (max-width: 600px) {
+  .nav__logo { display: none; }
+  .nav__star {
+    opacity: 1; visibility: visible; pointer-events: auto;
+    transform: none;
+  }
+}
+/* Brand slot: the wordmark and the bare star share one grid cell and crossfade.
+   Past the fold (.nav--compact) the wordmark gives way to the star, which is
+   the same four-point mark as the footer and the same theme toggle. The cell
+   keeps the wordmark's width either way, so nothing else in the bar reflows. */
+.nav__brand { display: grid; align-items: center; justify-items: start; }
+.nav__brand > * { grid-area: 1 / 1; }
+.nav__logo {
+  font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 0.95rem;
+  letter-spacing: 0.01em; white-space: nowrap;
+  transition: opacity 0.45s var(--ease), transform 0.45s var(--ease), visibility 0s 0s;
+}
+.nav__logo-sub { opacity: 0.5; font-weight: 500; }
+.nav__star {
+  /* all:unset wipes every earlier declaration, including the shared
+     .nav__brand > * grid-area — restate what must survive it. */
+  all: unset; grid-area: 1 / 1; cursor: pointer;
+  display: grid; place-items: center;
+  width: 34px; height: 34px; color: var(--ink);
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: scale(0.4) rotate(-90deg);
+  transition: opacity 0.45s var(--ease), transform 0.45s var(--ease), visibility 0s 0.45s;
+}
+.nav__star svg { display: block; width: 20px; height: 20px; }
+.nav__star:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+.nav--compact .nav__logo {
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translateX(-12px);
+  transition: opacity 0.45s var(--ease), transform 0.45s var(--ease), visibility 0s 0.45s;
+}
+.nav--compact .nav__star {
+  opacity: 1; visibility: visible; pointer-events: auto;
+  transform: scale(1) rotate(0deg);
+  transition: opacity 0.45s var(--ease), transform 0.45s var(--ease), visibility 0s 0s;
+}
+
+/* The menu, HardCuore-style: the word sits at the true centre of the bar and
+   opens on hover into one line of links divided by hairline bars. The hit
+   wrapper is the hover region — exactly the word when closed, the whole link
+   row when open — so the menu never opens from stray bar hovers. */
+.nav__menu {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  pointer-events: none;
+}
+.nav__menu-hit {
+  pointer-events: auto;
+  display: grid; place-items: center;
+  height: 100%;
+}
+.nav__menu-word, .nav__menu-links { grid-area: 1 / 1; }
+.nav__menu-word {
+  /* all:unset wipes the shared grid-area rule — restate it. */
+  all: unset; grid-area: 1 / 1; cursor: pointer;
+  font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 0.95rem;
+  letter-spacing: 0.01em;
+  opacity: 1; transform: none;
+  transition: opacity 0.3s var(--ease), transform 0.3s var(--ease), visibility 0s 0s;
+}
+.nav__menu-label--close { display: none; }
+.nav__menu-word:hover { color: var(--blue); }
+.nav__menu-word:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+.nav__menu.is-open .nav__menu-word {
+  opacity: 0; transform: translateY(-8px);
+  visibility: hidden; pointer-events: none;
+  transition: opacity 0.3s var(--ease), transform 0.3s var(--ease), visibility 0s 0.3s;
+}
+.nav__menu-links {
+  display: flex; align-items: center; white-space: nowrap;
+  font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 0.95rem;
+  opacity: 0; transform: translateY(8px);
+  visibility: hidden; pointer-events: none;
+  transition: opacity 0.3s var(--ease), transform 0.3s var(--ease), visibility 0s 0.3s;
+}
+.nav__menu.is-open .nav__menu-links {
+  opacity: 1; transform: none;
+  visibility: visible; pointer-events: auto;
+  transition: opacity 0.3s var(--ease), transform 0.3s var(--ease), visibility 0s 0s;
+}
+.nav__menu-links a { transition: color 0.25s var(--ease); }
+.nav__menu-links a:hover { color: var(--blue); }
+/* The dividers: quiet vertical hairlines, not punctuation. */
+.nav__menu-links i {
+  font-style: normal; font-weight: 400;
+  opacity: 0.25; margin: 0 clamp(10px, 1.2vw, 18px);
+  transform: scaleY(1.1);
+}
+
+/* ---------- Buttons ---------- */
+/* Liquid glass: a tinted translucent lens that refracts what sits behind it,
+   lit by a specular top edge and grounded by a soft contact shadow. */
+.btn {
+  position: relative; isolation: isolate;
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 1rem;
+  padding: 16px 30px; border-radius: 100px;
+  background: color-mix(in srgb, var(--ice) 42%, transparent);
+  color: var(--ink);
+  border: 1px solid color-mix(in srgb, #fff 55%, transparent);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  backdrop-filter: blur(28px) saturate(200%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 80%, transparent),
+    inset 0 -1px 1px color-mix(in srgb, var(--ink) 8%, transparent),
+    0 1px 2px color-mix(in srgb, var(--ink) 10%, transparent),
+    0 10px 28px -8px color-mix(in srgb, var(--ink) 20%, transparent);
+  transition: background 0.35s var(--ease), color 0.35s var(--ease),
+    box-shadow 0.35s var(--ease), border-color 0.35s var(--ease);
+}
+/* Specular sheen — sits above the lens, below the label. */
+.btn::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  border-radius: inherit; pointer-events: none;
+  background: linear-gradient(
+    148deg,
+    color-mix(in srgb, #fff 42%, transparent) 0%,
+    transparent 40%,
+    transparent 62%,
+    color-mix(in srgb, #fff 14%, transparent) 100%);
+}
+.btn__arrow { transition: transform 0.35s var(--ease); }
+.btn:hover .btn__arrow { transform: translateX(5px); }
+
+/* Two layers: a translucent blue lens, plus a deep-blue vibrancy veil that keeps
+   white type at AA contrast while the backdrop still reads through the glass. */
+.btn--primary, .btn--small {
+  background:
+    linear-gradient(
+      color-mix(in srgb, #001a66 31%, transparent),
+      color-mix(in srgb, #001a66 25%, transparent)
+    ),
+    color-mix(in srgb, var(--blue) 60%, transparent);
+  color: #fff;
+  border-color: color-mix(in srgb, #fff 40%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 60%, transparent),
+    inset 0 -2px 6px color-mix(in srgb, #001a66 30%, transparent),
+    0 2px 6px color-mix(in srgb, var(--blue) 24%, transparent),
+    0 14px 34px -10px color-mix(in srgb, var(--blue) 40%, transparent);
+}
+.btn--primary:hover, .btn--small:hover {
+  background:
+    linear-gradient(
+      color-mix(in srgb, #001a66 32%, transparent),
+      color-mix(in srgb, #001a66 22%, transparent)
+    ),
+    color-mix(in srgb, var(--blue) 74%, transparent);
+  border-color: color-mix(in srgb, #fff 58%, transparent);
+}
+.btn--small { padding: 10px 20px; font-size: 0.85rem; }
+
+.btn--outline {
+  background: color-mix(in srgb, currentColor 7%, transparent);
+  color: inherit;
+  border-color: color-mix(in srgb, currentColor 42%, transparent);
+}
+.btn--outline:hover {
+  background: color-mix(in srgb, var(--blue) 82%, transparent);
+  border-color: color-mix(in srgb, #fff 42%, transparent);
+  color: #fff;
+}
+
+.btn--invert {
+  font-size: 1.15rem; padding: 20px 40px;
+  background: color-mix(in srgb, var(--ink) 58%, transparent);
+  color: var(--ice);
+  border-color: color-mix(in srgb, #fff 24%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 26%, transparent),
+    inset 0 -2px 6px color-mix(in srgb, #000 30%, transparent),
+    0 2px 6px color-mix(in srgb, var(--ink) 22%, transparent),
+    0 16px 38px -12px color-mix(in srgb, var(--ink) 42%, transparent);
+}
+.btn--invert:hover { background: color-mix(in srgb, var(--ink) 90%, transparent); }
+
+/* Opaque fallbacks: no backdrop-filter, or the user asked for less transparency. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .btn { background: var(--ice); }
+  .btn--primary, .btn--small { background: var(--blue); }
+  .btn--invert { background: var(--ink); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .btn {
+    background: var(--ice);
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .btn::before { display: none; }
+  .btn--primary, .btn--small { background: var(--blue); }
+  .btn--outline { background: transparent; }
+  .btn--invert { background: var(--ink); }
+}
+
+/* ---------- Sections (shared) ---------- */
+.section { padding: clamp(90px, 14vh, 180px) var(--pad); max-width: 1500px; margin: 0 auto; }
+.section__head { margin-bottom: clamp(36px, 6vh, 72px); }
+.section__index {
+  font-size: 0.8rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.16em;
+  color: var(--blue); opacity: 0.9; margin-bottom: 18px;
+}
+.section__index::before {
+  content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px;
+  background: currentColor; margin-right: 10px; vertical-align: 1px;
+}
+.section__title {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(2.4rem, 6.5vw, 5.5rem); line-height: 1.06; letter-spacing: -0.02em;
+}
+.section__title em, .hero__title em, .cta__title em, .city__sub em { color: var(--blue); }
+
+/* ---------- Hero ---------- */
+.hero {
+  position: relative; min-height: 100svh;
+  /* Centred, not bottom-hung: the headline owns the middle of the viewport
+     instead of leaving a dead band under the header. */
+  display: flex; flex-direction: column; justify-content: center;
+  padding: calc(var(--nav-h) + 24px) var(--pad) clamp(40px, 7vh, 80px);
+  overflow: hidden;
+}
+.hero__canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+.hero__content { position: relative; z-index: 1; }
+.hero__title {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(3rem, 10.5vw, 9.5rem); line-height: 0.96; letter-spacing: -0.025em;
+  text-transform: none;
+}
+.hero__bottom {
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 32px;
+  /* The sub sits close under the title — one composition, not two strata. */
+  margin-top: clamp(20px, 3.2vh, 38px); flex-wrap: wrap;
+}
+.hero__sub { max-width: 30ch; font-size: clamp(1.05rem, 1.6vw, 1.35rem); line-height: 1.5; opacity: 0.85; }
+.hero__sub strong { color: var(--blue); font-weight: 600; }
+.hero__cta { display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+.hero__deadline {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 0.82rem; opacity: 0.8; letter-spacing: 0.04em;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 100px; padding: 10px 18px;
+}
+.hero__deadline::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: var(--blue); animation: livepulse 2.2s var(--ease) infinite;
+}
+@keyframes livepulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 65, 255, 0.35); }
+  50% { box-shadow: 0 0 0 7px rgba(0, 65, 255, 0); }
+}
+.hero__scroll-hint {
+  position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+  width: 1px; height: 48px; overflow: hidden; z-index: 1; opacity: 0.5;
+}
+.hero__scroll-hint span {
+  display: block; width: 100%; height: 100%;
+  background: currentColor;
+  animation: scrollhint 1.8s var(--ease) infinite;
+}
+@keyframes scrollhint {
+  0% { transform: translateY(-100%); }
+  55% { transform: translateY(0); }
+  100% { transform: translateY(100%); }
+}
+
+/* ---------- Marquee ---------- */
+.marquee-section {
+  position: relative;
+  padding: clamp(34px, 5.4vh, 56px) 0;
+  background: var(--ink); color: var(--ice);
+}
+/* Lifted out of the flow: while it sat in the flow the section centred the
+   label+logos block, which pushed the logo row ~22px below the true centre. */
+.marquee-label {
+  position: absolute; top: clamp(12px, 1.9vh, 20px); left: 0; right: 0;
+  text-align: center; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.18em;
+  opacity: 0.42; margin: 0; padding: 0 var(--pad);
+}
+
+.marquee__track { display: inline-flex; align-items: center; gap: 56px; padding-right: 56px; will-change: transform; }
+
+/* ---------- Offer ---------- */
+.offer__lead, .work__lead, .community__lead, .city__lead {
+  max-width: 760px; font-size: clamp(1.05rem, 1.6vw, 1.35rem); line-height: 1.55; opacity: 0.85;
+}
+.offer__numbers {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  margin: clamp(48px, 8vh, 90px) 0;
+}
+.offer__num { background: var(--well); padding: clamp(24px, 3vw, 48px) clamp(16px, 2vw, 32px); transition: background-color 0.7s var(--ease); }
+.offer__num-val {
+  display: block; font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(3rem, 6.5vw, 6rem); line-height: 1; color: var(--blue);
+}
+.offer__num-label { display: block; margin-top: 12px; font-size: 0.9rem; opacity: 0.65; }
+.offer__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.offer__card {
+  background: var(--lift);
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 16px;
+  padding: clamp(20px, 2.5vw, 36px);
+  transition: border-color 0.4s, transform 0.4s var(--ease);
+}
+.offer__card:hover { border-color: var(--blue); transform: translateY(-4px); }
+.offer__card h3 {
+  font-size: 0.78rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em;
+  opacity: 0.55; margin-bottom: 14px;
+}
+.offer__card p { font-family: 'Clash Display', sans-serif; font-weight: 500; font-size: clamp(1.05rem, 1.5vw, 1.35rem); line-height: 1.3; }
+.offer__card p span { font-family: 'Satoshi', sans-serif; font-weight: 400; font-size: 0.85rem; opacity: 0.6; }
+
+/* ---------- Countdown ---------- */
+.countdown { margin-top: clamp(48px, 8vh, 90px); text-align: center; }
+.countdown__label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.16em; opacity: 0.55; margin-bottom: 22px; }
+.countdown__units { display: flex; justify-content: center; gap: clamp(20px, 5vw, 64px); }
+.countdown__units div { display: flex; flex-direction: column; align-items: center; }
+.countdown__units b {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(2.4rem, 7vw, 6rem); line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.countdown__units i { font-style: normal; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.14em; opacity: 0.55; margin-top: 8px; }
+
+/* ---------- Work (light) ---------- */
+.work__cols { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(24px, 4vw, 64px); margin-top: clamp(40px, 7vh, 80px); }
+.work__col h3 {
+  font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: clamp(1.5rem, 2.6vw, 2.4rem);
+  margin-bottom: 28px;
+}
+.work__col--yes h3 { color: var(--blue); }
+.work__col--no h3 { opacity: 0.4; }
+.work__col ul { list-style: none; }
+.work__col li {
+  display: flex; gap: 16px; align-items: flex-start;
+  padding: 22px 0; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  font-size: clamp(1rem, 1.4vw, 1.15rem); line-height: 1.5;
+}
+.work__col li span {
+  flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.85rem; margin-top: 2px;
+}
+.work__col--yes li span { background: var(--blue); color: var(--ice); }
+.work__col--no li span { border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
+.work__col--no li { opacity: 0.55; }
+
+/* ---------- Process ---------- */
+/* ---------- Mentor (light) ---------- */
+.deposit__grid { display: grid; grid-template-columns: minmax(280px, 440px) 1fr; gap: clamp(32px, 5vw, 80px); align-items: start; }
+.deposit__figure {
+  border-radius: 20px; padding: clamp(18px, 2.5vw, 30px);
+  background: color-mix(in srgb, var(--lift) 70%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+.deposit__flow { width: 100%; height: auto; display: block; }
+.deposit__figure figcaption {
+  margin-top: 16px; font-size: 0.82rem; line-height: 1.5; opacity: 0.6; text-align: center;
+}
+.deposit__body p { font-size: clamp(1.05rem, 1.5vw, 1.3rem); line-height: 1.6; margin-bottom: 24px; opacity: 0.85; }
+.deposit__body strong { font-weight: 600; color: var(--blue); }
+.deposit__chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 32px; }
+
+/* Deposit flow diagram — inherits the section's ink/ice palette */
+.dep-node { fill: none; stroke: color-mix(in srgb, currentColor 20%, transparent); stroke-width: 1; }
+.dep-node--pay { fill: var(--blue); stroke: none; }
+.dep-node--back {
+  fill: color-mix(in srgb, var(--blue) 8%, transparent);
+  stroke: var(--blue); stroke-width: 1.5;
+}
+.dep-line { fill: none; stroke: color-mix(in srgb, currentColor 28%, transparent); stroke-width: 1.5; }
+.dep-arrow { fill: color-mix(in srgb, currentColor 40%, transparent); }
+.dep-t {
+  font-family: 'Satoshi', system-ui, sans-serif; font-size: 15px; font-weight: 500;
+  fill: currentColor; text-anchor: middle;
+}
+.dep-t--sm { font-size: 13.5px; }
+.dep-t--lg { font-family: 'Clash Display', sans-serif; font-size: 27px; font-weight: 600; }
+.dep-t--onblue { fill: #fff; }
+.dep-t--blue { fill: var(--blue); font-weight: 600; font-size: 16px; }
+
+.deposit__chips span {
+  font-size: 0.82rem; font-weight: 500; padding: 9px 18px; border-radius: 100px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  transition: background 0.3s, color 0.3s, border-color 0.3s;
+}
+.deposit__chips span:hover { background: var(--blue); border-color: var(--blue); color: var(--ice); }
+
+/* ---------- Community ---------- */
+.community__cards {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+  margin: clamp(40px, 7vh, 80px) 0;
+}
+.community__card {
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 16px;
+  padding: clamp(22px, 2.5vw, 36px);
+  display: flex; flex-direction: column; gap: 14px;
+  transition: border-color 0.4s, transform 0.4s var(--ease);
+}
+.community__card:hover { border-color: var(--blue); transform: translateY(-4px); }
+@media (hover: hover) {
+  .offer__card, .community__card { position: relative; }
+  .offer__card::after, .community__card::after {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    opacity: 0; transition: opacity 0.4s;
+    background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%), rgba(0, 65, 255, 0.13), transparent 65%);
+  }
+  .offer__card:hover::after, .community__card:hover::after { opacity: 1; }
+}
+.community__card span { font-family: 'Clash Display', sans-serif; color: var(--blue); font-weight: 600; }
+.community__card h3 { font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: clamp(1.05rem, 1.4vw, 1.3rem); line-height: 1.2; }
+.community__card p { font-size: 0.92rem; line-height: 1.55; opacity: 0.7; }
+
+/* ---------- Image strips ---------- */
+
+/* ---------- City (light) ---------- */
+.ticker {
+  display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center;
+  margin-top: clamp(28px, 4vh, 48px);
+  font-family: 'Clash Display', sans-serif; font-weight: 500;
+  font-size: clamp(0.95rem, 1.5vw, 1.25rem);
+}
+.ticker i { color: var(--blue); font-style: normal; font-size: 0.75rem; }
+.city__backyard { margin-top: clamp(80px, 12vh, 140px); }
+.city__sub { font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: clamp(2rem, 4.5vw, 3.8rem); margin-bottom: 24px; }
+.city__backyard > p { max-width: 760px; font-size: clamp(1rem, 1.5vw, 1.3rem); line-height: 1.55; opacity: 0.85; }
+
+/* ---------- Webinar ---------- */
+.webinar__box {
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 24px;
+  padding: clamp(36px, 6vw, 90px);
+  position: relative; overflow: hidden;
+  /* The right half earns its look from the blue glows; the left had none and
+     read muddy against the aurora's warm side. A crisp white base and a
+     mirrored left glow make the whole card one deliberate panel. */
+  background:
+    radial-gradient(ellipse at 85% 15%, rgba(0, 65, 255, 0.22), transparent 55%),
+    radial-gradient(ellipse at 0% 25%, rgba(0, 65, 255, 0.13), transparent 52%),
+    radial-gradient(ellipse at 10% 90%, rgba(0, 65, 255, 0.1), transparent 50%);
+  background-color: #ffffff;
+}
+.webinar__box > div { position: relative; z-index: 1; }
+.webinar__photo {
+  position: absolute; top: 0; right: 0; bottom: 0; margin: 0;
+  width: min(54%, 620px);
+  -webkit-mask-image: linear-gradient(to left, black 45%, transparent);
+  mask-image: linear-gradient(to left, black 45%, transparent);
+}
+.webinar__photo img { object-position: 65% center; }
+/* The Shapers GO panel carries a group photograph, not a portrait of one or
+   two people. 65% pulls the frame right, which is correct for the event block
+   but drops the people on the left of a group into the edge mask. Centred, the
+   whole group reads and both ends keep some air.
+   The desktop-only query is load-bearing, not tidiness: ".go .webinar__photo
+   img" scores (0,2,1) while the band's own rule inside the max-width:900px
+   block scores (0,1,1), and a media query adds no specificity. Written
+   unscoped, this line won at EVERY width and dragged the phone and tablet
+   crop off the group's faces. Measured: it did exactly that. */
+@media (min-width: 901px) {
+  .go .webinar__photo img { object-position: center center; }
+}
+.webinar__photo::after {
+  content: ''; position: absolute; inset: 0;
+  background: rgba(0, 65, 255, 0.12);
+}
+@media (max-width: 900px) {
+  /* 230px was too shallow once the next-event photo became the event poster,
+     which is a portrait crop (1300x1391). At 820px wide the band was 3.20:1,
+     so cover kept only 29% of the image height and sliced straight through the
+     guest's forehead. The two faces span about 39% of the image, so no
+     object-position could fit them in 29%: the band itself had to grow.
+     340px gives 2.16:1 at 820px (both heads clear, with air above) and 1.02:1
+     at 390px, where nearly the whole crop shows. Measured, not guessed.
+     padding-bottom keeps the same 20px gap under the band it always had. */
+  .webinar__box { padding-bottom: 360px; }
+  .webinar__photo {
+    top: auto; left: 0; width: 100%; height: 340px;
+    -webkit-mask-image: linear-gradient(to top, black 55%, transparent);
+    mask-image: linear-gradient(to top, black 55%, transparent);
+  }
+  .webinar__photo img { object-position: center 22%; }
+}
+.webinar__box p { max-width: 560px; line-height: 1.55; opacity: 0.8; margin: 20px 0 32px; font-size: clamp(1rem, 1.4vw, 1.2rem); }
+
+/* ---------- FAQ ---------- */
+.faq .section__head { text-align: center; }
+.faq__list { max-width: 1080px; margin: 0 auto; }
+.faq__list details { border-top: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
+.faq__list details:last-child { border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
+.faq__list summary {
+  list-style: none; cursor: pointer;
+  display: flex; justify-content: space-between; align-items: center; gap: 24px;
+  padding: clamp(20px, 3vh, 30px) 0;
+  font-family: 'Clash Display', sans-serif; font-weight: 500;
+  font-size: clamp(1.05rem, 1.8vw, 1.5rem);
+  transition: color 0.3s;
+}
+.faq__list summary::-webkit-details-marker { display: none; }
+.faq__list summary:hover { color: var(--blue); }
+.faq__icon { position: relative; flex-shrink: 0; width: 16px; height: 16px; }
+.faq__icon::before, .faq__icon::after {
+  content: ''; position: absolute; background: currentColor;
+  transition: transform 0.4s var(--ease);
+}
+.faq__icon::before { left: 0; right: 0; top: 7px; height: 2px; }
+.faq__icon::after { top: 0; bottom: 0; left: 7px; width: 2px; }
+details[open] .faq__icon::after { transform: scaleY(0); }
+.faq__a { overflow: hidden; }
+.faq__a p { padding: 0 0 28px; max-width: 700px; line-height: 1.6; opacity: 0.75; font-size: clamp(0.95rem, 1.3vw, 1.1rem); }
+
+/* ---------- Final CTA (red) ---------- */
+.cta { text-align: center; padding-top: clamp(110px, 18vh, 220px); padding-bottom: clamp(110px, 18vh, 220px); }
+.cta__title {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(3rem, 9.5vw, 8.5rem); line-height: 0.98; letter-spacing: -0.02em;
+}
+/* Keeps a short function word attached to the phrase it governs, in headings
+   that SplitText rebuilds. &nbsp; cannot do this job here: SplitText re-tokenises
+   a .split heading into one inline-block per word and normalises U+00A0 to an
+   ordinary space, so a bound pair came apart anyway and stranded the "ki" or
+   "za" at the end of a line. Wrapping the word AND the <em> in this class keeps
+   the blue accent exactly where the design puts it while making the pair
+   unbreakable. Measured at 390px, where Slovenian headings wrap first. */
+.nb { white-space: nowrap; }
+
+.cta__title em { color: var(--ink); }
+/* The typing animation splits the title into one inline box per letter, which
+   hands the browser a break opportunity between every two characters. The word
+   wrapper takes it back: the line breaks between words, never inside one. */
+.cta__title .cta-word { white-space: nowrap; }
+.cta .btn { margin-top: clamp(36px, 6vh, 64px); }
+.countdown--cta { margin-top: clamp(40px, 7vh, 72px); }
+.countdown__closed {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1.6rem, 4vw, 3rem); line-height: 1.05;
+}
+
+/* ---------- Footer ---------- */
+.footer { padding: clamp(60px, 10vh, 110px) var(--pad) 36px; max-width: 1500px; margin: 0 auto; }
+.footer__cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(28px, 4vw, 64px); }
+.footer__cols h4 {
+  font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.16em;
+  opacity: 0.5; margin-bottom: 16px; font-weight: 500;
+}
+.footer__cols p { font-size: 0.92rem; line-height: 1.55; opacity: 0.7; margin-bottom: 14px; max-width: 300px; }
+.footer__cols a { font-family: 'Clash Display', sans-serif; font-weight: 500; border-bottom: 1px solid var(--ink); padding-bottom: 2px; transition: opacity 0.3s; }
+.footer__cols a:hover { opacity: 0.6; }
+.footer__wordmark {
+  margin: clamp(56px, 10vh, 110px) 0 0;
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(3rem, 12.5vw, 12rem); line-height: 0.95; letter-spacing: -0.03em;
+  user-select: none;
+}
+.footer__wordmark em { color: transparent; -webkit-text-stroke: 1.5px var(--ink); }
+.footer__wordmark button {
+  all: unset; cursor: pointer; display: inline-block; line-height: 1;
+  color: var(--ink); font-size: 0.45em; vertical-align: middle;
+  transform-origin: 50% 50%;
+}
+.footer__wordmark button svg { display: block; width: 1em; height: 1em; }
+.footer__wordmark button:focus-visible { outline: 2px solid var(--ink); outline-offset: 8px; border-radius: 10px; }
+
+.footer__bottom {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin-top: clamp(48px, 8vh, 80px); padding-top: 24px;
+  border-top: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  font-size: 0.8rem;
+}
+.footer__bottom > span { opacity: 0.5; }
+.footer__brandline { display: inline-flex; align-items: center; gap: 12px; }
+.footer__brandline span { opacity: 0.5; }
+.footer__mark { width: 30px; height: 30px; flex-shrink: 0; opacity: 0.95; }
+.footer__credit { display: inline-flex; align-items: baseline; gap: 0.4em; opacity: 0.65; transition: opacity 0.3s; }
+.footer__credit:hover { opacity: 1; }
+
+/* ---------- Sonce wordmark ---------- */
+.sonce { font-weight: 600; letter-spacing: -0.01em; }
+
+/* ---------- Reveal helpers ---------- */
+/* overflow:hidden is what makes the word-reveal work, but at line-height 1.02
+   it also cropped descenders (the g in "glance"). Pad the clip window below the
+   baseline and pull it back with a negative margin, so nothing shifts. */
+.split .line, .split-lines .line, #heroTitle .line, #ctaTitle .line {
+  overflow: hidden;
+  padding-bottom: 0.16em;
+  margin-bottom: -0.16em;
+}
+html.js .reveal-line { opacity: 0; }
+
+/* ========================================================================
+   Responsive
+   ======================================================================== */
+@media (max-width: 1024px) {
+  .offer__numbers, .offer__grid, .community__cards { grid-template-columns: repeat(2, 1fr); }
+  .footer__cols { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 760px) {
+  .nav__logo-sub { display: none; }
+  .nav__logo { font-size: 0.85rem; }
+  .hero__bottom { flex-direction: column; align-items: flex-start; }
+  .hero__title { font-size: clamp(2.6rem, 13.5vw, 4.5rem); }
+  .work__cols { grid-template-columns: 1fr; }
+  .deposit__grid { grid-template-columns: 1fr; }
+  .deposit__figure { max-width: 420px; }
+      .footer__cols { grid-template-columns: 1fr; }
+  .countdown__units b { font-size: clamp(2.2rem, 11vw, 3.4rem); }
+  .hero__scroll-hint { display: none; }
+}
+
+@media (max-width: 480px) {
+  .offer__numbers, .offer__grid, .community__cards { grid-template-columns: 1fr; }
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ---------- Dark mode (toggled by the footer star) ---------- */
+html.mode-dark { --lift: #15151d; --well: #101018; }
+html.mode-dark body { background: #0b0b10; color: var(--ice); }
+html.mode-dark .footer__wordmark button { color: var(--ice); }
+
+/* Mode switch wipes across the screen from the star */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { animation: modewipe 0.9s var(--ease); }
+@keyframes modewipe {
+  from { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 85%)); }
+  to { clip-path: circle(160% at var(--vt-x, 50%) var(--vt-y, 85%)); }
+}
+html.mode-dark body::before { mix-blend-mode: screen; opacity: 0.035; }
+
+/* ========================================================================
+   Redesign additions — logo marquee · tracks · parallax mosaic · ghost CTA
+   ======================================================================== */
+
+/* ---------- Logo marquee ---------- */
+.marquee__track { display: flex; align-items: center; gap: clamp(48px, 7vw, 110px); width: max-content; }
+.marquee__logo { flex: 0 0 auto; display: grid; place-items: center; height: clamp(30px, 3.4vw, 46px); }
+.marquee__logo img {
+  width: auto; height: 100%; object-fit: contain;
+  /* Partner marks arrive in assorted colours; unify them to the section's ice
+     tone so the strip reads as one row rather than a ransom note. */
+  filter: brightness(0) invert(1);
+  opacity: 0.78; transition: opacity 0.4s var(--ease);
+}
+.marquee__logo img:hover { opacity: 1; }
+/* POPRI ships as black-on-lime with its own background, so it can't be masked. */
+/* Sonce's identity is typographic — reproduced, not substituted. */
+.marquee__logo--type {
+  font-family: 'Inter Tight', 'Satoshi', sans-serif; font-weight: 600;
+  font-size: clamp(1.1rem, 1.7vw, 1.6rem); letter-spacing: -0.01em;
+  color: var(--ice); opacity: 0.78; white-space: nowrap;
+}
+.marquee__logo--type i { font-style: normal; margin-left: 0.18em; }
+
+/* ---------- Tracks ---------- */
+.tracks__lead { font-size: clamp(1.1rem, 1.9vw, 1.6rem); line-height: 1.5; max-width: 60ch; opacity: 0.8; }
+
+/* ---------- Parallax mosaic ----------
+   Sticky copy beside two columns that drift at different rates, so the grid
+   reads as a living collage instead of a gallery. */
+/* Centred, not top-hung: the copy column is shorter than the image window,
+   and hanging it from the top left a void underneath. */
+.mosaic { display: grid; grid-template-columns: minmax(280px, 42%) 1fr; gap: clamp(32px, 5vw, 90px); align-items: center; }
+.mosaic__copy { position: sticky; top: calc(var(--nav-h) + clamp(24px, 6vh, 70px)); }
+.mosaic__copy p.split-lines {
+  font-size: clamp(1.05rem, 1.55vw, 1.35rem); line-height: 1.6;
+  margin-top: 24px; color: var(--ink-soft);
+}
+
+/* Offset the second column so the two never line up into a plain grid. */
+
+.mosaic__col figure { border-radius: 16px; overflow: hidden; aspect-ratio: 4/5; }
+.mosaic__col figure:nth-child(even) { aspect-ratio: 1/1; }
+.mosaic__col img { transition: transform 0.8s var(--ease); }
+.mosaic__col figure:hover img { transform: scale(1.04); }
+
+/* ---------- Ghost CTA — off-white liquid glass ---------- */
+.cta { position: relative; isolation: isolate; }
+/* Something for the glass to actually refract, without a colour flip. */
+.cta::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(60% 55% at 50% 62%, color-mix(in srgb, var(--blue) 13%, transparent), transparent 70%);
+}
+.cta__sub { margin-top: clamp(24px, 4vh, 40px); font-size: 1rem; color: var(--ink-soft); }
+/* White glass vanished when the base went pure white — the pill now wears the
+   header's matte-glass tint and an ink hairline so it keeps its shape. */
+.btn--ghost {
+  font-size: 1.15rem; padding: 20px 40px;
+  background: color-mix(in srgb, #ffffff 45%, transparent);
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -2px 6px color-mix(in srgb, var(--ink) 7%, transparent),
+    0 2px 6px color-mix(in srgb, var(--ink) 8%, transparent),
+    0 18px 44px -14px color-mix(in srgb, var(--ink) 26%, transparent);
+}
+.btn--ghost:hover {
+  background: color-mix(in srgb, #ffffff 72%, transparent);
+  border-color: color-mix(in srgb, var(--ink) 28%, transparent);
+}
+
+@media (max-width: 860px) {
+  .mosaic { grid-template-columns: 1fr; }
+  .mosaic__copy { position: static; }
+  .mosaic__col:last-child { margin-top: 0; }
+}
+
+/* ========================================================================
+   Application page
+   ======================================================================== */
+/* The apply page rides the same aurora as the front page. */
+.apply { max-width: 820px; margin: 0 auto; padding: calc(var(--nav-h) + clamp(50px, 9vh, 110px)) var(--pad) clamp(70px, 12vh, 140px); }
+.apply__head { margin-bottom: clamp(40px, 7vh, 80px); }
+.apply__title {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(2.6rem, 7vw, 5.2rem); line-height: 1; letter-spacing: -0.02em;
+  margin: 14px 0 22px;
+}
+.apply__lead { font-size: clamp(1.05rem, 1.6vw, 1.3rem); line-height: 1.6; color: var(--ink-soft); max-width: 58ch; }
+
+/* ---------- progress ---------- */
+.steps { list-style: none; display: flex; flex-wrap: wrap; gap: clamp(10px, 2vw, 28px); margin-bottom: clamp(32px, 5vh, 56px); }
+.steps__item {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 0.85rem; font-weight: 500; color: var(--ink-soft); opacity: 0.55;
+  transition: opacity 0.35s var(--ease), color 0.35s var(--ease);
+  /* These are buttons now — strip the UA chrome and make them feel pressable. */
+  background: none; border: 0; padding: 0; margin: 0;
+  font-family: inherit; letter-spacing: inherit; cursor: pointer;
+}
+.steps__item:hover { opacity: 1; color: var(--ink); }
+.steps__item:hover span { border-color: var(--blue); }
+.steps__item:focus-visible {
+  outline: 2px solid var(--blue); outline-offset: 6px; border-radius: 100px; opacity: 1;
+}
+.steps__item span {
+  display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  border: 1px solid var(--line); font-size: 0.78rem;
+}
+.steps__item.is-active { opacity: 1; color: var(--ink); }
+.steps__item.is-active span { background: var(--blue); border-color: var(--blue); color: #fff; }
+.steps__item.is-done { opacity: 0.9; }
+.steps__item.is-done span { border-color: var(--blue); color: var(--blue); }
+
+/* ---------- steps + fields ---------- */
+.step { border: 0; display: none; }
+.step.is-active { display: block; }
+.step__legend {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1.3rem, 2.4vw, 1.9rem); margin-bottom: clamp(24px, 4vh, 40px);
+}
+.field { margin-bottom: clamp(20px, 3vh, 30px); }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(16px, 2vw, 26px); }
+.field > label { display: block; font-size: 0.92rem; font-weight: 500; margin-bottom: 9px; }
+.field > label b { color: var(--blue); font-weight: 500; }
+.field input[type='text'], .field input[type='email'], .field input[type='tel'],
+.field input[type='url'], .field select, .field textarea {
+  width: 100%; font-family: inherit; font-size: 1rem; color: var(--ink);
+  padding: 14px 16px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--lift);
+  transition: border-color 0.3s var(--ease), box-shadow 0.3s var(--ease);
+}
+.field textarea { resize: vertical; }
+/* Radios and checkboxes are excluded on purpose. This halo is shaped for the
+   rounded text fields; on a 16px round radio it painted a pale blue SQUARE
+   around the circle. Those controls sit inside pills, so the pill carries the
+   focus state instead — see .choice below. */
+.field input:not([type='radio']):not([type='checkbox']):focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none; border-color: var(--blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 16%, transparent);
+}
+.field__hint { margin-top: 7px; font-size: 0.82rem; color: var(--ink-soft); opacity: 0.85; }
+.field__err { margin-top: 7px; font-size: 0.82rem; color: #b3261e; min-height: 0; }
+.field.has-error input, .field.has-error select, .field.has-error textarea { border-color: #b3261e; }
+
+/* ---------- choices ---------- */
+.choices { display: flex; flex-wrap: wrap; gap: 10px; }
+.choices--stack { flex-direction: column; }
+.choice {
+  display: inline-flex; align-items: center; gap: 10px; cursor: pointer;
+  padding: 12px 18px; border-radius: 100px;
+  border: 1px solid var(--line); background: var(--lift);
+  font-size: 0.92rem;
+  transition: border-color 0.25s var(--ease), background 0.25s var(--ease);
+}
+.choice--wide { border-radius: 12px; width: 100%; }
+.choice:hover { border-color: color-mix(in srgb, var(--blue) 50%, var(--line)); }
+.choice input { accent-color: var(--blue); width: 16px; height: 16px; }
+.choice:has(input:checked) { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 7%, var(--lift)); }
+
+/* The browser draws a pale rounded square behind a focused radio or checkbox,
+   which reads as a stray box dropped on top of the pill. Suppress it on the
+   control itself and let the pill carry the focus state instead — same
+   information, and it lands on the shape people are actually looking at. */
+.choice input:focus { outline: none; }
+.choice:has(input:focus-visible) {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 20%, transparent);
+}
+
+.step__nav { display: flex; flex-wrap: wrap; gap: 12px; margin-top: clamp(28px, 4vh, 44px); }
+.apply__formnote { margin-top: 16px; font-size: 0.9rem; color: var(--ink-soft); }
+.apply__formnote.is-error { color: #b3261e; }
+.apply__formnote a { text-decoration: underline; }
+
+/* ---------- confirmation ----------
+   Submitting hides the intro, so this screen is the entire page and has to hold
+   it alone: centred in what's left of the viewport, display-scale title, and a
+   single hairline separating the message from the way out. Spacing is a grid
+   row-gap rather than per-element margins, so the optional WhatsApp line can
+   disappear without leaving a hole where its margin used to be. */
+.apply__done {
+  text-align: center;
+  display: grid; justify-items: center; align-content: center;
+  row-gap: clamp(20px, 3vh, 34px);
+  min-height: 60vh;
+  min-height: calc(100svh - var(--nav-h) - clamp(160px, 24vh, 280px));
+  padding: clamp(20px, 4vh, 50px) 0;
+}
+.apply__done .apply__title {
+  font-size: clamp(3.4rem, 10vw, 7.4rem);
+  line-height: 0.92; letter-spacing: -0.03em;
+  margin: 0 0 clamp(2px, 0.8vh, 10px);
+}
+.apply__done .apply__lead {
+  font-size: clamp(1.15rem, 1.9vw, 1.5rem);
+  line-height: 1.55; max-width: 34ch; margin: 0 auto;
+}
+/* Quieter than the lead — it's an extra, not the point of the screen. */
+.apply__wa {
+  margin: 0 auto; max-width: 46ch;
+  font-size: 0.98rem; color: var(--ink-soft);
+}
+.apply__wa a {
+  color: var(--blue); text-decoration: underline; text-underline-offset: 3px;
+}
+.apply__wa a:hover { text-decoration-thickness: 2px; }
+.apply__rule {
+  width: clamp(44px, 7vw, 80px); height: 1px; border: 0;
+  margin: clamp(4px, 1vh, 12px) 0 0;
+  background: color-mix(in srgb, var(--ink) 18%, transparent);
+}
+.apply__done .btn { padding: 17px 36px; font-size: 1rem; }
+
+/* The page's top padding is sized for the intro. Once that's hidden it's just
+   dead space above a vertically centred block. */
+.apply:has(.apply__head[hidden]) {
+  padding-top: var(--nav-h);
+  padding-bottom: clamp(30px, 5vh, 60px);
+}
+
+.apply__footer {
+  display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between;
+  padding: 28px var(--pad); border-top: 1px solid var(--line);
+  font-size: 0.85rem; color: var(--ink-soft);
+}
+
+@media (max-width: 620px) {
+  .field-row { grid-template-columns: 1fr; }
+}
+
+/* ---------- Logo marquee (rebuilt) ----------
+   The old strip was rotated 1.5deg and sized by a text rule; both wrecked real
+   logos. Flat baseline, uniform optical height, nothing clipped. */
+.marquee { overflow: hidden; }
+.marquee__track {
+  display: flex; align-items: center; width: max-content;
+  gap: clamp(44px, 6vw, 96px);
+}
+.marquee__logo {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+  height: clamp(26px, 2.6vw, 38px);
+}
+.marquee__logo img {
+  width: auto; height: 100%; max-width: none; object-fit: contain;
+  filter: brightness(0) invert(1);
+  opacity: 0.72; transition: opacity 0.4s var(--ease);
+}
+.marquee__logo:hover img { opacity: 1; }
+/* Per-mark optical balance: wordmarks read larger than square marks at the
+   same pixel height, so trim them individually. */
+.marquee__logo--wide { height: clamp(20px, 2vw, 28px); }
+.marquee__logo--tall { height: clamp(30px, 3vw, 44px); }
+/* POPRI is black on a lime plate and cannot be masked. */
+.marquee__logo--type {
+  font-family: 'Inter Tight', 'Satoshi', sans-serif; font-weight: 600;
+  font-size: clamp(1rem, 1.5vw, 1.4rem); letter-spacing: -0.01em; line-height: 1;
+  color: var(--ice); opacity: 0.72; white-space: nowrap;
+}
+.marquee__logo--type i { font-style: normal; margin-left: 0.16em; }
+
+/* ---------- Mosaic window ----------
+   A fixed viewport that images flow through continuously, rather than a tall
+   grid that outruns the sticky copy and leaves dead space. */
+.mosaic__cols {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: clamp(12px, 1.6vw, 20px);
+  height: clamp(460px, 78vh, 780px);
+  overflow: hidden;
+  /* soften both ends so images enter and leave rather than pop */
+  mask-image: linear-gradient(to bottom, transparent, #000 9%, #000 91%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 9%, #000 91%, transparent);
+}
+.mosaic__col {
+  display: flex; flex-direction: column; gap: clamp(12px, 1.6vw, 20px);
+  will-change: transform;
+}
+.mosaic__col figure { flex: 0 0 auto; border-radius: 16px; overflow: hidden; }
+/* Ratio by explicit class, not nth-child: duplicating an odd-length column
+   flips nth-child parity and the two halves stop matching, which shows as a
+   jump at the loop seam. */
+.mosaic__col figure.m-tall { aspect-ratio: 4/5; }
+.mosaic__col figure.m-square { aspect-ratio: 1/1; }
+.mosaic__col img { transition: transform 0.8s var(--ease); }
+
+@media (prefers-reduced-motion: reduce) {
+  .mosaic__cols { height: auto; mask-image: none; -webkit-mask-image: none; }
+}
+
+/* ---------- Grouped track choices ---------- */
+.trackgroup {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--blue); margin: 26px 0 10px;
+}
+.trackgroup:first-of-type { margin-top: 4px; }
+/* Only the track options stack — they pair a <b> title with an <em> description.
+   Applied to every wide choice it also caught the single-sentence ones, pushing
+   their trailing <b>*</b> onto a second line and making the box twice as tall. */
+.choice--wide span:has(em) { display: flex; flex-direction: column; gap: 3px; }
+.choice--wide span b { font-weight: 500; }
+.choice--wide span em {
+  font-family: 'Satoshi', system-ui, sans-serif; font-style: normal;
+  font-size: 0.82rem; color: var(--ink-soft); opacity: 0.9;
+}
+
+/* ---------- Dark mode, reconciled with the off-white palette ----------
+   The star toggle predates this palette; without these it inherited the old
+   values and the footer wordmark's outline vanished against the new footer. */
+html.mode-dark {
+  --ink: #f2efe8;
+  --ink-soft: #a6a29a;
+  --ice: #101014;
+  --lift: #17171d;
+  --well: #1c1c23;
+  --line: #2c2c35;
+  --blue: #5b7cff;
+}
+html.mode-dark body { background: #0d0d11; color: var(--ink); }
+/* Section that carries its own dark fill needs to invert the other way. */
+html.mode-dark .marquee-section { background: #17171d; color: var(--ink); }
+html.mode-dark .marquee__logo img { filter: brightness(0) invert(1); }
+html.mode-dark .marquee__logo--type { color: var(--ink); }
+/* The outline wordmark tracks the text colour in both themes. */
+html.mode-dark .footer__wordmark em { -webkit-text-stroke-color: var(--ink); }
+html.mode-dark .footer__wordmark button:focus-visible { outline-color: var(--ink); }
+html.mode-dark .btn { background: color-mix(in srgb, var(--lift) 55%, transparent); color: var(--ink); border-color: color-mix(in srgb, #fff 14%, transparent); }
+html.mode-dark .btn::before { background: linear-gradient(148deg, color-mix(in srgb, #fff 12%, transparent) 0%, transparent 45%, transparent 60%, color-mix(in srgb, #fff 5%, transparent) 100%); }
+html.mode-dark .btn--ghost { background: color-mix(in srgb, var(--lift) 70%, transparent); color: var(--ink); border-color: color-mix(in srgb, #fff 18%, transparent); }
+html.mode-dark .offer__card, html.mode-dark .community__card { background: var(--lift); border-color: var(--line); }
+html.mode-dark .field input, html.mode-dark .field select,
+html.mode-dark .field textarea, html.mode-dark .choice { background: var(--lift); border-color: var(--line); color: var(--ink); }
+
+/* The webinar panel was authored light-only: a hard #ffffff base under three
+   hard-coded rgba(0,65,255) glows. In dark mode the base stayed white while the
+   heading, the body copy and the outline button all inherited --ink (#f2efe8),
+   so the whole section rendered white-on-white. The base now follows --lift like
+   every other card, and the glows are re-tinted through --blue so they still
+   read as light rather than as navy smudges on a dark panel. */
+html.mode-dark .webinar__box {
+  background-color: var(--lift);
+  background-image:
+    radial-gradient(ellipse at 85% 15%, color-mix(in srgb, var(--blue) 26%, transparent), transparent 55%),
+    radial-gradient(ellipse at 0% 25%, color-mix(in srgb, var(--blue) 15%, transparent), transparent 52%),
+    radial-gradient(ellipse at 10% 90%, color-mix(in srgb, var(--blue) 12%, transparent), transparent 50%);
+}
+/* Light mode tints the photo blue to marry it to the glows; on a dark panel the
+   same overlay only makes an already-bright photo brighter. Darken instead. */
+html.mode-dark .webinar__photo::after { background: color-mix(in srgb, var(--ice) 45%, transparent); }
+
+/* ========================================================================
+   Refinement pass — work · process · community · FAQ
+   Design only; the copy is untouched.
+   ======================================================================== */
+
+/* ---------- The work: give the two columns real hierarchy ---------- */
+.work__cols { align-items: start; }
+.work__col--yes {
+  padding: clamp(26px, 3vw, 44px);
+  background: var(--lift);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 24px 60px -30px color-mix(in srgb, var(--ink) 30%, transparent);
+}
+.work__col--no { padding: clamp(26px, 3vw, 44px) clamp(4px, 1vw, 12px); }
+.work__col h3 {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1.4rem, 2.6vw, 2.1rem); margin-bottom: 22px;
+}
+.work__col li {
+  display: flex; gap: 14px; align-items: flex-start;
+  font-size: clamp(1rem, 1.35vw, 1.15rem); line-height: 1.5;
+  padding: 16px 0; border-top: 1px solid var(--line);
+}
+.work__col li:first-of-type { border-top: 0; }
+.work__col li span {
+  flex: 0 0 auto; display: grid; place-items: center;
+  width: 24px; height: 24px; border-radius: 50%; margin-top: 2px;
+  font-size: 0.72rem;
+}
+.work__col--no li { opacity: 0.5; }
+.work__col--no li span { border-color: color-mix(in srgb, currentColor 28%, transparent); }
+
+/* ---------- How it works: a timeline that reads as progress ---------- */
+/* Vertical padding only — horizontal padding shifts the number discs off the
+   timeline line, which is pinned at left:27px inside .process__steps. */
+/* ---------- Community: break the even grid ---------- */
+/* stretch, not start: with `start` each card sized to its own text, so the row
+   ended at four different heights and read as misaligned. */
+.community__cards { align-items: stretch; }
+.community__card {
+  background: var(--lift); border: 1px solid var(--line); border-radius: 20px;
+  padding: clamp(24px, 2.6vw, 38px);
+}
+.community__card span {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: 0.85rem; color: var(--blue);
+}
+.community__card h3 {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1.1rem, 1.6vw, 1.4rem); margin: 12px 0 10px;
+}
+.community__card p { color: var(--ink-soft); line-height: 1.6; }
+
+/* ---------- FAQ: quieter chrome, clearer open state ---------- */
+.faq__list details {
+  border: 1px solid var(--line); border-radius: 16px;
+  background: var(--lift); margin-bottom: 12px;
+  transition: border-color 0.35s var(--ease), background 0.35s var(--ease);
+}
+.faq__list details[open] { border-color: color-mix(in srgb, var(--blue) 45%, var(--line)); }
+.faq__list summary {
+  cursor: pointer; list-style: none;
+  padding: clamp(18px, 2.2vw, 26px) clamp(20px, 2.4vw, 30px);
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1rem, 1.45vw, 1.2rem);
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+}
+.faq__list summary::-webkit-details-marker { display: none; }
+.faq__a { padding: 0 clamp(20px, 2.4vw, 30px) clamp(20px, 2.4vw, 28px); }
+.faq__a p { color: var(--ink-soft); line-height: 1.65; max-width: 70ch; }
+.faq__a p + p { margin-top: 14px; }
+
+/* ---------- Fixes: dark-mode star, tinted glass background ---------- */
+/* --ice means "dark surface" once inverted, so the star needs the ink token. */
+html.mode-dark .footer__wordmark button { color: var(--ink); }
+
+/* The aurora: soft-focus washes of real colour — brand blue leading, violet
+   bridging, coral and rose warming it — over a near-white field, fixed in
+   place so the whole scroll travels through them. The film grain on top
+   keeps the gradients from banding. Alive, never icy, never beige. */
+body {
+  background:
+    radial-gradient(52% 46% at 84% 4%,  color-mix(in srgb, var(--blue) 22%, transparent), transparent 68%),
+    radial-gradient(44% 40% at 2% 22%,  color-mix(in srgb, #ff8a65 24%, transparent), transparent 70%),
+    radial-gradient(54% 48% at 94% 66%, color-mix(in srgb, #8f6bff 18%, transparent), transparent 70%),
+    radial-gradient(58% 52% at 18% 96%, color-mix(in srgb, #ff5e92 16%, transparent), transparent 72%),
+    var(--ice);
+  background-attachment: fixed;
+}
+html.mode-dark body {
+  background:
+    radial-gradient(52% 46% at 84% 4%,  color-mix(in srgb, var(--blue) 26%, transparent), transparent 68%),
+    radial-gradient(44% 40% at 2% 22%,  color-mix(in srgb, #ff7a50 12%, transparent), transparent 70%),
+    radial-gradient(54% 48% at 94% 66%, color-mix(in srgb, #8f6bff 16%, transparent), transparent 70%),
+    radial-gradient(58% 52% at 18% 96%, color-mix(in srgb, #ff5e92 10%, transparent), transparent 72%),
+    #0d0d11;
+  background-attachment: fixed;
+}
+
+/* Surfaces become frosted glass sitting on that tint rather than opaque cards.
+   Same recipe as the header bar: a 32% half-tone with the frost doing the
+   separating, plus an ink hairline. The blue hover border and the cursor
+   spotlight live in their own rules and sit on top unchanged. */
+.offer__card, .community__card, .faq__list details, .work__col--yes {
+  background: color-mix(in srgb, #ffffff 45%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 80%, transparent) inset,
+              0 20px 50px -34px color-mix(in srgb, var(--ink) 34%, transparent);
+}
+html.mode-dark .offer__card, html.mode-dark .community__card,
+html.mode-dark .faq__list details, html.mode-dark .work__col--yes {
+  background: color-mix(in srgb, #fff 5%, transparent);
+  border-color: color-mix(in srgb, #fff 11%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 8%, transparent) inset;
+}
+
+/* ---------- Marquee logo fixes + new marks ---------- */
+/* POPRI is a black wordmark on its own lime plate. The dark-mode invert was
+   flattening the whole plate to a solid white square, so exclude it — and the
+   Impact Hub pair, which ships its own light and dark artwork. */
+html.mode-dark .marquee__logo--swap img { filter: none; }
+
+/* Impact Hub: supplied as two files, swapped on theme rather than filtered. */
+.marquee__logo--swap img { filter: none; opacity: 0.85; }
+.marquee__logo--swap .logo-dark { display: none; }
+html.mode-dark .marquee__logo--swap .logo-light { display: none; }
+html.mode-dark .marquee__logo--swap .logo-dark { display: block; }
+
+/* The strip is dark in BOTH page modes, so the red Impact Hub artwork sits on
+   near-black and is barely legible. Use the white artwork in both; the red file
+   and the swap rules below stay in place, so if the strip ever goes light in
+   light mode the red version comes back with one line changed. */
+.marquee__logo--swap .logo-light { display: none; }
+.marquee__logo--swap .logo-dark { display: block; }
+/* Impact Hub is a badge plus a wordmark, so its glyphs read smaller than a pure
+   wordmark at the same box height. Give it its own size. */
+.marquee__logo--swap { height: clamp(30px, 3.1vw, 44px); }
+.marquee__logo--swap img { opacity: 0.8; }
+
+/* ---------- Logo optical sizing ----------
+   28-44px was too wide a spread; the row read as mismatched sizes rather than
+   one line. Tightened so every mark carries similar optical weight. Gatom (the
+   only mark on the base class) is a compact 2.5:1 icon+wordmark lockup, so at
+   wordmark height it read tiny — it needs roughly double to hold the line. The
+   typographic Sonce mark follows the same logic. */
+.marquee__logo { height: clamp(36px, 3.5vw, 50px); }
+.marquee__logo--wide { height: clamp(20px, 1.9vw, 25px); }
+.marquee__logo--tall { height: clamp(26px, 2.5vw, 33px); }
+.marquee__logo--swap { height: clamp(24px, 2.3vw, 31px); }
+.marquee__logo--type { font-size: clamp(1.5rem, 2.3vw, 2.05rem); }
+
+/* ---------- Primary CTA, reconsidered ----------
+   The translucent blue lens read as a floating artefact: it fought the globe
+   behind it, the tint shifted with whatever it happened to sit on, and it never
+   looked like a surface you could press. Replaced with solid ink — the same
+   near-black as the logo bar and the body type, so the button belongs to the
+   palette instead of hovering above it. Blue is kept as the accent it already
+   is elsewhere, and arrives on hover. Off-white glass stays on the closing CTA,
+   where a light element on a tinted field is the point. */
+.btn--primary, .btn--small {
+  background: var(--ink);
+  color: var(--ice);
+  border: 1px solid var(--ink);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--ink) 16%, transparent),
+    0 10px 24px -12px color-mix(in srgb, var(--ink) 42%, transparent);
+}
+.btn--primary::before, .btn--small::before { display: none; }
+.btn--primary:hover, .btn--small:hover {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--blue) 22%, transparent),
+    0 14px 30px -12px color-mix(in srgb, var(--blue) 50%, transparent);
+}
+html.mode-dark .btn--primary, html.mode-dark .btn--small {
+  background: var(--ink); color: #111; border-color: var(--ink);
+}
+html.mode-dark .btn--primary:hover, html.mode-dark .btn--small:hover {
+  background: var(--blue); border-color: var(--blue); color: #fff;
+}
+
+/* ---------- Header stays put ----------
+   It previously slid away on scroll-down, so Apply vanished exactly when
+   someone was reading far enough to consider it. The look is Apple's matte
+   glass: from the viewer's side the bar is just a tint — barely a half-tone
+   under the page — and the frost does the separating, not the colour. */
+.nav {
+  background: color-mix(in srgb, #ffffff 45%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border-bottom: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+}
+html.mode-dark .nav {
+  background: color-mix(in srgb, #0d0d11 74%, transparent);
+  border-bottom-color: color-mix(in srgb, #fff 10%, transparent);
+}
+
+/* Give the marquee label more air above the marks. */
+.marquee-section { padding: clamp(42px, 6.2vh, 64px) 0 clamp(34px, 5vh, 52px); }
+.marquee-label { top: clamp(14px, 2.2vh, 22px); }
+
+/* ---------- Stat band, rebuilt ----------
+   Was a 1px-gap grid whose hairlines came from the container showing through
+   opaque cells. Once the cells went translucent the grey bled into every box.
+   Rebuilt with explicit hairlines and no cell fill at all: the page already has
+   four families of card, so leaving the numbers unboxed gives this section its
+   own texture and lets the numerals carry it. */
+.offer__numbers {
+  gap: 0;
+  background: none;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.offer__num {
+  background: none; box-shadow: none; border: 0; border-radius: 0;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  border-left: 1px solid var(--line);
+  padding: clamp(30px, 3.6vw, 56px) clamp(20px, 2.2vw, 38px);
+  transition: none;
+}
+.offer__num:first-child { border-left: 0; }
+.offer__num-val { font-size: clamp(3.2rem, 7vw, 6.6rem); letter-spacing: -0.03em; }
+.offer__num-label {
+  margin-top: 14px; font-size: 0.88rem; line-height: 1.45;
+  color: var(--ink-soft); opacity: 1; max-width: 22ch;
+}
+html.mode-dark .offer__numbers,
+html.mode-dark .offer__num { border-color: var(--line); }
+
+/* Hairlines have to follow the column count as it collapses. */
+@media (max-width: 1024px) {
+  .offer__num:nth-child(2n + 1) { border-left: 0; }
+  .offer__num:nth-child(n + 3) { border-top: 1px solid var(--line); }
+  /* Three stats on a two-column grid: the last one takes the full row rather
+     than leaving a hole beside it. */
+  .offer__num:last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 480px) {
+  .offer__num { border-left: 0; }
+  .offer__num:nth-child(n + 2) { border-top: 1px solid var(--line); }
+}
+
+/* ---------- Header edge: reading progress ----------
+   A decorative pulse asks for attention and gives nothing back, so the filament
+   now reports how far through the page you are. Same visual language — blue,
+   top edge only, bloom spilling down — but it means something, and it resolves
+   rather than blinking forever. A faint track shows the full width so the
+   filled portion reads as progress rather than a stray line. */
+.nav::before {
+  content: ''; display: block;
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  pointer-events: none; z-index: 1;
+}
+.nav::after {
+  content: '';
+  position: absolute; top: 0; left: 0; height: 2px;
+  width: calc(var(--read, 0) * 100%);
+  pointer-events: none; z-index: 2;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--blue) 55%, transparent) 0%,
+    var(--blue) 70%,
+    var(--blue) 100%
+  );
+  box-shadow:
+    0 0 8px 0 color-mix(in srgb, var(--blue) 70%, transparent),
+    0 4px 16px 0 color-mix(in srgb, var(--blue) 45%, transparent),
+    0 10px 30px -4px color-mix(in srgb, var(--blue) 26%, transparent);
+}
+html.mode-dark .nav::before { background: color-mix(in srgb, #fff 10%, transparent); }
+/* a brighter head on the leading edge, so it reads as travelling */
+.nav__read-head {
+  position: absolute; top: 0; height: 2px; width: 46px; z-index: 3;
+  left: calc(var(--read, 0) * 100%); transform: translateX(-46px);
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, #fff);
+  opacity: 0.75; mix-blend-mode: screen;
+}
+
+/* ---------- How it works: horizontal stepper ----------
+   The vertical timeline capped itself at 880px and left half the page empty,
+   and its hover state painted a panel with negative horizontal inset straight
+   over the progress line — which is why hovering appeared to erase it.
+   Rebuilt as four columns hung off a single hairline rail, matching the hairline
+   language of the stat band. Nothing overlaps the rail, so there is nothing to
+   erase. */
+.process__steps {
+  position: relative;
+  max-width: none;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: clamp(18px, 2.4vw, 44px);
+  margin-top: clamp(46px, 7vh, 86px);
+}
+.process__rail {
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: var(--line);
+}
+.process__rail span {
+  display: block; height: 100%; width: 100%;
+  background: var(--blue);
+  transform-origin: left; transform: scaleX(0);
+  box-shadow: 0 0 8px 0 color-mix(in srgb, var(--blue) 45%, transparent);
+}
+.process__step {
+  position: relative;
+  padding-top: clamp(30px, 3.6vw, 52px);
+}
+/* the node sits on the rail, not over it */
+.process__step::before {
+  content: ''; position: absolute; top: 0; left: 0;
+  width: 11px; height: 11px; margin-top: -5px;
+  border-radius: 50%;
+  background: var(--ice);
+  border: 1px solid var(--line);
+  transition: background 0.4s var(--ease), border-color 0.4s var(--ease),
+    box-shadow 0.4s var(--ease);
+}
+/* Only is-active lights a node. The final step used to be blue on load, which
+   read as progress that had already happened before you scrolled. */
+.process__step.is-active::before {
+  background: var(--blue); border-color: var(--blue);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--blue) 14%, transparent);
+}
+.process__num {
+  display: block;
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(2rem, 3.4vw, 3.2rem); line-height: 1;
+  color: color-mix(in srgb, var(--ink) 16%, transparent);
+  transition: color 0.45s var(--ease);
+}
+.process__step.is-active .process__num { color: var(--blue); }
+.process__step h3 {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1.05rem, 1.5vw, 1.35rem); line-height: 1.2;
+  margin: clamp(14px, 1.6vw, 22px) 0 10px;
+}
+.process__step p {
+  font-size: clamp(0.9rem, 1.05vw, 1rem); line-height: 1.6;
+  color: var(--ink-soft); max-width: 34ch;
+}
+
+@media (max-width: 900px) {
+  .process__steps { grid-template-columns: repeat(2, 1fr); row-gap: clamp(34px, 5vw, 56px); }
+  /* one continuous rail can't span two rows, so each step carries its own */
+  .process__rail { display: none; }
+  .process__step { border-top: 1px solid var(--line); }
+}
+@media (max-width: 560px) {
+  .process__steps { grid-template-columns: 1fr; }
+}
+
+/* ---------- The tracks: full-width lanes ----------
+   Was a 4-up card grid sitting immediately before the community 4-up card grid,
+   so two sections read as the same block twice. Rebuilt as wide lanes divided by
+   hairlines — the same rule language as the stat band and the process rail — with
+   each of the 15 roles as its own chip instead of a run-on middot list. Reads
+   differently from its neighbour and makes the actual choices scannable. */
+.tracks__list {
+  margin-top: clamp(44px, 7vh, 84px);
+  border-top: 1px solid var(--line);
+}
+.tracklane {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(180px, 22%) 1fr;
+  gap: clamp(16px, 2.4vw, 44px);
+  /* Everything hangs from the lane's vertical centre — the index, the title
+     and the chip row read as one centred band whether the title wraps or not. */
+  align-items: center;
+  /* Horizontal inset keeps the index off the slab's edge when the lane fills
+     blue on hover, instead of hugging the hairline's end. */
+  padding: clamp(26px, 3.4vw, 48px) clamp(18px, 2.6vw, 44px);
+  border-bottom: 1px solid var(--line);
+  transition: background 0.45s var(--ease);
+}
+/* A tint that stops at the section's own edges — it must never bleed over a rule. */
+.tracklane__num {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: 0.82rem; letter-spacing: 0.06em;
+  color: var(--blue);
+}
+.tracklane__name {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1.35rem, 2.5vw, 2.15rem); line-height: 1.08;
+  letter-spacing: -0.015em;
+}
+.tracklane__roles {
+  list-style: none; display: flex; flex-wrap: wrap;
+  gap: 9px;
+}
+.tracklane__roles li {
+  font-size: 0.9rem; font-weight: 500; line-height: 1;
+  padding: 10px 16px; border-radius: 100px;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, #fff 40%, transparent);
+  transition: border-color 0.3s var(--ease), color 0.3s var(--ease),
+    background 0.3s var(--ease), transform 0.3s var(--ease);
+}
+.tracklane__roles li:hover {
+  border-color: var(--blue); color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 7%, transparent);
+  transform: translateY(-2px);
+}
+html.mode-dark .tracklane__roles li {
+  background: color-mix(in srgb, #fff 5%, transparent);
+  border-color: color-mix(in srgb, #fff 12%, transparent);
+}
+
+@media (max-width: 860px) {
+  .tracklane { grid-template-columns: 2.6rem 1fr; row-gap: 14px; }
+  .tracklane__roles { grid-column: 2; padding-top: 4px; }
+}
+
+/* The final step uses the same four-point mark as the footer, not a glyph star,
+   so the two read as one piece of iconography. Sized off the numerals' own
+   font-size so it stays optically matched as they scale. */
+.process__num--mark { line-height: 1; }
+.process__num--mark svg {
+  display: block; width: 0.86em; height: 0.86em;
+  margin-top: 0.07em;
+}
+
+/* ---------- Track lane hover: solid blue, white type ----------
+   The 3% tint was too timid to register. The lane now fills with the brand blue
+   and the type inverts. The lane's own hairlines are recoloured to the fill so
+   the block reads as one solid slab rather than a band with a rule through it —
+   and because the fill is the lane's own background it cannot bleed onto a
+   neighbour the way an inset pseudo-element would. */
+.tracklane {
+  transition: background 0.4s var(--ease), border-color 0.4s var(--ease);
+}
+.tracklane:hover {
+  background: var(--blue);
+  border-bottom-color: var(--blue);
+}
+.tracklane:hover .tracklane__num { color: color-mix(in srgb, #fff 72%, transparent); }
+.tracklane:hover .tracklane__name { color: #fff; }
+.tracklane:hover .tracklane__roles li {
+  color: #fff;
+  border-color: color-mix(in srgb, #fff 42%, transparent);
+  background: color-mix(in srgb, #fff 10%, transparent);
+}
+.tracklane:hover .tracklane__roles li:hover {
+  background: #fff; color: var(--blue); border-color: #fff;
+  transform: translateY(-2px);
+}
+html.mode-dark .tracklane:hover { background: var(--blue); border-bottom-color: var(--blue); }
+
+/* ========================================================================
+   The closing statement — no colour slab, the aurora carries it. Presence
+   comes from scale instead: the title grows to wordmark size, the 1% takes
+   the brand blue, and the section claims a full viewport of air.
+   ======================================================================== */
+.cta {
+  min-height: 92svh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.cta__title { font-size: clamp(3.4rem, 11.5vw, 11rem); }
+.cta__title em { color: var(--blue); }
+
+/* ========================================================================
+   Spotlights — the two facts the page wants you to leave with: what you'll
+   actually do, and that it costs nothing. One treatment for both: a blue
+   hairline, a breath of blue in the fill, and a soft blue lift.
+   ======================================================================== */
+.work__col--yes {
+  border: 1.5px solid var(--blue);
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--blue) 11%, transparent),
+      color-mix(in srgb, var(--blue) 7%, transparent)
+    ),
+    color-mix(in srgb, #ffffff 55%, transparent);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #fff 80%, transparent) inset,
+    0 34px 90px -34px color-mix(in srgb, var(--blue) 70%, transparent),
+    0 10px 30px -14px color-mix(in srgb, var(--blue) 40%, transparent);
+}
+html.mode-dark .work__col--yes {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 16%, transparent);
+}
+
+/* ========================================================================
+   The community, as a numbered list.
+
+   Was a click-to-reveal picker beside a tilted photo frame whose silhouette was
+   lifted from another site's runtime clipPath — an orphan gesture that rhymed
+   with nothing here, holding three stock photographs to display one, two of
+   which the mosaic below already uses. The frame is gone and so are the photos.
+
+   Deliberately NOT built from the track lanes' language, even though that is
+   the strongest block on the page: tracks sits directly above this, and two
+   adjacent sections in the same hairline-lane form is exactly the "same block
+   twice" problem the tracks rebuild was meant to solve. So: numerals in the
+   margin, a rule between each promise, and every item at full contrast — the
+   old picker held the two unselected promises at 40% opacity, which failed
+   contrast and hid two thirds of the section's content by default.
+   ======================================================================== */
+.promises {
+  list-style: none; margin: clamp(38px, 6vh, 72px) 0 0; padding: 0;
+  border-top: 1px solid var(--line);
+  max-width: 1100px;
+}
+.promise {
+  display: grid;
+  grid-template-columns: minmax(3.4rem, 6%) 1fr;
+  gap: clamp(16px, 3vw, 48px);
+  align-items: start;
+  padding: clamp(26px, 3.6vw, 46px) 0;
+  border-bottom: 1px solid var(--line);
+}
+.promise__num {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1.5rem, 3vw, 2.6rem); line-height: 0.9;
+  letter-spacing: -0.02em; color: var(--blue);
+  font-variant-numeric: tabular-nums;
+}
+.promise__body h3 {
+  font-family: 'Clash Display', sans-serif; font-weight: 600;
+  font-size: clamp(1.35rem, 2.5vw, 2.15rem); line-height: 1.08;
+  letter-spacing: -0.015em; margin: 0;
+}
+.promise__body p {
+  margin: clamp(10px, 1.4vh, 16px) 0 0;
+  max-width: 56ch;
+  font-size: clamp(1rem, 1.3vw, 1.15rem); line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 560px) {
+  .promise { grid-template-columns: 1fr; gap: 6px; }
+}
+
+/* The footer wordmark is gone — the page was long enough without a full screen
+   of outlined display type at the very bottom. Its star was one of only two
+   theme toggles on the site, so it moves into the bottom row rather than
+   disappearing with it. */
+.footer__star {
+  all: unset; cursor: pointer; display: inline-flex;
+  width: 15px; height: 15px; margin-left: 4px;
+  color: var(--ink-soft); flex: 0 0 auto;
+  transition: color 0.25s var(--ease);
+}
+.footer__star svg { width: 100%; height: 100%; display: block; }
+.footer__star:hover { color: var(--blue); }
+.footer__star:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+/* Dial code and number as one control. The code select is sized to its content
+   so the number keeps the room; below 480px they stack, because a 3-digit select
+   plus a phone number does not fit a phone. */
+.field-tel { display: flex; gap: 10px; align-items: stretch; }
+.field-tel select { flex: 0 0 auto; width: 7.2rem; min-width: 0; padding-left: 14px; padding-right: 8px; }
+.field-tel input { flex: 1 1 auto; min-width: 0; }
+@media (max-width: 480px) {
+  .field-tel { flex-direction: column; }
+  .field-tel select { width: 100%; }
+}
+
+/* Four question groups became real fieldsets so their labels bind to something.
+   Fieldsets carry a browser border and padding, and legends sit in the border —
+   these strip both back so the form looks exactly as it did. */
+.field--group { border: 0; margin: 0; padding: 0; min-width: 0; }
+.field__legend {
+  display: block; padding: 0;
+  font-size: 0.92rem; font-weight: 500; margin-bottom: 9px;
+  color: inherit;
+}
+.field__legend b { color: var(--blue); font-weight: 500; }
+
+/* ========================================================================
+   Phone pass — measured on an iPhone-size viewport against the live site
+   (22. 9. 2026). Two findings, both about scale rather than layout.
+
+   1. Rhythm. .section carries clamp(90px, 14vh, 180px) above and below,
+      which is right on a 1440px screen and is 93px + 93px on a 390px one:
+      the seam between two sections runs 300–400px with nothing in it —
+      nearly half a phone screen. The proportion that reads as calm on a
+      desktop reads as abandoned on a phone. Tightened below 760px only.
+
+   2. Touch targets. Four controls were smaller than a fingertip: the "menu"
+      word (44×19), the theme star in the footer (15×15), the form's stage
+      buttons (26px tall) and the footer e-mail link (18px). Each gets an
+      invisible ::after that extends the hit area to about 44px while the
+      visual stays exactly as it was. Applied only where the pointer is a
+      finger, so a mouse user sees no change at all.
+   ======================================================================== */
+@media (max-width: 760px) {
+  .section { padding-top: 56px; padding-bottom: 56px; }
+  .section__head { margin-bottom: 26px; }
+  .cta { padding-top: 84px; padding-bottom: 84px; }
+}
+
+@media (pointer: coarse) {
+  .nav__menu-word, .footer__star, .steps__item, .apply__footer a { position: relative; }
+  .nav__menu-word::after, .footer__star::after, .steps__item::after, .apply__footer a::after {
+    content: ""; position: absolute; inset: -12px -8px;
+  }
+  .footer__star::after { inset: -15px; }
+  /* The stage buttons sit 10px apart; keep the sideways reach inside that. */
+  .steps__item::after { inset: -9px -4px; }
+}

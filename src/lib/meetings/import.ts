@@ -83,8 +83,11 @@ export async function importMeetings(
   await db.transaction(async (tx) => {
     // One import at a time.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext('meetings_import'))`);
-    const rows = await tx.select().from(meetings);
+    const [rows, inviteRows] = await Promise.all([tx.select().from(meetings), tx.select().from(meetingInvites)]);
     const existing = new Map(rows.map((m) => [m.uid, m]));
+    // Who is invited now, to rewrite a meeting's invites only when they changed (most pulls change nothing).
+    const invitedNow = new Map<number, Set<number>>();
+    for (const i of inviteRows) invitedNow.set(i.meetingId, (invitedNow.get(i.meetingId) ?? new Set()).add(i.memberId));
     // The same meeting can come back under another UID (Google Calendar gives events new UIDs when
     // an .ics file is imported into it). Matched by title and start, it keeps its attendance history.
     const incoming = new Set(parsed.map((p) => p.uid));
@@ -122,8 +125,11 @@ export async function importMeetings(
 
       const invited = [...new Set(p.emails.map((e) => memberIds.get(e)).filter((x): x is number => x !== undefined))];
       for (const e of p.emails) if (!memberIds.has(e)) unknown.set(e, (unknown.get(e) ?? 0) + 1);
-      await tx.delete(meetingInvites).where(eq(meetingInvites.meetingId, id));
-      if (invited.length) await tx.insert(meetingInvites).values(invited.map((memberId) => ({ meetingId: id, memberId })));
+      const before = invitedNow.get(id) ?? new Set<number>();
+      if (before.size !== invited.length || invited.some((memberId) => !before.has(memberId))) {
+        await tx.delete(meetingInvites).where(eq(meetingInvites.meetingId, id));
+        if (invited.length) await tx.insert(meetingInvites).values(invited.map((memberId) => ({ meetingId: id, memberId })));
+      }
       report.invites += invited.length;
     }
 
@@ -185,13 +191,14 @@ export const CALENDAR_SYNC_MINUTES = 15;
 
 /** The latest attempt to pull from the calendar address, successful or not. */
 export async function lastCalendarSync(): Promise<{ at: Date; ok: boolean; error: string | null } | null> {
+  // Called on page views (in the background): only the error text of the report is needed, not the whole report.
   const [last] = await db
-    .select({ at: meetingImports.createdAt, ok: meetingImports.ok, report: meetingImports.report })
+    .select({ at: meetingImports.createdAt, ok: meetingImports.ok, error: sql<string | null>`${meetingImports.report}->>'error'` })
     .from(meetingImports)
     .where(eq(meetingImports.source, "url"))
     .orderBy(desc(meetingImports.id))
     .limit(1);
-  return last ? { at: last.at, ok: last.ok, error: (last.report as ImportReport).error ?? null } : null;
+  return last ? { at: last.at, ok: last.ok, error: last.error } : null;
 }
 
 // One pull at a time per server process, so a burst of page views downloads the calendar once.

@@ -80,7 +80,7 @@ Clockify-style: Start/Stop on `/hours` and the dashboard, plus manual entries. C
 - Next.js (App Router, TypeScript) + Tailwind
 - Postgres (Neon or Supabase free tier) with Drizzle ORM and migrations
 - Deploy on Vercel (public URL). Production deploys apply the migrations in `drizzle/` before building (`vercel-build` → `scripts/deploy-migrate.mjs`; preview deploys skip it); a failing migration fails the deploy and the previous one stays live. Never edit an applied migration; add a new one with `npm run db:generate`.
-- Login: email + password, own implementation in `src/lib/auth/` (argon2id via `@node-rs/argon2`, database sessions in an httpOnly/secure/sameSite=lax cookie, failed-login rate limit in Postgres: 5 per email, 20 per IP per 15 min). Only active members sign in; admin flag read from `members` on every request. Login does not use email (email is only for meeting reminders): admins generate one-time setup/reset links on `/admin/members` (hashed, single-use, 7 days). Bootstrap the first admin with `npm run create-admin -- <email> "<name>"`. Middleware runs on the Node.js runtime and checks the session in the database.
+- Login: email + password, own implementation in `src/lib/auth/` (argon2id via `@node-rs/argon2`, database sessions in an httpOnly/secure/sameSite=lax cookie, failed-login rate limit in Postgres: 5 per email, 20 per IP per 15 min). Only active members sign in; admin flag read from `members` on every request. Login does not use email (email is only for meeting reminders): admins generate one-time setup/reset links on `/admin/members` (hashed, single-use, 7 days). Bootstrap the first admin with `npm run create-admin -- <email> "<name>"`. The middleware only checks that a session cookie exists (no database query); every page, route and server action validates the session itself (`requireMember()` / `requireAdmin()` → `getCurrentSession()` in `src/lib/auth/index.ts`: one query, cached per request). Once per 6 h (companion cookie `session_check`) the middleware validates and renews the session. `/admin/*` is guarded by `src/app/(app)/admin/layout.tsx` plus each admin page's `requireAdmin()`: a member is sent to `/forbidden`.
 
 ## Environment variables (names only, document each in the infra page)
 
@@ -121,6 +121,16 @@ All rules are in `src/lib/absence-rules.ts` (change them there). ASSUMPTION: "ge
 - **General tasks:** `tasks.kind = 'general'` (+ `description`), admin-managed on the "General tasks" tab of `/tasks`. Never done: `assertMayChangeStatus()` in `lib/tasks/changes.ts` rejects it on the server, no done control is shown, they are never written to the sheet and a "done" from the sheet is ignored.
 - **Missed meeting:** when an admin records an absence that `GENERAL_TASK_AFTER` lists (by default unexcused, or a late notice not accepted), `followUpAbsence()` creates a `general_task_requests` row and a notification; the member picks one general task in one tap. Changing the absence before a pick cancels the request. Admins see "Still to pick a general task". Who picked what is shown by name to admins only.
 - **Notifications:** `notifications` table, bell with unread count in the header, `/notifications`. Every query is scoped to the signed-in member; never put admin-only information into a notification.
+
+## Performance rules (details and numbers: `docs/PERFORMANCE.md`)
+
+The database is reached through Supabase's transaction pooler, so statements are not prepared (`prepare: false` in `src/db/index.ts`). Consequence: every query that has parameters costs **two round trips** (the driver first asks for the parameter types), so a page's time is about *(number of sequential waves of queries) x 2 x the round-trip time to the database*. Count waves, not queries.
+- A page is one session lookup (`requireMember()`, a single parameter-free statement that also returns the unread-notification count; the layout and the page share it) followed by **one** parallel wave of queries. Never `await` one query after another when they are independent; never query inside a loop (N+1); use joins, window counts or `inArray`.
+- Queries that do not depend on who is asking (admin pages, `[id]` detail pages) start in the same `Promise.all` as `requireAdmin()` / `requireMember()`. Nothing from them is rendered before the access check.
+- Never do slow work while rendering: Google Sheets and calendar syncs, email, AI calls run in `after()` or the cron job (or behind a button the user pressed); pages show the last known state.
+- Analytics add up in SQL (`src/lib/analytics/weekly-hours.ts`, tested against the JavaScript way), for the weeks shown only. Do not load every time entry or task into JavaScript.
+- Every section has a `loading.tsx` (skeleton) so the page frame appears at once and link prefetching works. A new filter on a growing table gets an index in a migration.
+- The pool is 10 connections per instance; a page should not need more parallel queries than that.
 
 ## Theme (light / dark)
 

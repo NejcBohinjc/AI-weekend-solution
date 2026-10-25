@@ -6,6 +6,11 @@ import { useEffect, useRef } from "react";
 
 export type NavItem = { href: string; label: string };
 
+/**
+ * The main navigation. next/link prefetches every link in view in production; because each section has a
+ * loading.tsx, that prefetch fetches its skeleton, so a click shows the page frame instantly while the data
+ * streams in. (Default prefetching, not prefetch={true}: that would cache the live data of the page too.)
+ */
 export function NavLinks({ items, variant = "member" }: { items: NavItem[]; variant?: "member" | "admin" }) {
   const pathname = usePathname();
   const activeRef = useRef<HTMLAnchorElement>(null);
