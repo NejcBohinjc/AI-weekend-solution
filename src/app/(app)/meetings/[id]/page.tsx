@@ -168,9 +168,10 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
         )}
       </div>
 
+      {/* The model is an admin-only line: it is not even sent to attendees. */}
       <SummarySection
         meetingId={meeting.id}
-        summary={storedSummary && { bullets: summaryBullets(storedSummary.text), model: me.isAdmin ? storedSummary.model : null, // admin-only line: not even sent to attendees, atLabel: fmt(storedSummary.at), stale: storedSummary.stale }}
+        summary={storedSummary && { bullets: summaryBullets(storedSummary.text), model: me.isAdmin ? storedSummary.model : null, atLabel: fmt(storedSummary.at), stale: storedSummary.stale }}
         isAdmin={me.isAdmin}
         aiReady={aiEnabled()}
         hasNotes={notes.length > 0}
