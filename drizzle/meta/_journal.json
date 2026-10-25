@@ -120,6 +120,13 @@
       "when": 1792922480778,
       "tag": "0016_regular_titanium_man",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792929502787,
+      "tag": "0017_elite_celestials",
+      "breakpoints": true
     }
   ]
 }
