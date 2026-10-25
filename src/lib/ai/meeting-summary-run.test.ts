@@ -118,12 +118,12 @@ describe("meeting summary", { skip: testDatabaseSkip() }, () => {
   });
 
   test("list icons: recording, transcript and summary are marked per meeting", async () => {
-    let media = await meetingMedia();
+    let media = await meetingMedia([meetingId, otherMeetingId]);
     assert.deepEqual(media.get(meetingId), { recording: false, transcript: false, summary: true });
     assert.equal(media.get(otherMeetingId), undefined);
     await db.insert(recordings).values({ meetingId: otherMeetingId, startedById: admin.id, status: "transcribed", transcript: "Text." });
     await db.insert(recordings).values({ meetingId, startedById: admin.id, status: "recording" });
-    media = await meetingMedia();
+    media = await meetingMedia([meetingId, otherMeetingId]);
     assert.deepEqual(media.get(otherMeetingId), { recording: true, transcript: true, summary: false });
     assert.equal(media.get(meetingId)!.recording, false, "a recording still in progress is not a recording yet");
   });

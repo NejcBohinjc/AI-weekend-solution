@@ -14,11 +14,13 @@ export default async function MeetingsPage() {
   const me = await requireMember();
   syncCalendarInBackground();
   const now = new Date();
-  const [rows, media] = await Promise.all([myMeetings(me.id), meetingMedia()]);
+  const rows = await myMeetings(me.id);
   const list = rows.map((r) => ({ ...r, phase: meetingPhase(r.meeting, now), effective: effectiveState(r.state, r.meeting, now, { lateNotice: !!r.lateNotice, lateDecision: r.lateDecision }) }));
   const happening = list.filter((r) => r.phase === "open" && r.meeting.status === "confirmed");
   const upcoming = list.filter((r) => r.phase === "upcoming");
   const past = list.filter((r) => r.phase === "past").reverse();
+  // Only past rows show the media icons, so only those meetings are asked about (see media.ts).
+  const media = await meetingMedia(past.map((r) => r.meeting.id));
   const summary = attendanceSummary(past.filter((r) => r.meeting.status === "confirmed").map((r) => r.effective));
 
   const SHOWN_UPCOMING = 4;

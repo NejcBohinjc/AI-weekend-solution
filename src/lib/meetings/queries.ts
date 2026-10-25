@@ -1,13 +1,21 @@
 // Reads for the meetings pages.
-import { and, asc, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { attendance, emailLog, meetingImports, meetingInvites, meetings, members, reminderSettings } from "@/db/schema";
 import { DEFAULT_REMINDER_MINUTES } from "./constants";
 import type { ImportReport } from "./import";
 import { effectiveState } from "./rules";
 
+/**
+ * How far back the member's own meetings list and the dashboard look. A real calendar has hundreds of
+ * past meetings and every row carries its description, so the whole history is neither quick to load
+ * nor useful twice a week; the attendance rate on the page is for this window.
+ */
+export const MY_MEETINGS_DAYS_BACK = 180;
+
 /** The member's meetings (not removed from the calendar) with what they recorded, oldest first. */
-export async function myMeetings(memberId: number) {
+export async function myMeetings(memberId: number, now: Date = new Date(), daysBack: number = MY_MEETINGS_DAYS_BACK) {
+  const from = new Date(now.getTime() - daysBack * 86_400_000);
   return db
     .select({
       meeting: meetings,
@@ -20,7 +28,8 @@ export async function myMeetings(memberId: number) {
     .from(meetingInvites)
     .innerJoin(meetings, eq(meetingInvites.meetingId, meetings.id))
     .leftJoin(attendance, and(eq(attendance.meetingId, meetings.id), eq(attendance.memberId, memberId)))
-    .where(and(eq(meetingInvites.memberId, memberId), ne(meetings.status, "removed")))
+    // meetings_starts_idx covers this, so the window is an index range, not a scan of every meeting.
+    .where(and(eq(meetingInvites.memberId, memberId), ne(meetings.status, "removed"), gte(meetings.startsAt, from)))
     .orderBy(asc(meetings.startsAt));
 }
 

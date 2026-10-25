@@ -134,6 +134,13 @@
       "when": 1792930626642,
       "tag": "0018_pale_satana",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792934174856,
+      "tag": "0019_loose_wild_child",
+      "breakpoints": true
     }
   ]
 }

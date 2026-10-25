@@ -308,7 +308,9 @@ export const meetings = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("meetings_starts_idx").on(t.startsAt)],
+  // Every meetings query filters on status and then orders or windows by starts_at; with a year of a
+  // real calendar in the table that pair is what keeps it an index range instead of a scan.
+  (t) => [index("meetings_starts_idx").on(t.startsAt), index("meetings_status_starts_idx").on(t.status, t.startsAt)],
 );
 
 export type Meeting = typeof meetings.$inferSelect;
