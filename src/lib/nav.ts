@@ -26,4 +26,5 @@ export const ADMIN_GROUPS: { title: string; items: NavItem[] }[] = [
     ],
   },
   { title: "Insight", items: [{ href: "/admin/analytics", label: "Analytics" }] },
+  { title: "System", items: [{ href: "/admin/settings", label: "Settings" }] },
 ];

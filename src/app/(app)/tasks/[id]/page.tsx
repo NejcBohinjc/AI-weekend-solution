@@ -152,7 +152,8 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
               )}
               {row.meeting?.startsAt && ` on ${row.meeting.startsAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: TIMEZONE })}`}
               {row.triggeredByName && `, triggered by ${row.triggeredByName}`}.
-              {task.aiConfirmedAt && " Confirmed by the assignee."}
+              {/* Confirmed by the assignee, or accepted automatically while confirming was off (see the history). */}
+              {task.aiConfirmedAt && " Confirmed."}
             </p>
             {task.sourceQuote && (
               <blockquote className="border-l-2 border-violet-line pl-3 italic text-muted">“{task.sourceQuote}”</blockquote>

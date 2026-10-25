@@ -127,6 +127,13 @@
       "when": 1792929829922,
       "tag": "0017_demonic_lady_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792930626642,
+      "tag": "0018_pale_satana",
+      "breakpoints": true
     }
   ]
 }
