@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { quietLinkClass, smallButtonClass } from "@/components/ui";
 import { TierBadge } from "@/components/badges";
 import { LinkifiedText } from "@/components/linkified-text";
 import { AttendanceBadge, meetingWhen, SeriesBadge } from "@/components/meetings";
@@ -18,7 +19,10 @@ import { adminMarkRestPresentAction, adminSetAttendanceAction, decideLateNoticeA
 import { AttendanceActions } from "../attendance-actions";
 import { addNoteAction, createTasksFromNotesAction } from "../notes-actions";
 import { AddNotesSection, CreateTasksButton } from "../notes-ui";
-import { RecordingItem, type RecordingView } from "../recordings-ui";
+import { RecordingItem, TranscriptItem, type RecordingView } from "../recordings-ui";
+import { SummarySection } from "../summary-ui";
+import { summaryBullets } from "@/lib/ai/meeting-summary";
+import { summaryOfMeeting } from "@/lib/ai/meeting-summary-run";
 import { EarlierRecordings, earlierRecordings } from "../recordings-section";
 import { RecorderPanel } from "@/components/recorder/recorder-panel";
 import { transcribeEnabled } from "@/lib/ai/transcribe";
@@ -34,7 +38,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
   if (!Number.isInteger(id)) notFound();
   // Everything the page needs only depends on the id in the URL, so it is fetched while the session is
   // checked (one wait instead of two). Nothing is shown before the invitee-or-admin check below.
-  const [me, meeting, attendees, notes, runs, recs, earlier, recorded] = await Promise.all([
+  const [me, meeting, attendees, notes, runs, recs, earlier, storedSummary, recorded] = await Promise.all([
     requireMember(),
     meetingById(id),
     meetingAttendees(id),
@@ -52,6 +56,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
       .orderBy(desc(aiTaskRuns.id)),
     recordingsOfMeeting(id),
     earlierRecordings(id),
+    summaryOfMeeting(id),
     // Every attendance record of the meeting (a few rows): also an admin's own check-in when not invited.
     db.select({ memberId: attendance.memberId, state: attendance.state, note: attendance.note }).from(attendance).where(eq(attendance.meetingId, id)),
   ]);
@@ -88,12 +93,12 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
   }));
 
   return (
-    <section className="flex max-w-2xl flex-col gap-6">
+    <section className="flex max-w-2xl flex-col gap-8">
       <div className="flex flex-col gap-2">
-        <Link href={me.isAdmin && !mine ? "/admin/meetings" : "/meetings"} className="text-sm text-subtle hover:text-fg">
+        <Link href={me.isAdmin && !mine ? "/admin/meetings" : "/meetings"} className={quietLinkClass}>
           ← Meetings
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight">{meeting.title}</h1>
+        <h1 className="font-display text-[clamp(1.75rem,5.5vw,2.75rem)] font-semibold leading-[1.1] tracking-display">{meeting.title}</h1>
         <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
           <SeriesBadge series={meeting.series} />
           <span>{meetingWhen(meeting)}</span>
@@ -108,9 +113,9 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
 
       {/* Your own attendance comes first, for everyone; the rest of the page is below it. */}
       {mine && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm" data-testid="my-attendance">
+        <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="my-attendance">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="font-semibold">Your attendance</h2>
+            <h2 className="font-display text-lg font-semibold tracking-display">Your attendance</h2>
             {!cancelled &&
               (mine.state === "excused" && mine.lateNotice ? (
                 <span className="rounded-full bg-warning-bg px-2 py-0.5 text-xs font-medium text-warning ring-1 ring-inset ring-warning-line">
@@ -135,9 +140,9 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
       )}
       {!mine && (
         // Only admins open meetings they are not invited to: they can check in if they take part.
-        <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm" data-testid="my-attendance">
+        <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="my-attendance">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="font-semibold">Your attendance</h2>
+            <h2 className="font-display text-lg font-semibold tracking-display">Your attendance</h2>
             {own && (own.state === "present" || own.state === "remote") && <AttendanceBadge state={own.state} />}
           </div>
           <p className="text-sm text-muted">You are not on this meeting&apos;s invite list, so you never count as absent. If you take part, check in here.</p>
@@ -156,32 +161,51 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
       )}
 
       {meeting.description && (
-        <div className="flex flex-col gap-1.5 rounded-2xl border border-line bg-surface p-4" data-testid="meeting-description">
-          <h2 className="text-sm font-semibold text-subtle">From the calendar</h2>
+        <div className="flex flex-col gap-1.5 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="meeting-description">
+          <h2 className="text-xs font-semibold uppercase tracking-eyebrow text-muted">From the calendar</h2>
           <LinkifiedText text={meeting.description} className="text-sm text-fg" />
         </div>
       )}
 
-      {/* Recordings: admins record and manage them; invitees can listen and read the transcript. */}
-      {(me.isAdmin || recordingViews.length > 0) && (
-        <div id="recording" className="flex scroll-mt-28 flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="recordings">
-          <h2 className="font-semibold">{me.isAdmin ? "Record meeting" : "Recordings"}</h2>
-          {me.isAdmin && <RecorderPanel meetings={[{ id: meeting.id, title: meeting.title, label: meeting.title }]} initialId={meeting.id} storageReady={storageConfigured()} />}
-          {recordingViews.length > 0 && (
-            <div className="flex flex-col gap-3 border-t border-line pt-3">
-              {me.isAdmin && <h3 className="text-sm font-semibold text-subtle">Recordings</h3>}
-              {recordingViews.map((r) => (
-                <RecordingItem key={r.id} rec={r} meetingId={meeting.id} meetingTitle={meeting.title} isAdmin={me.isAdmin} transcribeReady={transcribeEnabled()} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {/* The meeting's recording, transcript and AI summary, together. Only its invitees and admins get this far. */}
+      <div id="recording" className="flex scroll-mt-28 flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="recordings">
+        <h2 className="font-display text-lg font-semibold tracking-display">Recording</h2>
+        {me.isAdmin && <RecorderPanel meetings={[{ id: meeting.id, title: meeting.title, label: meeting.title }]} initialId={meeting.id} storageReady={storageConfigured()} />}
+        {recordingViews.length > 0 ? (
+          <div className="flex flex-col gap-3 border-t border-line pt-3 first:border-t-0 first:pt-0">
+            {recordingViews.map((r) => (
+              <RecordingItem key={r.id} rec={r} meetingId={meeting.id} meetingTitle={meeting.title} isAdmin={me.isAdmin} />
+            ))}
+          </div>
+        ) : (
+          !me.isAdmin && earlier.length === 0 && <p className="text-sm text-muted">This meeting has no recording.</p>
+        )}
+      </div>
       <EarlierRecordings rows={earlier} me={me} now={now} />
 
+      <div id="transcript" className="flex scroll-mt-28 flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="transcripts">
+        <h2 className="font-display text-lg font-semibold tracking-display">Transcript</h2>
+        {recordingViews.some((r) => r.status !== "recording" && (me.isAdmin || r.transcript)) ? (
+          recordingViews.map((r) => (
+            <TranscriptItem key={r.id} rec={r} meetingId={meeting.id} isAdmin={me.isAdmin} transcribeReady={transcribeEnabled()} summariseReady={aiEnabled()} />
+          ))
+        ) : (
+          <p className="text-sm text-muted">{me.isAdmin ? "No transcript yet: record or import the meeting and transcribe it, or add notes below." : "This meeting has no transcript."}</p>
+        )}
+      </div>
+
+      {/* The model is an admin-only line: it is not even sent to attendees. */}
+      <SummarySection
+        meetingId={meeting.id}
+        summary={storedSummary && { bullets: summaryBullets(storedSummary.text), model: me.isAdmin ? storedSummary.model : null, atLabel: fmt(storedSummary.at), stale: storedSummary.stale }}
+        isAdmin={me.isAdmin}
+        aiReady={aiEnabled()}
+        hasNotes={notes.length > 0}
+      />
+
       {/* Notes: this page is only shown to the meeting's invitees and admins. */}
-      <div id="notes" className="flex scroll-mt-28 flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="meeting-notes">
-        <h2 className="font-semibold">Meeting notes</h2>
+      <div id="notes" className="flex scroll-mt-28 flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="meeting-notes">
+        <h2 className="font-display text-lg font-semibold tracking-display">Meeting notes</h2>
         {me.isAdmin && !aiEnabled() && (
           <p className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning">
             Creating tasks from notes with AI is off: ANTHROPIC_API_KEY is not set. Notes can still be added. (Only admins see this.)
@@ -217,26 +241,26 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
         <AddNotesSection action={addNoteAction.bind(null, meeting.id)} initiallyOpen={notes.length === 0} />
       </div>
 
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <h2 className="font-semibold">Invited ({people.length})</h2>
+      <details open={me.isAdmin} className="group flex flex-col gap-2" data-testid="invited">
+        <summary className="flex cursor-pointer flex-wrap items-end justify-between gap-2 pb-2">
+          <h2 className="inline font-display text-lg font-semibold tracking-display">Invited ({people.length})</h2>
           {me.isAdmin && (
             <p className="text-sm text-muted">
               {summary.present} present · {summary.remote} remote · {summary.excused} excused · {summary.unexcused} unexcused
               {phase !== "past" && unanswered ? ` · ${unanswered} no answer yet` : ""}
             </p>
           )}
-        </div>
+        </summary>
 
         {me.isAdmin && phase !== "upcoming" && unanswered > 0 && !cancelled && (
           <form action={adminMarkRestPresentAction.bind(null, meeting.id)}>
-            <button type="submit" className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
+            <button type="submit" className={smallButtonClass}>
               Mark the other {unanswered} present
             </button>
           </form>
         )}
 
-        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm" data-testid="attendees">
+        <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-card" data-testid="attendees">
           {people.map((p) => (
             <li key={p.memberId} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-3">
               <span className="flex min-w-0 flex-1 flex-col">
@@ -302,7 +326,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
           ))}
         </ul>
         {me.isAdmin && <p className="text-xs text-subtle">A darker button shows the current state; unanswered invitees count as unexcused once the meeting is over.</p>}
-      </div>
+      </details>
     </section>
   );
 }

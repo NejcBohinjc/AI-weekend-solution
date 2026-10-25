@@ -6,7 +6,7 @@
 // never the only way to read a value.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+export function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
   const ref = useRef<T | null>(null);
   const [width, setWidth] = useState(0);
   useEffect(() => {
@@ -18,9 +18,9 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] 
   return [ref, width];
 }
 
-type Tip = { x: number; y: number; title: string; rows: { label: string; value: string; color?: string }[] } | null;
+export type Tip = { x: number; y: number; title: string; rows: { label: string; value: string; color?: string }[] } | null;
 
-function Tooltip({ tip }: { tip: Tip }) {
+export function Tooltip({ tip }: { tip: Tip }) {
   if (!tip) return null;
   return (
     <div
@@ -56,9 +56,9 @@ export function Legend({ items, kind = "line" }: { items: { label: string; color
 /** Card with title, one-sentence summary, the chart, and a table view. */
 export function ChartCard({ title, summary, children, table, id }: { title: string; summary: string; children: ReactNode; table?: ReactNode; id?: string }) {
   return (
-    <section aria-labelledby={id} className="flex min-w-0 flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
+    <section aria-labelledby={id} className="flex min-w-0 flex-col gap-4 rounded-card border border-line bg-surface p-5 shadow-card sm:p-6">
       <div>
-        <h2 id={id} className="font-semibold">
+        <h2 id={id} className="font-display text-lg font-semibold tracking-display">
           {title}
         </h2>
         <p className="text-sm text-muted">{summary}</p>

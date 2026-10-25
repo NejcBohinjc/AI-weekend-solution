@@ -80,7 +80,7 @@ export async function GeneralTasks({ me, picked, error }: { me: SessionMember; p
           No general tasks yet.{me.isAdmin ? " Add the first one below." : ""}
         </p>
       ) : (
-        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
+        <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-card">
           {list.map((t) => {
             const helpers = picks.filter((p) => p.taskId === t.id);
             return (
@@ -109,7 +109,7 @@ export async function GeneralTasks({ me, picked, error }: { me: SessionMember; p
 
       {me.isAdmin && (
         <>
-          <section className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4" data-testid="still-to-pick">
+          <section className="flex flex-col gap-2 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="still-to-pick">
             <h2 className="font-semibold">Still to pick a general task ({waiting.length})</h2>
             {waiting.length === 0 ? (
               <p className="text-sm text-muted">Nobody.</p>
@@ -126,7 +126,7 @@ export async function GeneralTasks({ me, picked, error }: { me: SessionMember; p
               </ul>
             )}
           </section>
-          <details className="rounded-xl border border-line bg-surface p-4">
+          <details className="rounded-card border border-line bg-surface p-5 shadow-card">
             <summary className="cursor-pointer font-semibold">Add a general task</summary>
             <div className="mt-3">
               <GeneralTaskForm action={createGeneralTaskAction} submitLabel="Add general task" />

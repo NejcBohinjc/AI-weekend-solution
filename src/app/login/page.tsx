@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { db } from "@/db";
 import { members } from "@/db/schema";
-import { APP_NAME, APP_TAGLINE } from "@/lib/app";
+import { cardClass } from "@/components/ui";
+import { PageTitle } from "@/components/ui-kit";
+import { APP_TAGLINE } from "@/lib/app";
 import { demoPassword } from "@/lib/env";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { themePref } from "@/lib/theme-server";
@@ -33,16 +35,24 @@ export default async function LoginPage() {
   if (await getCurrentMember()) redirect("/dashboard");
   const demo = await loadDemoConfig();
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-8 px-4 py-10">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-3xl font-bold tracking-tight">{APP_NAME}</h1>
-        <p className="text-muted">{APP_TAGLINE}</p>
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-10 px-5 py-12">
+      <header className="flex flex-col gap-5">
+        <p className="font-display text-lg font-semibold tracking-display">
+          Global Shapers <span className="text-muted">Ljubljana</span>
+        </p>
+        <PageTitle accent="Hub" sub={APP_TAGLINE}>
+          Welcome to the
+        </PageTitle>
       </header>
-      <LoginForm demo={demo} />
-      <p className="text-xs text-subtle">No password yet, or forgot it? Ask an admin for a setup link.</p>
-      <div className="flex items-center justify-between gap-3 text-xs text-subtle">
-        <span>Appearance</span>
-        <ThemeSwitch initial={await themePref()} showLabels />
+      <div className={cardClass}>
+        <LoginForm demo={demo} />
+      </div>
+      <div className="flex flex-col gap-4 text-sm text-subtle">
+        <p>No password yet, or forgot it? Ask an admin for a setup link.</p>
+        <div className="flex items-center justify-between gap-3">
+          <span>Appearance</span>
+          <ThemeSwitch initial={await themePref()} showLabels />
+        </div>
       </div>
     </main>
   );

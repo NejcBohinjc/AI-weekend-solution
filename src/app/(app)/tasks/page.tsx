@@ -1,14 +1,15 @@
 import { and, asc, desc, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import Link from "next/link";
 import { after } from "next/server";
-import { AiBadge, DepartmentBadge, DueDate, PriorityBadge, StatusBadge, TypeBadge } from "@/components/task-badges";
+import { AiBadge, DepartmentBadge, DueDate, PriorityBadge, StatusBadge } from "@/components/task-badges";
+import { quietLinkClass } from "@/components/ui";
+import { EmptyState, PageTitle, PrimaryLink } from "@/components/ui-kit";
 import { db } from "@/db";
 import { departments, members, projects, tasks, taskSyncs } from "@/db/schema";
 import { requireMember } from "@/lib/auth";
-import { emailSettings } from "@/lib/email";
 import { PRIORITY_LABELS, STATUS_LABELS, TASK_PRIORITIES, TASK_STATUSES, TASK_TYPES, type TaskPriority, type TaskStatus } from "@/lib/tasks/constants";
 import { canEditTask } from "@/lib/tasks/permissions";
-import { myTasksCondition, priorityOrder, taskReminderSettingsFor } from "@/lib/tasks/queries";
+import { myTasksCondition, priorityOrder } from "@/lib/tasks/queries";
 import { sheetState } from "@/lib/tasks/sheet-state";
 import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { runTasksSyncQuietly, type SyncReport } from "@/lib/tasks/sheet-sync";
@@ -17,25 +18,24 @@ import { DoneToggle } from "./done-toggle";
 import { SyncReportPanel } from "./sync-panel";
 import { GeneralTasks } from "./general-tasks";
 import { SyncStatus } from "./sync-status";
-import { TaskReminderSettingsForm } from "./task-reminder-settings-form";
 
 type Search = { view?: string; type?: string; status?: string; priority?: string; deleted?: string; tab?: string; picked?: string; error?: string };
 
 /** My tasks / All tasks / General tasks. General tasks are a separate tab, never mixed into project tasks. */
 function TaskTabs({ current, href }: { current: "mine" | "all" | "general"; href: (v: "mine" | "all") => string }) {
   const tabs = [
-    { key: "mine", label: "My tasks", href: href("mine") },
-    { key: "all", label: "All tasks", href: href("all") },
-    { key: "general", label: "General tasks", href: "/tasks?tab=general" },
+    { key: "mine", label: "Mine", href: href("mine") },
+    { key: "all", label: "Everyone's", href: href("all") },
+    { key: "general", label: "General", href: "/tasks?tab=general" },
   ] as const;
   return (
-    <nav aria-label="Task view" className="flex rounded-xl bg-surface-3 p-1 text-sm font-medium">
+    <nav aria-label="Task view" className="inline-flex self-start rounded-pill bg-surface-3 p-1 font-display text-sm font-semibold">
       {tabs.map((t) => (
         <Link
           key={t.key}
           href={t.href}
           aria-current={current === t.key ? "page" : undefined}
-          className={`whitespace-nowrap rounded-lg px-3 py-1.5 ${current === t.key ? "bg-surface shadow-sm" : "text-muted"}`}
+          className={`whitespace-nowrap rounded-pill px-4 py-1.5 transition ${current === t.key ? "bg-surface text-fg shadow-card" : "text-muted hover:text-fg"}`}
         >
           {t.label}
         </Link>
@@ -51,14 +51,11 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const view = sp.view === "all" ? "all" : "mine";
   if (sp.tab === "general") {
     return (
-      <section className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">General tasks</h1>
-            <p className="text-sm text-muted">Standing tasks anyone can help with.</p>
-          </div>
-          <TaskTabs current="general" href={(v) => (v === "all" ? "/tasks?view=all" : "/tasks")} />
-        </div>
+      <section className="flex flex-col gap-8">
+        <PageTitle accent="tasks" sub="Standing tasks anyone can help with.">
+          General
+        </PageTitle>
+        <TaskTabs current="general" href={(v) => (v === "all" ? "/tasks?view=all" : "/tasks")} />
         <GeneralTasks me={me} picked={sp.picked === "1"} error={sp.error} />
       </section>
     );
@@ -77,7 +74,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   else if (type === "other") where.push(isNotNull(tasks.type), sql`lower(${tasks.type}) not in (${listedTypes})`);
   else if (type) where.push(sql`lower(${tasks.type}) = ${type.toLowerCase()}`);
 
-  const [rows, lastSync, syncStatus, reminders] = await Promise.all([
+  const [rows, lastSync, syncStatus] = await Promise.all([
     db
       .select({
         id: tasks.id,
@@ -116,7 +113,6 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           .limit(1)
       : Promise.resolve([]),
     tasksSyncStatus(),
-    taskReminderSettingsFor(me.id),
   ]);
   const today = todayInLjubljana();
   const href = (patch: Search) => {
@@ -125,25 +121,58 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     const qs = params.toString();
     return qs ? `/tasks?${qs}` : "/tasks";
   };
-  const open = rows.filter((r) => r.status !== "done").length;
   const toReview = rows.filter((r) => r.createdByAi && !r.aiConfirmedAt && r.assigneeId === me.id).length;
   const pendingInSheet = new Set(rows.filter((r) => sheetState(r) === "pending").map((r) => r.id));
 
+  const activeFilters = [type, status, priority].filter(Boolean).length;
+  const openRows = rows.filter((r) => r.status !== "done");
+  const doneRows = rows.filter((r) => r.status === "done");
+  const renderRow = (t: (typeof rows)[number]) => (
+    <li key={t.id} className="flex items-center">
+      <Link href={`/tasks/${t.id}`} className="flex min-w-0 flex-1 flex-col gap-1.5 px-5 py-4 transition hover:bg-surface-2">
+        <span className={`font-medium ${t.status === "done" ? "text-subtle line-through" : ""}`}>{t.title}</span>
+        <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          <StatusBadge status={t.status} />
+          {t.status !== "done" && <PriorityBadge priority={t.priority} />}
+          {t.createdByAi && <AiBadge confirmed={!!t.aiConfirmedAt} />}
+          {t.createdByAi && !t.aiConfirmedAt && t.assigneeId === me.id && <span className="text-xs font-semibold text-violet">Review</span>}
+          {t.dueDate && <DueDate date={t.dueDate} today={today} done={t.status === "done"} />}
+          {t.assigneeName ? (
+            <span className="text-sm text-muted">{t.assigneeName}</span>
+          ) : t.departmentName ? (
+            <span className="flex items-center gap-1.5 text-sm text-muted">
+              <DepartmentBadge name={t.departmentName} />
+              {t.departmentId && me.departmentIds.includes(t.departmentId) ? "your department" : "department"}
+            </span>
+          ) : (
+            <span className="text-sm text-warning">Unassigned{t.assigneeRaw && me.isAdmin ? ` (sheet: “${t.assigneeRaw}”)` : ""}</span>
+          )}
+          {t.projectName && <span className="text-sm text-subtle">in {t.projectName}</span>}
+          {!t.inSheet && me.isAdmin && <span className="text-xs text-subtle">no longer in sheet</span>}
+          {pendingInSheet.has(t.id) && <span className="text-xs text-warning">not in the sheet yet</span>}
+        </span>
+      </Link>
+      {canEditTask(me, t) && (
+        <div className="pr-4">
+          <DoneToggle taskId={t.id} title={t.title} done={t.status === "done"} />
+        </div>
+      )}
+    </li>
+  );
+  const listClass = "divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-card";
+
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{view === "mine" ? "My tasks" : "All tasks"}</h1>
-          <p className="text-sm text-muted">
-            {rows.length} {rows.length === 1 ? "task" : "tasks"}, {open} open
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href="/tasks/new" className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
-            New task
-          </Link>
-          <TaskTabs current={view} href={(v) => href({ view: v })} />
-        </div>
+    <section className="flex flex-col gap-8">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <PageTitle accent="tasks" sub={`${rows.length} ${rows.length === 1 ? "task" : "tasks"}, ${openRows.length} open`}>
+          {view === "mine" ? "My" : "All"}
+        </PageTitle>
+        <PrimaryLink href="/tasks/new">New task</PrimaryLink>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <TaskTabs current={view} href={(v) => href({ view: v })} />
+        <SyncStatus initial={syncStatus} awaitSync={pendingInSheet.size > 0} />
       </div>
 
       {sp.deleted && (
@@ -152,113 +181,112 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         </p>
       )}
       {toReview > 0 && (
-        <p className="rounded-xl border border-violet-line bg-violet-bg px-4 py-3 text-sm text-violet" data-testid="review-banner">
+        <p className="rounded-card border border-violet-line bg-violet-bg px-5 py-4 text-sm text-violet" data-testid="review-banner">
           {toReview === 1 ? "1 task the AI created from meeting notes is" : `${toReview} tasks the AI created from meeting notes are`} waiting for
           your review. Open it to confirm, change or delete it.
         </p>
       )}
-      <SyncStatus initial={syncStatus} awaitSync={pendingInSheet.size > 0} />
-      {me.isAdmin && lastSync[0] && <SyncReportPanel report={lastSync[0].report as SyncReport} by={lastSync[0].by ?? null} />}
-
-      <div className="flex flex-col gap-2 text-sm">
-        <FilterRow label="Type">
-          <Chip href={href({ type: "" })} active={!type}>
-            Any
-          </Chip>
-          {TASK_TYPES.map((t) => (
-            <Chip key={t} href={href({ type: t })} active={type === t}>
-              {t}
-            </Chip>
-          ))}
-          <Chip href={href({ type: "none" })} active={type === "none"}>
-            No type
-          </Chip>
-          <Chip href={href({ type: "other" })} active={type === "other"}>
-            Other types
-          </Chip>
-        </FilterRow>
-        <FilterRow label="Priority">
-          <Chip href={href({ priority: "" })} active={!priority}>
-            Any
-          </Chip>
-          {TASK_PRIORITIES.map((p) => (
-            <Chip key={p} href={href({ priority: p })} active={priority === p}>
-              {PRIORITY_LABELS[p]}
-            </Chip>
-          ))}
-        </FilterRow>
-        <FilterRow label="Status">
-          <Chip href={href({ status: "" })} active={!status}>
-            Any
-          </Chip>
-          {TASK_STATUSES.map((s) => (
-            <Chip key={s} href={href({ status: s })} active={status === s}>
-              {STATUS_LABELS[s]}
-            </Chip>
-          ))}
-        </FilterRow>
-      </div>
-
-      {rows.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line-strong bg-surface px-4 py-8 text-center text-sm text-subtle">
-          {view === "mine" ? "No tasks assigned to you" : "No tasks"}
-          {type || status || priority ? " with these filters." : "."}
-        </p>
-      ) : (
-        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm" data-testid="task-list">
-          {rows.map((t) => (
-            <li key={t.id} className="flex items-center">
-              <Link href={`/tasks/${t.id}`} className="flex min-w-0 flex-1 flex-col gap-1.5 px-4 py-3 hover:bg-surface-2">
-                <span className={`font-medium ${t.status === "done" ? "text-subtle line-through" : ""}`}>{t.title}</span>
-                <span className="flex flex-wrap items-center gap-2">
-                  <StatusBadge status={t.status} />
-                  {t.status !== "done" && <PriorityBadge priority={t.priority} />}
-                  {t.createdByAi && <AiBadge confirmed={!!t.aiConfirmedAt} />}
-                  {t.createdByAi && !t.aiConfirmedAt && t.assigneeId === me.id && (
-                    <span className="text-xs font-semibold text-violet">Review</span>
-                  )}
-                  {t.type && <TypeBadge type={t.type} />}
-                  {t.dueDate && <DueDate date={t.dueDate} today={today} done={t.status === "done"} />}
-                  {t.assigneeName ? (
-                    <span className="text-xs text-muted">{t.assigneeName}</span>
-                  ) : t.departmentName ? (
-                    <span className="flex items-center gap-1 text-xs text-muted">
-                      <DepartmentBadge name={t.departmentName} />
-                      {t.departmentId && me.departmentIds.includes(t.departmentId) ? "your department" : "department"}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-warning">
-                      Unassigned{t.assigneeRaw && me.isAdmin ? ` (sheet: “${t.assigneeRaw}”)` : ""}
-                    </span>
-                  )}
-                  {t.projectName && <span className="text-xs text-subtle">in {t.projectName}</span>}
-                  {!t.inSheet && me.isAdmin && <span className="text-xs text-subtle">no longer in sheet</span>}
-                  {pendingInSheet.has(t.id) && <span className="text-xs text-warning">not in the sheet yet</span>}
-                </span>
-              </Link>
-              {canEditTask(me, t) && (
-                <div className="pr-3">
-                  <DoneToggle taskId={t.id} title={t.title} done={t.status === "done"} />
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
+      {me.isAdmin && lastSync[0] && (
+        <details className="group rounded-card border border-line bg-surface">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3.5 text-sm font-medium text-muted">
+            Sheet sync details · admins
+            <span aria-hidden className="transition group-open:rotate-45">+</span>
+          </summary>
+          <div className="border-t border-line p-4">
+            <SyncReportPanel report={lastSync[0].report as SyncReport} by={lastSync[0].by ?? null} />
+          </div>
+        </details>
       )}
 
-      <div className="flex flex-col gap-2">
-        <h2 className="font-semibold">Deadline reminders</h2>
-        <TaskReminderSettingsForm email={me.email} enabled={reminders.enabled} daysBefore={reminders.daysBefore} sending={emailSettings().sending} />
-      </div>
+      <details open={activeFilters > 0} className="group rounded-card border border-line bg-surface">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3.5 font-display text-sm font-semibold">
+          <span>
+            Filters
+            {activeFilters > 0 && <span className="ml-2 rounded-pill bg-primary px-2 py-0.5 text-xs text-on-primary">{activeFilters}</span>}
+          </span>
+          <span aria-hidden className="text-muted transition group-open:rotate-45">+</span>
+        </summary>
+        <div className="flex flex-col gap-3 border-t border-line p-5 text-sm">
+          <FilterRow label="Type">
+            <Chip href={href({ type: "" })} active={!type}>
+              Any
+            </Chip>
+            {TASK_TYPES.map((t) => (
+              <Chip key={t} href={href({ type: t })} active={type === t}>
+                {t}
+              </Chip>
+            ))}
+            <Chip href={href({ type: "none" })} active={type === "none"}>
+              No type
+            </Chip>
+            <Chip href={href({ type: "other" })} active={type === "other"}>
+              Other types
+            </Chip>
+          </FilterRow>
+          <FilterRow label="Status">
+            <Chip href={href({ status: "" })} active={!status}>
+              Any
+            </Chip>
+            {TASK_STATUSES.map((s) => (
+              <Chip key={s} href={href({ status: s })} active={status === s}>
+                {STATUS_LABELS[s]}
+              </Chip>
+            ))}
+          </FilterRow>
+          <FilterRow label="Priority">
+            <Chip href={href({ priority: "" })} active={!priority}>
+              Any
+            </Chip>
+            {TASK_PRIORITIES.map((p) => (
+              <Chip key={p} href={href({ priority: p })} active={priority === p}>
+                {PRIORITY_LABELS[p]}
+              </Chip>
+            ))}
+          </FilterRow>
+          {activeFilters > 0 && (
+            <Link href={href({ type: "", status: "", priority: "" })} className={quietLinkClass}>
+              Clear filters
+            </Link>
+          )}
+        </div>
+      </details>
+
+      {rows.length === 0 ? (
+        <EmptyState
+          title={view === "mine" ? "No tasks assigned to you" : "No tasks"}
+          hint={activeFilters > 0 ? "Nothing matches these filters." : "Add one, or pick up a general task."}
+          href={activeFilters > 0 ? href({ type: "", status: "", priority: "" }) : "/tasks/new"}
+          action={activeFilters > 0 ? "Clear filters" : "Add a task"}
+        />
+      ) : (
+        <div className="flex flex-col gap-6">
+          {openRows.length > 0 && (
+            <ul className={listClass} data-testid="task-list">
+              {openRows.map(renderRow)}
+            </ul>
+          )}
+          {doneRows.length > 0 && (
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-1 pb-3 font-display text-sm font-semibold text-muted hover:text-fg">
+                <span aria-hidden className="transition group-open:rotate-90">›</span>
+                {doneRows.length} finished
+              </summary>
+              <ul className={listClass} data-testid="task-list-done">
+                {doneRows.map(renderRow)}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
     </section>
   );
 }
 
 function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 overflow-x-auto">
-      <span className="w-16 shrink-0 text-xs font-semibold uppercase tracking-wide text-subtle">{label}</span>
-      {children}
+    <div className="flex flex-col gap-1.5">
+      <span className="font-display text-xs font-semibold uppercase tracking-eyebrow text-subtle">{label}</span>
+      <div className="flex flex-wrap gap-2">{children}</div>
     </div>
   );
 }
@@ -268,7 +296,7 @@ function Chip({ href, active, children }: { href: string; active: boolean; child
     <Link
       href={href}
       aria-current={active ? "true" : undefined}
-      className={`shrink-0 rounded-full px-3 py-1 ${active ? "bg-primary text-on-primary" : "bg-surface text-fg-2 ring-1 ring-line hover:bg-surface-2"}`}
+      className={`rounded-pill px-3.5 py-1.5 text-sm font-medium transition ${active ? "bg-primary text-on-primary" : "bg-surface-3 text-fg-2 hover:bg-surface-4"}`}
     >
       {children}
     </Link>

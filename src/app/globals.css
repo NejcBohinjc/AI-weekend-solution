@@ -9,23 +9,25 @@
 :root {
   color-scheme: light;
 
-  --page: #f8fafc;
+  /* Light: the site's porcelain base (#fbfaf9), ink (#14130f) and blue (#0b3ae0). */
+  --page: #fbfaf9;
   --surface: #ffffff; /* cards, inputs */
-  --surface-2: #f8fafc; /* hover, subtle fills */
-  --surface-3: #f1f5f9; /* segmented controls, quiet notes */
-  --surface-4: #e2e8f0; /* tracks, strong fills */
-  --fg: #0f172a; /* main text */
-  --fg-2: #334155; /* secondary strong text, labels */
-  --muted: #475569; /* supporting text */
-  --subtle: #5b6779; /* hints, timestamps */
-  --line: #e2e8f0;
-  --line-strong: #cbd5e1;
+  --surface-2: #f5f4f2; /* hover, subtle fills */
+  --surface-3: #ebebe9; /* segmented controls, quiet notes (the site's "well") */
+  --surface-4: #dbdad7; /* tracks, strong fills */
+  --fg: #14130f; /* main text (the site's ink) */
+  --fg-2: #2e2c27; /* secondary strong text, labels */
+  --muted: #4a4740; /* supporting text (the site's ink-soft) */
+  --subtle: #66625a; /* hints, timestamps */
+  --line: #e2e0dc;
+  --line-strong: #bdbab3;
 
-  --primary: #0f172a; /* main buttons, active nav and chips */
-  --primary-hover: #334155;
+  --primary: #0b3ae0; /* main buttons, active nav and chips */
+  --primary-hover: #0a2fb8;
   --on-primary: #ffffff;
-  --link: #0037d6;
-  --link-hover: #002a9e;
+  --link: #0b3ae0;
+  --link-hover: #0828a8;
+  --brand: #0b3ae0; /* the italic accent word in headings, eyebrows */
 
   --success-bg: #ecfdf5;
   --success: #047857;
@@ -87,6 +89,7 @@
   --on-primary: #ffffff;
   --link: #8fa9ff;
   --link-hover: #b8c8ff;
+  --brand: #6f90ff;
 
   --success-bg: #0d2a20;
   --success: #6ee7b7;
@@ -127,8 +130,31 @@
   --viz-cell-ink: #0b0b0b;
 }
 
+/* Shape, shadow, type: shared by every page (rounded cards, pill buttons, calm shadows). */
+:root {
+  --elev-card: 0 1px 2px rgb(20 19 15 / 0.04), 0 8px 24px -12px rgb(20 19 15 / 0.12);
+  --elev-pop: 0 2px 6px rgb(20 19 15 / 0.08), 0 20px 48px -16px rgb(20 19 15 / 0.28);
+  --elev-button: 0 1px 2px rgb(11 58 224 / 0.25), 0 10px 24px -10px rgb(11 58 224 / 0.55);
+  --ease-out: cubic-bezier(0.65, 0.05, 0, 1); /* the site's easing */
+}
+[data-theme="dark"] {
+  --elev-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 8px 24px -12px rgb(0 0 0 / 0.6);
+  --elev-pop: 0 2px 6px rgb(0 0 0 / 0.5), 0 20px 48px -16px rgb(0 0 0 / 0.8);
+  --elev-button: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 24px -10px rgb(0 65 255 / 0.55);
+}
+
 /* Tailwind utilities for the tokens: bg-surface, text-muted, border-line, bg-success-bg, ... */
 @theme inline {
+  --font-sans: var(--font-satoshi), system-ui, sans-serif;
+  --font-display: var(--font-clash), "Inter Tight", system-ui, sans-serif; /* headings, buttons, numbers */
+  --font-serif: var(--font-instrument), Georgia, serif; /* the italic accent word */
+  --radius-card: 1.25rem; /* cards */
+  --radius-pill: 100px; /* buttons, chips, badges */
+  --shadow-card: var(--elev-card);
+  --shadow-pop: var(--elev-pop);
+  --shadow-button: var(--elev-button);
+  --tracking-eyebrow: 0.16em;
+  --tracking-display: -0.02em;
   --color-page: var(--page);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
@@ -145,6 +171,7 @@
   --color-on-primary: var(--on-primary);
   --color-link: var(--link);
   --color-link-hover: var(--link-hover);
+  --color-brand: var(--brand);
   --color-success-bg: var(--success-bg);
   --color-success: var(--success);
   --color-success-line: var(--success-line);
@@ -177,5 +204,26 @@
 }
 
 body {
-  @apply bg-page text-fg antialiased;
+  @apply bg-page font-sans text-fg antialiased;
+  font-feature-settings: "kern", "liga";
+}
+
+::selection {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+/* Visible keyboard focus everywhere, in the brand colour. */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

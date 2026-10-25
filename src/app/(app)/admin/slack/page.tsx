@@ -31,8 +31,8 @@ export default async function AdminSlackPage() {
   if (!api) {
     return (
       <section className="flex max-w-3xl flex-col gap-4">
-        <h1 className="text-2xl font-bold tracking-tight">Slack</h1>
-        <div className="flex flex-col gap-2 rounded-2xl border border-line bg-surface p-4 text-sm text-fg-2">
+        <h1 className="font-display text-3xl font-semibold tracking-display">Slack</h1>
+        <div className="flex flex-col gap-2 rounded-card border border-line bg-surface p-5 shadow-card text-sm text-fg-2">
           <p className="font-semibold text-fg">Slack is not connected (optional).</p>
           <p>With Slack connected, every meeting is announced in its series&apos; channel 3 days and 1 day before, mentioning the people invited. The rest of the app writes nothing to Slack.</p>
           <ol className="list-decimal space-y-1 pl-5">
@@ -40,7 +40,7 @@ export default async function AdminSlackPage() {
               At api.slack.com/apps: <em>Create New App</em> → <em>From scratch</em>, pick your workspace.
             </li>
             <li>
-              <em>OAuth &amp; Permissions</em> → Bot Token Scopes: {SCOPES.map((s) => <code key={s} className="mx-0.5 rounded bg-surface-3 px-1">{s}</code>)}
+              <em>OAuth &amp; Permissions</em> → Bot Token Scopes: {SCOPES.map((s) => <span key={s}><code className="rounded bg-surface-3 px-1">{s}</code>{" "}</span>)}
             </li>
             <li>
               <em>Install to Workspace</em>, copy the <em>Bot User OAuth Token</em> (xoxb-…) into <code className="rounded bg-surface-3 px-1">SLACK_BOT_TOKEN</code> and redeploy.
@@ -76,7 +76,7 @@ export default async function AdminSlackPage() {
   return (
     <section className="flex max-w-4xl flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Slack</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-display">Slack</h1>
         <p className="text-sm text-muted">
           {info.team ? (
             <>
@@ -92,7 +92,7 @@ export default async function AdminSlackPage() {
         </p>
       ))}
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
+      <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card">
         <h2 className="font-semibold">Channels</h2>
         <p className="text-xs text-subtle">
           A series without a channel uses the default. The app joins public channels by itself; for a private channel, type <code>/invite @{info.bot ?? "app"}</code> in it.
@@ -122,7 +122,7 @@ export default async function AdminSlackPage() {
         </SlackForm>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
+      <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="font-semibold">Announcements in the next 14 days</h2>
           <span className="text-xs text-subtle">
@@ -155,7 +155,7 @@ export default async function AdminSlackPage() {
         <SlackForm action={syncSlackNowAction} submitLabel="Sync with Slack now" label="Sync with Slack" />
       </div>
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
+      <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card">
         <h2 className="font-semibold">People on Slack</h2>
         <p className="text-xs text-subtle">
           {matched} of {people.length} members are linked to a Slack account, so announcements mention them. Members are found by their email; pick the account by hand when it differs.

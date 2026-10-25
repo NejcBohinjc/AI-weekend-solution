@@ -10,7 +10,7 @@ type Props = { email: string; emailEnabled: boolean; minutesBefore: number[]; se
 export function ReminderSettingsForm({ email, emailEnabled, minutesBefore, sending }: Props) {
   const [state, formAction, pending] = useActionState(saveReminderSettingsAction, {} as ReminderSettingsState);
   return (
-    <form action={formAction} className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4" aria-label="Reminder settings">
+    <form action={formAction} className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card" aria-label="Reminder settings">
       <label className="flex items-center gap-2 font-medium">
         <input type="checkbox" name="emailEnabled" defaultChecked={emailEnabled} className="size-4" />
         Email me before my meetings

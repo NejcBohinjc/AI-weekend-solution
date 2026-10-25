@@ -44,21 +44,21 @@ export function WeekProgress({
   const pct = targetHours > 0 ? Math.min(100, Math.round((totalMs / 3_600_000 / targetHours) * 100)) : 0;
   return (
     <div className="flex flex-col gap-1.5" data-testid="week-progress">
-      <div className="flex items-baseline justify-between gap-2 text-sm">
-        <span className="font-medium">{label}</span>
-        <span className="tabular-nums">
-          <strong className="text-base">{formatHours(totalMs)}</strong> / {targetHours} h <span className="text-subtle">· {pct}%</span>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm font-medium text-fg-2">{label}</span>
+        <span className="tabular-nums text-sm text-muted">
+          <strong className="font-display text-2xl font-semibold text-fg">{formatHours(totalMs)}</strong> / {targetHours} h <span className="text-subtle">· {pct}%</span>
         </span>
       </div>
       <div
-        className="h-2.5 overflow-hidden rounded-full bg-surface-3"
+        className="h-3 overflow-hidden rounded-full bg-surface-3"
         role="progressbar"
         aria-valuenow={pct}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={`${label}: ${pct}% of ${targetHours} hours`}
       >
-        <div className={`h-full rounded-full ${pct >= 100 ? "bg-success-solid" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+        <div className={`h-full rounded-full transition-[width] duration-700 ${pct >= 100 ? "bg-success-solid" : "bg-primary"}`} style={{ width: `${pct}%` }} />
       </div>
       {byLocation && totalMs > 0 && <LocationSplit totals={byLocation} className="text-xs text-muted" />}
     </div>
@@ -106,7 +106,7 @@ export function EntryList({
       {[...days].map(([day, list]) => {
         const dayMs = list.reduce((s, e) => s + ((e.endedAt ?? now).getTime() - e.startedAt.getTime()), 0);
         return (
-          <li key={day} className="overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
+          <li key={day} className="overflow-hidden rounded-card border border-line bg-surface shadow-card">
             <div className="flex justify-between bg-surface-2 px-4 py-2 text-sm">
               <span className="font-semibold">{formatDay(day)}</span>
               <span className="tabular-nums text-muted">{formatDuration(dayMs)}</span>
@@ -177,7 +177,7 @@ export function WeekHistory({
   hrefFor: (week: string) => string;
 }) {
   return (
-    <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm" data-testid="week-history">
+    <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-card" data-testid="week-history">
       {fromFirstWeekWithHours(weeks).map(({ week, totalMs, byLocation }) => {
         const pct = targetHours > 0 ? Math.round((totalMs / 3_600_000 / targetHours) * 100) : 0;
         return (

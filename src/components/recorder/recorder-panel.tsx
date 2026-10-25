@@ -55,15 +55,15 @@ export function RecorderPanel({ meetings, initialId, storageReady }: { meetings:
           </div>
           <div className="flex w-full max-w-xs gap-2">
             {r.phase === "paused" ? (
-              <button type="button" onClick={r.resume} className="flex-1 rounded-xl bg-primary px-4 py-3 text-base font-semibold text-on-primary hover:bg-primary-hover">
+              <button type="button" onClick={r.resume} className="flex-1 rounded-pill font-display bg-primary px-4 py-3 text-base font-semibold text-on-primary hover:bg-primary-hover">
                 Resume
               </button>
             ) : (
-              <button type="button" onClick={r.pause} disabled={r.phase !== "recording"} className="flex-1 rounded-xl bg-surface px-4 py-3 text-base font-semibold text-fg ring-1 ring-inset ring-line-strong hover:bg-surface-2 disabled:opacity-50">
+              <button type="button" onClick={r.pause} disabled={r.phase !== "recording"} className="flex-1 rounded-pill font-display bg-surface px-4 py-3 text-base font-semibold text-fg ring-1 ring-inset ring-line-strong hover:bg-surface-2 disabled:opacity-50">
                 Pause
               </button>
             )}
-            <button type="button" onClick={() => r.stop()} disabled={r.phase === "stopping"} className="flex-1 rounded-xl bg-danger-solid px-4 py-3 text-base font-semibold text-on-primary hover:bg-danger-solid-hover disabled:opacity-50">
+            <button type="button" onClick={() => r.stop()} disabled={r.phase === "stopping"} className="flex-1 rounded-pill font-display bg-danger-solid px-4 py-3 text-base font-semibold text-on-primary hover:bg-danger-solid-hover disabled:opacity-50">
               Stop
             </button>
           </div>
@@ -108,7 +108,7 @@ export function RecorderPanel({ meetings, initialId, storageReady }: { meetings:
             type="button"
             disabled={!picked || !consent || busy || !storageReady || r.supported?.ok === false}
             onClick={() => picked && void r.start({ id: picked.id, title: picked.title })}
-            className="flex items-center justify-center gap-2 rounded-xl bg-danger-solid px-5 py-3.5 text-base font-semibold text-on-primary shadow-sm hover:bg-danger-solid-hover disabled:opacity-50"
+            className="flex items-center justify-center gap-2 rounded-pill font-display bg-danger-solid px-5 py-3.5 text-base font-semibold text-on-primary shadow-sm hover:bg-danger-solid-hover disabled:opacity-50"
           >
             <span aria-hidden className="size-3 rounded-full bg-on-primary" />
             {r.phase === "starting" ? "Starting…" : "Record meeting"}

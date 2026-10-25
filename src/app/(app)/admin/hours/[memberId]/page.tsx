@@ -44,7 +44,7 @@ export default async function AdminMemberHoursPage({
       </Link>
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+          <h1 className="flex items-center gap-2 font-display text-3xl font-semibold tracking-display">
             {member.name} <TierBadge tier={member.tier} />
           </h1>
           <p className="text-sm text-muted">

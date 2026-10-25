@@ -1,6 +1,8 @@
 import { and, asc, eq, gte, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
 import Link from "next/link";
 import { TierBadge } from "@/components/badges";
+import { cardClass, quietLinkClass } from "@/components/ui";
+import { Arrow, EmptyState, PageTitle, Section } from "@/components/ui-kit";
 import { WeekProgress } from "@/components/hours";
 import { AttendanceBadge, meetingWhen, SeriesBadge } from "@/components/meetings";
 import { db } from "@/db";
@@ -85,87 +87,105 @@ export default async function DashboardPage() {
   const happening = confirmed.filter((r) => meetingPhase(r.meeting, now) === "open");
   const next = confirmed.find((r) => meetingPhase(r.meeting, now) === "upcoming");
 
+  const today = todayInLjubljana();
   return (
-    <section className="flex max-w-2xl flex-col gap-4">
-      <h1 className="text-2xl font-bold tracking-tight">
-        {greeting(now)}, {firstName}.
-      </h1>
-      <p className="flex flex-wrap items-center gap-2 text-muted">
-        <TierBadge tier={member.tier} />
-        <span>Your weekly commitment is {member.weeklyHours} hours.</span>
-      </p>
+    <section className="flex max-w-2xl flex-col gap-10">
+      <PageTitle
+        accent={firstName}
+        sub={
+          <span className="flex flex-wrap items-center gap-2">
+            <TierBadge tier={member.tier} />
+            Your weekly commitment is {member.weeklyHours} hours.
+          </span>
+        }
+      >
+        {greeting(now)},
+      </PageTitle>
+
       {happening.map((r) => (
         <NowMeetingCard key={r.meeting.id} meeting={r.meeting} state={r.state} note={r.note} source={r.source} now={now} />
       ))}
-      <TimerCard startedAt={week.running?.startedAt.toISOString() ?? null} renderedAt={now.toISOString()} location={week.running?.location} defaultLocation={defaultLocation} />
-      <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4">
-        <WeekProgress totalMs={week.totalMs} targetHours={member.weeklyHours} byLocation={week.byLocation} />
-        <Link href="/hours" className="self-end text-sm font-medium text-muted hover:text-fg">
-          Your hours →
-        </Link>
-      </div>
-      <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4" data-testid="tasks-card">
-        <div className="flex items-center justify-between gap-3">
-          <Link href="/tasks" className="flex flex-col hover:text-fg-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-subtle">Your tasks</span>
-            <span className="font-semibold">
-              {openTasks.n} open {openTasks.n === 1 ? "task" : "tasks"}
-            </span>
-            {openTasks.department > 0 && <span className="text-sm text-muted">{openTasks.department} for your whole department</span>}
-            {openTasks.review > 0 && <span className="text-sm font-medium text-violet">{openTasks.review} from AI to review</span>}
-          </Link>
-          <Link href="/tasks/new" className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
-            New task
-          </Link>
+
+      <Section n={1} title="This week" action={<Link href="/hours" className={quietLinkClass}>Hours history</Link>}>
+        <div className={`${cardClass} flex flex-col gap-6`}>
+          <TimerCard startedAt={week.running?.startedAt.toISOString() ?? null} renderedAt={now.toISOString()} location={week.running?.location} defaultLocation={defaultLocation} />
+          <div className="border-t border-line pt-5">
+            <WeekProgress totalMs={week.totalMs} targetHours={member.weeklyHours} byLocation={week.byLocation} />
+          </div>
         </div>
-        {myOpen.length > 0 && (
-          <ul className="divide-y divide-line border-t border-line" aria-label="My open tasks">
-            {myOpen.map((t) => (
-              <li key={t.id} className="flex items-center gap-3 py-2">
-                <DoneToggle taskId={t.id} title={t.title} done={false} />
-                <Link href={`/tasks/${t.id}`} className="min-w-0 flex-1 truncate text-sm hover:underline">
-                  {t.title}
-                </Link>
-                {t.dueDate && <DueDate date={t.dueDate} today={todayInLjubljana()} done={false} />}
-              </li>
-            ))}
-          </ul>
+      </Section>
+
+      <Section n={2} title="Your tasks" action={<Link href="/tasks/new" className={quietLinkClass}>+ New task</Link>}>
+        {myOpen.length > 0 ? (
+          <div className={`${cardClass} flex flex-col gap-1 !p-0`} data-testid="tasks-card">
+            <ul className="divide-y divide-line px-5" aria-label="My open tasks">
+              {myOpen.map((t) => (
+                <li key={t.id} className="flex items-center gap-3 py-3.5">
+                  <DoneToggle taskId={t.id} title={t.title} done={false} />
+                  <Link href={`/tasks/${t.id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">
+                    {t.title}
+                  </Link>
+                  {t.dueDate && <DueDate date={t.dueDate} today={today} done={false} />}
+                </li>
+              ))}
+            </ul>
+            <Link href="/tasks" className="group flex items-center justify-between gap-3 border-t border-line px-5 py-3.5 text-sm font-medium text-muted hover:text-fg">
+              <span>
+                {openTasks.n} open {openTasks.n === 1 ? "task" : "tasks"}
+                {openTasks.department > 0 && ` · ${openTasks.department} for your department`}
+                {openTasks.review > 0 && <span className="text-violet"> · {openTasks.review} from AI to review</span>}
+              </span>
+              <span className="flex items-center gap-1.5">
+                All tasks <Arrow />
+              </span>
+            </Link>
+          </div>
+        ) : (
+          <EmptyState title="Nothing on your plate." hint="Add a task for yourself, or pick up a general task." href="/tasks/new" action="Add a task" />
         )}
-      </div>
-      {waitingNotes && waitingNotes.total > 0 && (
-        <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4" data-testid="notes-waiting">
-          <span className="text-xs font-semibold uppercase tracking-wide text-subtle">Create tasks for meetings</span>
-          <span className="font-semibold">
-            {waitingNotes.total} meeting {waitingNotes.total === 1 ? "note is" : "notes are"} waiting for “Create tasks from notes”
-          </span>
-          <ul className="flex flex-col gap-1 text-sm">
-            {waitingNotes.meetings.slice(0, 4).map((m) => (
-              <li key={m.meetingId}>
-                <Link href={`/meetings/${m.meetingId}#notes`} className="text-fg-2 underline-offset-2 hover:underline">
-                  {m.title} · {m.startsAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: TIMEZONE })}
-                  {m.notes > 1 ? ` (${m.notes})` : ""}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+      </Section>
+
+      {(next || (waitingNotes && waitingNotes.total > 0)) && (
+        <Section n={3} title="Next up">
+          {next && (
+            <Link href={`/meetings/${next.meeting.id}`} className={`${cardClass} group flex flex-col gap-2 transition hover:bg-surface-2`} data-testid="next-meeting">
+              <span className="font-display text-xl font-semibold tracking-display">{next.meeting.title}</span>
+              <span className="flex flex-wrap items-center gap-2 text-sm text-muted">
+                {meetingWhen(next.meeting)}
+                <SeriesBadge series={next.meeting.series} />
+                {next.state && <AttendanceBadge state={next.state} />}
+              </span>
+            </Link>
+          )}
+          {waitingNotes && waitingNotes.total > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-card bg-surface-3 px-5 py-3.5 text-sm" data-testid="notes-waiting">
+              <span className="text-fg-2">
+                {waitingNotes.total} meeting {waitingNotes.total === 1 ? "note is" : "notes are"} waiting for tasks:{" "}
+                {waitingNotes.meetings.slice(0, 2).map((m, i) => (
+                  <span key={m.meetingId}>
+                    {i > 0 && ", "}
+                    <Link href={`/meetings/${m.meetingId}#notes`} className="font-medium underline-offset-4 hover:underline">
+                      {m.title} · {m.startsAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: TIMEZONE })}
+                    </Link>
+                  </span>
+                ))}
+                {waitingNotes.meetings.length > 2 && ` and ${waitingNotes.meetings.length - 2} more`}
+              </span>
+            </div>
+          )}
+        </Section>
       )}
+
       {recordable && (
-        <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4" data-testid="record-card">
-          <span className="text-xs font-semibold uppercase tracking-wide text-subtle">Record meeting · admins</span>
-          <RecorderPanel meetings={recordable.list} initialId={recordable.nowId} storageReady={storageConfigured()} />
-        </div>
-      )}
-      {next && (
-        <Link href={`/meetings/${next.meeting.id}`} className="flex flex-col gap-1 rounded-xl border border-line bg-surface p-4 hover:bg-surface-2" data-testid="next-meeting">
-          <span className="text-xs font-semibold uppercase tracking-wide text-subtle">Next meeting</span>
-          <span className="font-semibold">{next.meeting.title}</span>
-          <span className="flex flex-wrap items-center gap-2 text-sm text-muted">
-            {meetingWhen(next.meeting)}
-            <SeriesBadge series={next.meeting.series} />
-            {next.state && <AttendanceBadge state={next.state} />}
-          </span>
-        </Link>
+        <details className="group rounded-card border border-line bg-surface" data-testid="record-card">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 font-display text-sm font-semibold">
+            <span>Record a meeting <span className="font-sans font-normal text-subtle">· admins</span></span>
+            <span aria-hidden className="text-muted transition group-open:rotate-45">+</span>
+          </summary>
+          <div className="border-t border-line p-5">
+            <RecorderPanel meetings={recordable.list} initialId={recordable.nowId} storageReady={storageConfigured()} />
+          </div>
+        </details>
       )}
     </section>
   );

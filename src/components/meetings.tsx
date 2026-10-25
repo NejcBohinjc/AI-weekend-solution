@@ -28,21 +28,42 @@ export function meetingWhen(m: Pick<Meeting, "startsAt" | "endsAt">): string {
   return `${formatDay(s.date)}, ${s.time}–${e.time}${e.date !== s.date ? " (next day)" : ""}`;
 }
 
-/** One meeting in a list, linking to its page. */
-export function MeetingRow({ meeting, state, href }: { meeting: Meeting; state?: AttendanceState | null; href: string }) {
+const MEDIA_ICONS = [
+  { key: "recording", icon: "🎙", label: "Recording available" },
+  { key: "transcript", icon: "📝", label: "Transcript available" },
+  { key: "summary", icon: "✦", label: "Summary available" },
+] as const;
+
+/** Small icons for what a past meeting has: recording, transcript, summary (nothing when it has none). */
+export function MediaIcons({ media }: { media?: { recording: boolean; transcript: boolean; summary: boolean } }) {
+  const shown = MEDIA_ICONS.filter((m) => media?.[m.key]);
+  if (!shown.length) return null;
+  return (
+    <span className="flex items-center gap-1 text-sm" data-testid="media-icons">
+      {shown.map((m) => (
+        <span key={m.key} role="img" aria-label={m.label} title={m.label} data-media={m.key}>
+          {m.icon}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** One meeting in a list, linking to its page. `media`: what a past meeting has (icons). */
+export function MeetingRow({ meeting, state, href, media }: { meeting: Meeting; state?: AttendanceState | null; href: string; media?: { recording: boolean; transcript: boolean; summary: boolean } }) {
   const off = meeting.status !== "confirmed";
+  // The series is named in most titles already ("Summer School meeting"): no second label then.
+  const showSeries = !meeting.title.toLowerCase().includes(meeting.series.toLowerCase());
   return (
     <li>
-      <Link href={href} className={`flex flex-col gap-1 px-4 py-3 hover:bg-surface-2 sm:flex-row sm:items-center sm:gap-3 ${off ? "opacity-60" : ""}`}>
+      <Link href={href} className={`flex items-center gap-3 px-4 py-3.5 transition hover:bg-surface-2 sm:px-5 ${off ? "opacity-60" : ""}`}>
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className={`font-medium ${off ? "line-through" : ""}`}>{meeting.title}</span>
-          <span className="text-sm text-muted">
-            {meetingWhen(meeting)}
-            {meeting.location && ` · ${meeting.location}`}
-          </span>
+          <span className={`font-display font-semibold tracking-display ${off ? "line-through" : ""}`}>{meeting.title}</span>
+          <span className="text-sm text-muted">{meetingWhen(meeting)}</span>
         </span>
-        <span className="flex flex-wrap items-center gap-1.5">
-          <SeriesBadge series={meeting.series} />
+        <span className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-2">
+          <MediaIcons media={media} />
+          {showSeries && <SeriesBadge series={meeting.series} />}
           {off ? <span className="text-xs font-medium text-subtle">Cancelled</span> : state !== undefined && <AttendanceBadge state={state} />}
         </span>
       </Link>

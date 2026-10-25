@@ -2,6 +2,7 @@
 
 import { useActionState, useRef } from "react";
 import { inputClass, labelClass, primaryButtonClass, errorClass, secondaryButtonClass } from "@/components/ui";
+import { Arrow } from "@/components/ui-kit";
 import { loginAction, type LoginState } from "@/lib/auth/actions";
 
 type DemoAccount = { label: string; name: string; email: string };
@@ -42,13 +43,14 @@ export function LoginForm({ demo }: { demo: DemoConfig | null }) {
             {state.error}
           </p>
         )}
-        <button type="submit" disabled={pending} className={primaryButtonClass}>
+        <button type="submit" disabled={pending} className={`group ${primaryButtonClass}`}>
           {pending ? "Signing in…" : "Sign in"}
+          {!pending && <Arrow />}
         </button>
       </form>
 
       {demo && (
-        <section aria-label="Demo accounts" className="rounded-xl border border-dashed border-warning-line bg-warning-bg p-4">
+        <section aria-label="Demo accounts" className="rounded-2xl border border-dashed border-warning-line bg-warning-bg p-4">
           <h2 className="text-sm font-semibold text-warning">Demo accounts</h2>
           <p className="mt-0.5 text-xs text-warning">Sandbox data only. Fills in the form; press Sign in.</p>
           <div className="mt-3 flex flex-wrap gap-2">

@@ -2,7 +2,8 @@
 
 import { useActionState } from "react";
 import { errorClass, inputClass, labelClass, primaryButtonClass } from "@/components/ui";
-import { PRIORITY_LABELS, STATUS_LABELS, TASK_PRIORITIES, TASK_STATUSES, TASK_TYPES } from "@/lib/tasks/constants";
+import { Arrow } from "@/components/ui-kit";
+import { DEFAULT_PRIORITY, PRIORITY_LABELS, STATUS_LABELS, TASK_PRIORITIES, TASK_STATUSES, TASK_TYPES } from "@/lib/tasks/constants";
 import type { TaskFormState, TaskFormValues } from "./actions";
 
 type Props = {
@@ -18,11 +19,13 @@ type Props = {
 export function TaskForm({ action, initial, members, departments, projects, submitLabel }: Props) {
   const [state, formAction, pending] = useActionState(action, {});
   const values = state.values ?? initial;
+  // The rest is tucked away unless it already holds something other than the defaults.
+  const moreOpen = !!(values.projectId || values.type || values.status !== "todo" || values.priority !== DEFAULT_PRIORITY);
   const extraType = initial.type && !(TASK_TYPES as readonly string[]).includes(initial.type) ? initial.type : null;
 
   return (
     // key: remount with the submitted values after an error (React resets forms after an action).
-    <form key={JSON.stringify(values)} action={formAction} className="flex flex-col gap-4">
+    <form key={JSON.stringify(values)} action={formAction} className="flex flex-col gap-5">
       <label className="flex flex-col gap-1.5">
         <span className={labelClass}>Title</span>
         <input name="title" defaultValue={values.title} required maxLength={200} className={inputClass} />
@@ -50,6 +53,17 @@ export function TaskForm({ action, initial, members, departments, projects, subm
             </optgroup>
           </select>
         </label>
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>Due date</span>
+          <input name="dueDate" type="date" defaultValue={values.dueDate} className={inputClass} />
+        </label>
+      </div>
+      <details open={moreOpen} className="group rounded-card border border-line">
+        <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3.5 font-display text-sm font-semibold">
+          More options
+          <span aria-hidden className="text-muted transition group-open:rotate-45">+</span>
+        </summary>
+        <div className="grid gap-4 border-t border-line p-5 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className={labelClass}>Project</span>
           <select name="projectId" defaultValue={values.projectId} className={inputClass}>
@@ -94,11 +108,8 @@ export function TaskForm({ action, initial, members, departments, projects, subm
             {extraType && <option value={extraType}>{extraType} (from the sheet)</option>}
           </select>
         </label>
-        <label className="flex flex-col gap-1.5">
-          <span className={labelClass}>Due date</span>
-          <input name="dueDate" type="date" defaultValue={values.dueDate} className={inputClass} />
-        </label>
-      </div>
+        </div>
+      </details>
       {state.error && (
         <p role="alert" className={errorClass}>
           {state.error}
@@ -109,8 +120,9 @@ export function TaskForm({ action, initial, members, departments, projects, subm
           Saved. It goes to the sheet in a moment.
         </p>
       )}
-      <button type="submit" disabled={pending} className={primaryButtonClass}>
+      <button type="submit" disabled={pending} className={`group self-start ${primaryButtonClass}`}>
         {pending ? "Saving…" : submitLabel}
+        {!pending && <Arrow />}
       </button>
     </form>
   );

@@ -39,7 +39,7 @@ export async function EarlierRecordings({ rows, me, now }: { rows: EarlierRecord
   const fmt = (d: Date) => d.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE });
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="meeting-recordings">
+    <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="meeting-recordings">
       <h2 className="font-semibold">Earlier recordings</h2>
 
       {players.map(({ recording: r, by, src }) => (

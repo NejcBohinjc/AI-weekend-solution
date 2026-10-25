@@ -7,6 +7,7 @@ import { aiQuestions, meetingInvites, meetingNotes, meetings } from "@/db/schema
 import { ljubljanaParts, ljubljanaToUtc, addDays } from "@/lib/hours/time";
 import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { AI_QUESTIONS_PER_HOUR, answerFromNotes, callClaudeQa, joinNotes, parseQuestionDate, QA_QUESTION_MAX_CHARS } from "./meeting-qa";
+import { summaryOfMeeting } from "./meeting-summary-run";
 import { canUseMeetingNotes } from "./meeting-tasks-run";
 import type { ModelCall } from "./meeting-tasks";
 
@@ -97,11 +98,14 @@ export async function askAboutMeeting({
   }
 
   // 2. Its notes, newest first, capped.
-  const notes = await db
-    .select({ content: meetingNotes.content, createdAt: meetingNotes.createdAt })
-    .from(meetingNotes)
-    .where(eq(meetingNotes.meetingId, meeting.id))
-    .orderBy(desc(meetingNotes.createdAt));
+  const [notes, stored] = await Promise.all([
+    db
+      .select({ content: meetingNotes.content, createdAt: meetingNotes.createdAt })
+      .from(meetingNotes)
+      .where(eq(meetingNotes.meetingId, meeting.id))
+      .orderBy(desc(meetingNotes.createdAt)),
+    summaryOfMeeting(meeting.id),
+  ]);
   if (!notes.length) return fail(`No notes are stored for “${meeting.title}” yet.`);
   const { text, truncated } = joinNotes(notes.map((n) => ({ content: n.content, addedOn: ljubljanaParts(n.createdAt).date })));
 
@@ -113,7 +117,7 @@ export async function askAboutMeeting({
   if (n >= AI_QUESTIONS_PER_HOUR) return fail(`You can ask ${AI_QUESTIONS_PER_HOUR} questions an hour. Please try again later.`);
 
   // 4. Ask.
-  const result = await answerFromNotes({ title: meeting.title, series: meeting.series, date: ljubljanaParts(meeting.startsAt).date }, text, question, call);
+  const result = await answerFromNotes({ title: meeting.title, series: meeting.series, date: ljubljanaParts(meeting.startsAt).date }, text, question, call, stored?.text);
   await db.insert(aiQuestions).values({
     memberId: member.id,
     meetingId: meeting.id,

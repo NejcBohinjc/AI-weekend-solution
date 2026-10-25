@@ -23,7 +23,7 @@ export default async function NotificationsPage() {
     <section className="flex max-w-2xl flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Notifications</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-display">Notifications</h1>
           <p className="text-sm text-muted">{unread ? `${unread} unread` : "All read"}</p>
         </div>
         {unread > 0 && (
@@ -37,7 +37,7 @@ export default async function NotificationsPage() {
       {items.length === 0 ? (
         <p className="rounded-xl border border-dashed border-line-strong bg-surface px-4 py-8 text-center text-sm text-subtle">Nothing yet.</p>
       ) : (
-        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface" data-testid="notifications">
+        <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-card" data-testid="notifications">
           {items.map((n) => (
             <li key={n.id}>
               <a href={`/notifications/${n.id}`} className={`flex gap-3 px-4 py-3 hover:bg-surface-2 ${n.readAt ? "" : "bg-accent-bg"}`}>

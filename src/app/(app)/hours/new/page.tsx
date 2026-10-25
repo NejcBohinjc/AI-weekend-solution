@@ -28,7 +28,7 @@ export default async function NewEntryPage({ searchParams }: { searchParams: Pro
         ← Hours
       </Link>
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Add time{forMember ? ` for ${forMember.name}` : ""}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-display">Add time{forMember ? ` for ${forMember.name}` : ""}</h1>
         <p className="text-sm text-muted">For when you forgot to start the timer.</p>
       </div>
       <EntryForm

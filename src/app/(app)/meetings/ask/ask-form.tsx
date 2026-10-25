@@ -36,7 +36,7 @@ export function AskForm({
           const data = new FormData(e.currentTarget, (e.nativeEvent as SubmitEvent).submitter);
           startTransition(() => formAction(data));
         }}
-        className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4 shadow-sm"
+        className="flex flex-col gap-4 rounded-card border border-line bg-surface p-5 shadow-card"
         data-testid="ask-form"
       >
         <label className="flex flex-col gap-1.5">
@@ -94,7 +94,7 @@ export function AskForm({
       </form>
 
       {state?.kind === "answer" && (
-        <article key={state.at} className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm" data-testid="ask-answer" aria-live="polite">
+        <article key={state.at} className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="ask-answer" aria-live="polite">
           <p className="text-xs text-subtle">
             Based on the notes of{" "}
             <Link href={`/meetings/${state.meeting.id}`} className="font-medium text-fg-2 underline-offset-2 hover:underline">

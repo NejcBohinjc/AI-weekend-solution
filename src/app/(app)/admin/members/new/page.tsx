@@ -12,7 +12,7 @@ export default async function NewMemberPage() {
       <Link href="/admin/members" className="text-sm text-subtle hover:text-fg">
         ← Members
       </Link>
-      <h1 className="text-2xl font-bold tracking-tight">Add member</h1>
+      <h1 className="font-display text-3xl font-semibold tracking-display">Add member</h1>
       <p className="text-sm text-muted">You get a one-time setup link to send them. They choose their own password.</p>
       <MemberForm
         action={createMemberAction}
