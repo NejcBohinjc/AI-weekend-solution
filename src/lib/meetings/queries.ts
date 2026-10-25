@@ -66,10 +66,17 @@ export async function meetingsWithCounts(now: Date) {
       .from(meetingInvites)
       .leftJoin(attendance, and(eq(attendance.meetingId, meetingInvites.meetingId), eq(attendance.memberId, meetingInvites.memberId))),
   ]);
+  // Invites grouped by meeting first: one pass over them, not one per meeting (a year of a real calendar
+  // is about 1,000 meetings and 20,000 invites).
+  const byMeeting = new Map<number, typeof rows>();
+  for (const r of rows) {
+    const list = byMeeting.get(r.meetingId);
+    if (list) list.push(r);
+    else byMeeting.set(r.meetingId, [r]);
+  }
   return all.map((m) => {
     const counts = { present: 0, remote: 0, excused: 0, unexcused: 0, open: 0, invited: 0 };
-    for (const r of rows) {
-      if (r.meetingId !== m.id) continue;
+    for (const r of byMeeting.get(m.id) ?? []) {
       counts.invited++;
       const s = effectiveState(r.state, m, now, { lateNotice: !!r.lateNotice, lateDecision: r.lateDecision });
       if (s) counts[s]++;
@@ -82,7 +89,16 @@ export async function meetingsWithCounts(now: Date) {
 /** Attendance per member and series over meetings that are over (not cancelled). */
 export async function attendanceBySeries(now: Date) {
   const rows = await db
-    .select({ memberId: members.id, name: members.name, meeting: meetings, state: attendance.state, lateNotice: attendance.lateNotice, lateDecision: attendance.lateDecision })
+    // Only the meeting fields used here: one row per invite, so the whole row (description and all)
+    // would be sent thousands of times.
+    .select({
+      memberId: members.id,
+      name: members.name,
+      meeting: { series: meetings.series, startsAt: meetings.startsAt, endsAt: meetings.endsAt },
+      state: attendance.state,
+      lateNotice: attendance.lateNotice,
+      lateDecision: attendance.lateDecision,
+    })
     .from(meetingInvites)
     .innerJoin(meetings, eq(meetingInvites.meetingId, meetings.id))
     .innerJoin(members, and(eq(meetingInvites.memberId, members.id), eq(members.active, true)))
