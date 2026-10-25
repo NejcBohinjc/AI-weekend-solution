@@ -9,6 +9,7 @@ import { SLACK_SYNC } from "@/lib/slack/announcements";
 import { slackClient } from "@/lib/slack/client";
 import { ANNOUNCEMENT_KINDS, DEFAULT_SERIES } from "@/lib/slack/constants";
 import { workspaceInfo } from "@/lib/slack/workspace";
+import { activeSeries } from "@/lib/meetings/series";
 import { getSyncState } from "@/lib/sync-state";
 import { saveChannelsAction, savePeopleAction, syncSlackNowAction } from "./actions";
 import { SlackForm } from "./slack-forms";
@@ -54,7 +55,7 @@ export default async function AdminSlackPage() {
   const [info, channelRows, seriesRows, people, links, upcoming, state] = await Promise.all([
     workspaceInfo(api),
     db.select().from(slackChannels),
-    db.selectDistinct({ series: meetings.series }).from(meetings).orderBy(asc(meetings.series)),
+    activeSeries(),
     db.select({ id: members.id, name: members.name, email: members.email }).from(members).where(eq(members.active, true)).orderBy(asc(members.name)),
     db.select().from(slackMembers),
     db
@@ -68,7 +69,8 @@ export default async function AdminSlackPage() {
   const channelOf = new Map(channelRows.map((c) => [c.series, c]));
   const linkOf = new Map(links.map((l) => [l.memberId, l]));
   const userName = new Map(info.users.map((u) => [u.id, u.name]));
-  const seriesList = [...seriesRows.map((s) => s.series), DEFAULT_SERIES];
+  // Series with active meetings, plus any that still has a channel set (so it can be cleared).
+  const seriesList = [...new Set([...seriesRows, ...channelRows.map((c) => c.series).filter((s) => s !== DEFAULT_SERIES)])].sort().concat(DEFAULT_SERIES);
   const matched = people.filter((p) => linkOf.get(p.id)?.slackUserId).length;
 
   return (

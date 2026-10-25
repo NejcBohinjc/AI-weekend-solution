@@ -11,8 +11,11 @@ import { emailSettings } from "@/lib/email";
 import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
 import { CALENDAR_SYNC_MINUTES, calendarUrl, lastCalendarSync } from "@/lib/meetings/import";
 import { attendanceBySeries, lastMeetingImport, meetingsWithCounts, pendingLateNotices, recentEmails } from "@/lib/meetings/queries";
+import { seriesOverview } from "@/lib/meetings/series";
 import { attendanceSummary, meetingPhase } from "@/lib/meetings/rules";
 import { ImportPanel } from "./import-panel";
+import { deleteSeriesAction } from "./actions";
+import { DeleteSeriesButton } from "./delete-series-button";
 import { RemindersPanel } from "./reminders-panel";
 
 type Search = { view?: string; series?: string };
@@ -23,7 +26,7 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
   const now = new Date();
   // The queries do not depend on who is asking, so they run while the session is being checked; if the
   // member is not an admin, requireAdmin() redirects and their results are never used.
-  const [, all, last, emails, bySeries, lastPull, lateNotices, withRecording] = await Promise.all([
+  const [, all, last, emails, bySeries, lastPull, lateNotices, withRecording, seriesRows] = await Promise.all([
     requireAdmin(),
     meetingsWithCounts(now),
     lastMeetingImport(),
@@ -36,6 +39,7 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
       db.selectDistinct({ id: meetingRecordings.meetingId }).from(meetingRecordings).where(eq(meetingRecordings.status, "ready")),
       db.selectDistinct({ id: recordings.meetingId }).from(recordings).where(ne(recordings.status, "recording")),
     ),
+    seriesOverview(now),
   ]);
   syncCalendarInBackground();
   const recorded = new Set(withRecording.map((r) => r.id));
@@ -202,6 +206,35 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
           </div>
         </div>
       )}
+
+      <div className="flex flex-col gap-2" data-testid="series-overview">
+        <h2 className="font-semibold">Meeting series</h2>
+        <p className="text-xs text-subtle">
+          Every series the app knows. Imported the wrong calendar file? Import the right one (meetings missing from it are hidden), then delete the series that do not belong here.
+        </p>
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
+          {seriesRows.map((s) => (
+            <li key={s.series} className="flex flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-start sm:gap-3">
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="font-medium">
+                  {s.series}
+                  {s.active === 0 && <span className="ml-2 text-xs font-normal text-warning">not in the calendar any more</span>}
+                </span>
+                <span className="text-xs text-muted">
+                  {s.meetings} meeting{s.meetings === 1 ? "" : "s"} ({s.upcoming} upcoming
+                  {s.meetings - s.active ? `, ${s.meetings - s.active} removed or cancelled` : ""})
+                  {s.first && s.last ? ` · ${s.first.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: TIMEZONE })} – ${s.last.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: TIMEZONE })}` : ""}
+                  {` · ${s.attendance} attendance record${s.attendance === 1 ? "" : "s"}`}
+                  {s.recordings ? ` · ${s.recordings} recording${s.recordings === 1 ? "" : "s"}` : ""}
+                </span>
+              </span>
+              <span className="sm:w-80">
+                <DeleteSeriesButton action={deleteSeriesAction.bind(null, s.series)} series={s.series} meetings={s.meetings} attendance={s.attendance} />
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }
