@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { quietLinkClass } from "@/components/ui";
+import { EmptyState, PageTitle } from "@/components/ui-kit";
 import { notFound } from "next/navigation";
 import { QA_NOTES_MAX_CHARS, QA_QUESTION_MAX_CHARS } from "@/lib/ai/meeting-qa";
 import { askableMeetings } from "@/lib/ai/meeting-qa-run";
@@ -20,18 +22,15 @@ export default async function AskMeetingPage({ searchParams }: { searchParams: P
   return (
     <section className="flex max-w-2xl flex-col gap-5">
       <div className="flex flex-col gap-2">
-        <Link href="/meetings" className="text-sm text-subtle hover:text-fg">
+        <Link href="/meetings" className={quietLinkClass}>
           ← Meetings
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight">Ask about a meeting</h1>
-        <p className="text-sm text-muted">
-          Ask what was discussed or decided at a meeting you were invited to. The answer only uses that meeting&apos;s notes and quotes them.
-        </p>
+        <PageTitle accent="meeting" sub="Ask what was discussed or decided at a meeting you were invited to. The answer only uses that meeting's notes and quotes them.">
+          Ask about a
+        </PageTitle>
       </div>
       {meetings.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line-strong bg-surface px-4 py-6 text-center text-sm text-subtle">
-          None of your meetings have notes yet. Notes are added on the meeting&apos;s page.
-        </p>
+        <EmptyState title="No notes to ask about yet" hint="Notes are added on a meeting's page. Then you can ask questions here." />
       ) : (
         <AskForm
           action={askAction}

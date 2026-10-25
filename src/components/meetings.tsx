@@ -52,19 +52,18 @@ export function MediaIcons({ media }: { media?: { recording: boolean; transcript
 /** One meeting in a list, linking to its page. `media`: what a past meeting has (icons). */
 export function MeetingRow({ meeting, state, href, media }: { meeting: Meeting; state?: AttendanceState | null; href: string; media?: { recording: boolean; transcript: boolean; summary: boolean } }) {
   const off = meeting.status !== "confirmed";
+  // The series is named in most titles already ("Summer School meeting"): no second label then.
+  const showSeries = !meeting.title.toLowerCase().includes(meeting.series.toLowerCase());
   return (
     <li>
-      <Link href={href} className={`flex flex-col gap-1 px-4 py-3 hover:bg-surface-2 sm:flex-row sm:items-center sm:gap-3 ${off ? "opacity-60" : ""}`}>
+      <Link href={href} className={`flex items-center gap-3 px-4 py-3.5 transition hover:bg-surface-2 sm:px-5 ${off ? "opacity-60" : ""}`}>
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className={`font-medium ${off ? "line-through" : ""}`}>{meeting.title}</span>
-          <span className="text-sm text-muted">
-            {meetingWhen(meeting)}
-            {meeting.location && ` · ${meeting.location}`}
-          </span>
+          <span className={`font-display font-semibold tracking-display ${off ? "line-through" : ""}`}>{meeting.title}</span>
+          <span className="text-sm text-muted">{meetingWhen(meeting)}</span>
         </span>
-        <span className="flex flex-wrap items-center gap-1.5">
+        <span className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-2">
           <MediaIcons media={media} />
-          <SeriesBadge series={meeting.series} />
+          {showSeries && <SeriesBadge series={meeting.series} />}
           {off ? <span className="text-xs font-medium text-subtle">Cancelled</span> : state !== undefined && <AttendanceBadge state={state} />}
         </span>
       </Link>

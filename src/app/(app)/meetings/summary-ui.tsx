@@ -48,7 +48,7 @@ export function SummarySection({
   hasNotes: boolean;
 }) {
   return (
-    <div id="summary" className="flex scroll-mt-28 flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="meeting-summary">
+    <div id="summary" className="flex scroll-mt-28 flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="meeting-summary">
       <h2 className="font-semibold">Summary</h2>
       {summary ? (
         <>
