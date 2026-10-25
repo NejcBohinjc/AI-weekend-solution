@@ -6,7 +6,7 @@ import { TierBadge } from "@/components/badges";
 import { LinkifiedText } from "@/components/linkified-text";
 import { AttendanceBadge, meetingWhen, SeriesBadge } from "@/components/meetings";
 import { db } from "@/db";
-import { aiTaskRuns, meetingNotes, members } from "@/db/schema";
+import { aiTaskRuns, attendance, meetingNotes, members } from "@/db/schema";
 import { aiEnabled } from "@/lib/ai/meeting-tasks";
 import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
@@ -38,7 +38,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
   if (!Number.isInteger(id)) notFound();
   // Everything the page needs only depends on the id in the URL, so it is fetched while the session is
   // checked (one wait instead of two). Nothing is shown before the invitee-or-admin check below.
-  const [me, meeting, attendees, notes, runs, recs, earlier, storedSummary] = await Promise.all([
+  const [me, meeting, attendees, notes, runs, recs, earlier, storedSummary, recorded] = await Promise.all([
     requireMember(),
     meetingById(id),
     meetingAttendees(id),
@@ -57,10 +57,13 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
     recordingsOfMeeting(id),
     earlierRecordings(id),
     summaryOfMeeting(id),
+    // Every attendance record of the meeting (a few rows): also an admin's own check-in when not invited.
+    db.select({ memberId: attendance.memberId, state: attendance.state, note: attendance.note }).from(attendance).where(eq(attendance.meetingId, id)),
   ]);
   syncCalendarInBackground();
   if (!meeting) notFound();
   const mine = attendees.find((a) => a.memberId === me.id);
+  const own = recorded.find((r) => r.memberId === me.id);
   if (!mine && !me.isAdmin) notFound();
 
   const now = new Date();
@@ -108,13 +111,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
         )}
       </div>
 
-      {meeting.description && (
-        <div className="flex flex-col gap-1.5 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="meeting-description">
-          <h2 className="text-xs font-semibold uppercase tracking-eyebrow text-muted">From the calendar</h2>
-          <LinkifiedText text={meeting.description} className="text-sm text-fg" />
-        </div>
-      )}
-
+      {/* Your own attendance comes first, for everyone; the rest of the page is below it. */}
       {mine && (
         <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="my-attendance">
           <div className="flex items-center justify-between gap-2">
@@ -139,6 +136,34 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
           {!cancelled && phase === "upcoming" && (
             <p className="text-xs text-subtle">Check-in opens 15 minutes before the start. If you don&apos;t check in or send an excuse, you count as unexcused.</p>
           )}
+        </div>
+      )}
+      {!mine && (
+        // Only admins open meetings they are not invited to: they can check in if they take part.
+        <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="my-attendance">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-display text-lg font-semibold tracking-display">Your attendance</h2>
+            {own && (own.state === "present" || own.state === "remote") && <AttendanceBadge state={own.state} />}
+          </div>
+          <p className="text-sm text-muted">You are not on this meeting&apos;s invite list, so you never count as absent. If you take part, check in here.</p>
+          {!cancelled && (
+            <AttendanceActions
+              action={setMyAttendanceAction.bind(null, meeting.id)}
+              current={own?.state ?? null}
+              note={own?.note ?? null}
+              can={{ checkIn: memberActions({ ...meeting, cancelled }, now).checkIn, excuse: false }}
+              lockedByAdmin={false}
+              noticeHint={noticeHint(meeting.startsAt, now)}
+            />
+          )}
+          {!cancelled && phase === "upcoming" && <p className="text-xs text-subtle">Check-in opens 15 minutes before the start.</p>}
+        </div>
+      )}
+
+      {meeting.description && (
+        <div className="flex flex-col gap-1.5 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="meeting-description">
+          <h2 className="text-xs font-semibold uppercase tracking-eyebrow text-muted">From the calendar</h2>
+          <LinkifiedText text={meeting.description} className="text-sm text-fg" />
         </div>
       )}
 

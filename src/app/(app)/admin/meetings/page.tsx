@@ -10,22 +10,15 @@ import { meetingRecordings, recordings } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { emailSettings } from "@/lib/email";
 import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
-import {
-  CALENDAR_SYNC_MINUTES,
-  calendarUrl,
-  lastCalendarSync,
-} from "@/lib/meetings/import";
-import {
-  attendanceBySeries,
-  lastMeetingImport,
-  meetingsWithCounts,
-  pendingLateNotices,
-  recentEmails,
-} from "@/lib/meetings/queries";
+import { CALENDAR_SYNC_MINUTES, calendarUrl, lastCalendarSync } from "@/lib/meetings/import";
+import { attendanceBySeries, lastMeetingImport, meetingsWithCounts, pendingLateNotices, recentEmails } from "@/lib/meetings/queries";
+import { seriesOverview } from "@/lib/meetings/series";
 import { attendanceSummary, meetingPhase } from "@/lib/meetings/rules";
 import { quietLinkClass } from "@/components/ui";
 import { PageTitle, Section } from "@/components/ui-kit";
 import { ImportPanel } from "./import-panel";
+import { deleteSeriesAction } from "./actions";
+import { DeleteSeriesButton } from "./delete-series-button";
 import { RemindersPanel } from "./reminders-panel";
 
 type Search = { view?: string; series?: string };
@@ -50,6 +43,7 @@ export default async function AdminMeetingsPage({
     lateNotices,
     withRecording,
     media,
+    seriesRows,
   ] = await Promise.all([
     requireAdmin(),
     meetingsWithCounts(now),
@@ -70,6 +64,7 @@ export default async function AdminMeetingsPage({
         .where(ne(recordings.status, "recording")),
     ),
     meetingMedia(),
+    seriesOverview(now),
   ]);
   syncCalendarInBackground();
   const recorded = new Set(withRecording.map((r) => r.id));
@@ -384,6 +379,34 @@ export default async function AdminMeetingsPage({
           </details>
         </Section>
       )}
+
+      <Section n={3} title="Meeting series">
+        <p className="max-w-prose text-sm text-muted">
+          Every series the app knows. Imported the wrong calendar file? Import the right one (meetings missing from it are hidden), then delete the series that do not belong here.
+        </p>
+        <ul className={listCls} data-testid="series-overview">
+          {seriesRows.map((s) => (
+            <li key={s.series} className="flex flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-start sm:gap-3">
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="font-display font-semibold tracking-display">
+                  {s.series}
+                  {s.active === 0 && <span className="ml-2 text-xs font-normal text-warning">not in the calendar any more</span>}
+                </span>
+                <span className="text-xs text-muted">
+                  {s.meetings} meeting{s.meetings === 1 ? "" : "s"} ({s.upcoming} upcoming
+                  {s.meetings - s.active ? `, ${s.meetings - s.active} removed or cancelled` : ""})
+                  {s.first && s.last ? ` · ${s.first.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: TIMEZONE })} – ${s.last.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: TIMEZONE })}` : ""}
+                  {` · ${s.attendance} attendance record${s.attendance === 1 ? "" : "s"}`}
+                  {s.recordings ? ` · ${s.recordings} recording${s.recordings === 1 ? "" : "s"}` : ""}
+                </span>
+              </span>
+              <span className="sm:w-80">
+                <DeleteSeriesButton action={deleteSeriesAction.bind(null, s.series)} series={s.series} meetings={s.meetings} attendance={s.attendance} />
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Section>
     </section>
   );
 }

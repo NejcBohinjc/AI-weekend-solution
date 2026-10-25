@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/auth";
 import { emailSettings, sendTestEmail } from "@/lib/email";
 import { importFromCalendarUrl, importIcsText, recordFailedImport, type ImportReport } from "@/lib/meetings/import";
 import { sendDueReminders, type ReminderRun } from "@/lib/meetings/reminders";
+import { deleteSeries } from "@/lib/meetings/series";
 import { sendDueTaskReminders } from "@/lib/tasks/reminders";
 
 function refresh() {
@@ -53,4 +54,19 @@ export async function sendRemindersNowAction(_prev: ReminderRun | null): Promise
   result.ran = result.ran || tasks.ran;
   refresh();
   return result;
+}
+
+export type DeleteSeriesState = { error?: string; done?: string } | null;
+
+/** Deletes every meeting of a series (e.g. one imported from the wrong calendar file). */
+export async function deleteSeriesAction(series: string, _prev: DeleteSeriesState): Promise<DeleteSeriesState> {
+  await requireAdmin();
+  const result = await deleteSeries(series);
+  if (result.error) return { error: result.error };
+  refresh();
+  revalidatePath("/admin/slack");
+  revalidatePath("/admin/analytics");
+  const slack = result.slackRemoved ? ` ${result.slackRemoved} Slack announcement${result.slackRemoved === 1 ? "" : "s"} withdrawn.` : "";
+  const problems = result.slackProblems?.length ? ` Slack: ${result.slackProblems.join("; ")}.` : "";
+  return { done: `Deleted "${series}": ${result.meetings} meeting${result.meetings === 1 ? "" : "s"}.${slack}${problems}` };
 }

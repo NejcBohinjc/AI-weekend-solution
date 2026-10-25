@@ -40,7 +40,10 @@ export async function setMyAttendanceAction(meetingId: number, _prev: Attendance
     .from(meetingInvites)
     .where(and(eq(meetingInvites.meetingId, meetingId), eq(meetingInvites.memberId, me.id)))
     .limit(1);
-  if (!invite) return { error: "You are not invited to this meeting." };
+  // Admins may check in to a meeting they are not invited to (they can open every meeting); there is
+  // nothing to excuse for a meeting one is not invited to.
+  if (!invite && !me.isAdmin) return { error: "You are not invited to this meeting." };
+  if (!invite && intent.data === "excused") return { error: "You are not invited to this meeting, so there is nothing to excuse." };
 
   const now = new Date();
   const can = memberActions({ ...meeting, cancelled: meeting.status !== "confirmed" }, now);
