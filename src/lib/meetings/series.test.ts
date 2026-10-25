@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { eq, inArray, like } from "drizzle-orm";
 import { closeDb, db } from "@/db";
-import { attendance, meetingInvites, meetings, members, recordings, slackAnnouncements, slackChannels } from "@/db/schema";
+import { attendance, meetingInvites, meetings, members, recordings, slackAnnouncements, slackChannels, slackWithdrawals } from "@/db/schema";
+import { syncSlackAnnouncements } from "@/lib/slack/announcements";
 import { FakeSlack } from "@/lib/slack/fake-slack";
 import { testDatabaseSkip } from "@/lib/test-db";
 import { deleteSeries, seriesOverview } from "./series";
@@ -17,6 +18,7 @@ async function cleanUp() {
   await db.delete(meetings).where(like(meetings.uid, "series-test-%"));
   await db.delete(members).where(eq(members.email, EMAIL));
   await db.delete(slackChannels).where(inArray(slackChannels.series, ["Wrong Series", "Kept Series"]));
+  await db.delete(slackWithdrawals);
 }
 
 describe("deleting a meeting series", { skip: testDatabaseSkip() }, () => {
@@ -62,23 +64,30 @@ describe("deleting a meeting series", { skip: testDatabaseSkip() }, () => {
 
   test("a series with recordings is refused", async () => {
     const [rec] = await db.insert(recordings).values({ meetingId: wrong[0] }).returning({ id: recordings.id });
-    const result = await deleteSeries("Wrong Series", slack);
+    const result = await deleteSeries("Wrong Series");
     assert.match(result.error ?? "", /1 recording/);
     assert.equal((await db.select().from(meetings).where(inArray(meetings.id, wrong))).length, 2, "nothing deleted");
     await db.delete(recordings).where(eq(recordings.id, rec.id));
   });
 
-  test("deletes the meetings with their attendance, withdraws Slack announcements, keeps other series", async () => {
+  test("deletes the meetings at once without calling Slack; the Slack sync then takes their messages back", async () => {
     const calls = slack.calls.length;
-    const result = await deleteSeries("Wrong Series", slack);
-    assert.deepEqual(result, { meetings: 2, slackRemoved: 2, slackProblems: [] });
-    assert.deepEqual(slack.calls.slice(calls).map((c) => c.method).sort(), ["chat.delete", "chat.deleteScheduledMessage"]);
-    assert.equal(slack.scheduled.size, 0);
+    const result = await deleteSeries("Wrong Series");
+    assert.deepEqual(result, { meetings: 2, slackQueued: 2 });
+    assert.equal(slack.calls.length, calls, "no Slack call while deleting");
+    assert.equal((await db.select().from(slackWithdrawals)).length, 2);
+
+    const report = await syncSlackAnnouncements({ api: slack, now: new Date("2026-10-25T10:00:00Z") });
+    assert.equal(report.withdrawn, 2);
+    assert.ok(![...slack.scheduled.values()].some((s) => s.text === "Wrong 2"), "the scheduled one is withdrawn");
+    assert.ok(!slack.posted.some((p) => p.text === "Wrong 1"), "the posted one is deleted");
+    assert.equal((await db.select().from(slackWithdrawals)).length, 0, "the queue is empty");
+
     assert.equal((await db.select().from(meetings).where(inArray(meetings.id, wrong))).length, 0);
     assert.equal((await db.select().from(attendance).where(inArray(attendance.meetingId, wrong))).length, 0);
     assert.equal((await db.select().from(slackAnnouncements).where(inArray(slackAnnouncements.meetingId, wrong))).length, 0);
     assert.deepEqual((await db.select().from(slackChannels).where(inArray(slackChannels.series, ["Wrong Series", "Kept Series"]))).map((c) => c.series), ["Kept Series"]);
     assert.equal((await db.select().from(meetings).where(eq(meetings.id, kept))).length, 1);
-    assert.match((await deleteSeries("Wrong Series", slack)).error ?? "", /no meetings/);
+    assert.match((await deleteSeries("Wrong Series")).error ?? "", /no meetings/);
   });
 });

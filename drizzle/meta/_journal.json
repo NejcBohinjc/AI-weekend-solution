@@ -124,8 +124,15 @@
     {
       "idx": 17,
       "version": "7",
-      "when": 1792929502787,
-      "tag": "0017_elite_celestials",
+      "when": 1792929829922,
+      "tag": "0017_demonic_lady_mastermind",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792930842519,
+      "tag": "0018_glamorous_micromax",
       "breakpoints": true
     }
   ]

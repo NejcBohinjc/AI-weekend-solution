@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { eq, inArray, like } from "drizzle-orm";
 import { closeDb, db } from "@/db";
-import { meetingInvites, meetings, members, slackAnnouncements, slackChannels } from "@/db/schema";
+import { meetingInvites, meetings, members, slackAnnouncements, slackChannels, slackWithdrawals } from "@/db/schema";
 import { testDatabaseSkip } from "@/lib/test-db";
 import { syncSlackAnnouncements } from "./announcements";
 import { FakeSlack } from "./fake-slack";
@@ -22,6 +22,7 @@ async function cleanUp() {
   await db.delete(meetings).where(like(meetings.uid, "slack-test-%"));
   await db.delete(members).where(inArray(members.email, EMAILS));
   await db.delete(slackChannels);
+  await db.delete(slackWithdrawals);
 }
 
 describe("Slack meeting announcements", { skip: testDatabaseSkip() }, () => {
@@ -118,5 +119,51 @@ describe("Slack meeting announcements", { skip: testDatabaseSkip() }, () => {
     const again = await run("2026-11-02T11:05:00Z");
     assert.ok(again.ok, JSON.stringify(again.problems));
     assert.deepEqual(await statuses(far), { "3d": "scheduled", "1d": "scheduled" });
+  });
+
+  test("leftover scheduled messages (meetings deleted in the database) are taken back when scanning; known ones stay", async () => {
+    const known = [...slack.scheduled.keys()];
+    const leftover = await slack.call("chat.scheduleMessage", { channel: "C_GRANTS", text: "Deleted meeting", post_at: 1800000000 });
+    assert.equal((await run("2026-11-02T11:10:00Z")).withdrawn, 0, "not without a scan");
+    const report = await syncSlackAnnouncements({ api: slack, now: new Date("2026-11-02T11:15:00Z"), scanLeftovers: true });
+    assert.equal(report.scanned, true);
+    assert.equal(report.withdrawn, 1);
+    assert.ok(!slack.scheduled.has(String(leftover.scheduled_message_id)));
+    assert.deepEqual([...slack.scheduled.keys()].sort(), known.sort(), "announcements of existing meetings stay");
+  });
+
+  test("a run stops at its call limit and the next ones carry on; the queue goes soonest first", async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const res = await slack.call("chat.scheduleMessage", { channel: "C_GRANTS", text: `Queued ${i}`, post_at: 1800000000 + i });
+      ids.push(String(res.scheduled_message_id));
+    }
+    await db.insert(slackWithdrawals).values(ids.map((id, i) => ({ channelId: "C_GRANTS", scheduledMessageId: id, postAt: new Date((1800000000 + 11 - i) * 1000) })));
+    const first = await syncSlackAnnouncements({ api: slack, now: new Date("2026-11-02T11:20:00Z"), maxCalls: 5 });
+    assert.deepEqual([first.withdrawn, first.more], [5, true]);
+    assert.deepEqual(
+      ids.filter((id) => !slack.scheduled.has(id)),
+      ids.slice(7),
+      "the five posting soonest went first",
+    );
+    let runs = 1;
+    while ((await db.select().from(slackWithdrawals)).length && runs < 10) {
+      await syncSlackAnnouncements({ api: slack, now: new Date("2026-11-02T11:25:00Z"), maxCalls: 5 });
+      runs++;
+    }
+    assert.equal(runs, 3);
+    assert.ok(ids.every((id) => !slack.scheduled.has(id)));
+  });
+
+  test("Slack asking to slow down ends the run without marking anything failed", async () => {
+    await db.insert(slackWithdrawals).values({ channelId: "C_GRANTS", scheduledMessageId: "Q_MISSING" });
+    slack.failWith = "ratelimited, retry after 30 s";
+    const report = await syncSlackAnnouncements({ api: slack, now: new Date("2026-11-02T11:30:00Z") });
+    slack.failWith = null;
+    assert.deepEqual([report.ok, report.more, report.problems.length], [true, true, 0]);
+    assert.equal((await db.select().from(slackWithdrawals)).length, 1, "still queued");
+    const next = await syncSlackAnnouncements({ api: slack, now: new Date("2026-11-02T11:35:00Z") });
+    assert.equal(next.ok, true, "already gone in Slack counts as done");
+    assert.equal((await db.select().from(slackWithdrawals)).length, 0);
   });
 });

@@ -714,3 +714,17 @@ export const slackAnnouncements = pgTable(
   (t) => [uniqueIndex("slack_announcements_meeting_kind_uq").on(t.meetingId, t.kind)],
 );
 export type SlackAnnouncement = typeof slackAnnouncements.$inferSelect;
+
+// Slack messages to take back because their meeting was deleted: a scheduled one (scheduled_message_id)
+// or a posted one (message_ts). Deleting a series only fills this; the Slack sync works through it in
+// batches (soonest post first), so deleting never waits for Slack.
+export const slackWithdrawals = pgTable("slack_withdrawals", {
+  id: serial("id").primaryKey(),
+  channelId: text("channel_id").notNull(),
+  scheduledMessageId: text("scheduled_message_id"),
+  messageTs: text("message_ts"),
+  postAt: timestamp("post_at", { withTimezone: true }),
+  attempts: integer("attempts").notNull().default(0),
+  error: text("error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

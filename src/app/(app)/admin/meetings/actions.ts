@@ -1,11 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { emailSettings, sendTestEmail } from "@/lib/email";
 import { importFromCalendarUrl, importIcsText, recordFailedImport, type ImportReport } from "@/lib/meetings/import";
 import { sendDueReminders, type ReminderRun } from "@/lib/meetings/reminders";
 import { deleteSeries } from "@/lib/meetings/series";
+import { runSlackSync } from "@/lib/slack/announcements";
+import { slackConfigured } from "@/lib/slack/client";
 import { sendDueTaskReminders } from "@/lib/tasks/reminders";
 
 function refresh() {
@@ -66,7 +69,14 @@ export async function deleteSeriesAction(series: string, _prev: DeleteSeriesStat
   refresh();
   revalidatePath("/admin/slack");
   revalidatePath("/admin/analytics");
-  const slack = result.slackRemoved ? ` ${result.slackRemoved} Slack announcement${result.slackRemoved === 1 ? "" : "s"} withdrawn.` : "";
-  const problems = result.slackProblems?.length ? ` Slack: ${result.slackProblems.join("; ")}.` : "";
-  return { done: `Deleted "${series}": ${result.meetings} meeting${result.meetings === 1 ? "" : "s"}.${slack}${problems}` };
+  const n = result.slackQueued ?? 0;
+  let slack = "";
+  if (n && slackConfigured()) {
+    // Taking them back runs after the response, in batches (Admin → Slack shows what is left).
+    after(() => runSlackSync({ force: true }).catch((err) => console.error("[slack]", (err as Error).message)));
+    slack = ` Its ${n} Slack announcement${n === 1 ? " is" : "s are"} being taken back in the background.`;
+  } else if (n) {
+    slack = ` Slack is not connected here: its ${n} announcement${n === 1 ? "" : "s"} will be taken back once it is.`;
+  }
+  return { done: `Deleted "${series}": ${result.meetings} meeting${result.meetings === 1 ? "" : "s"}.${slack}` };
 }

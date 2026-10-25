@@ -112,14 +112,23 @@ export default async function AdminMeetingsPage({
   const people = [
     ...new Map(bySeries.map((r) => [r.memberId, r.name])).entries(),
   ].sort((a, b) => a[1].localeCompare(b[1]));
+  const rowsOf = new Map<number, typeof bySeries>();
+  for (const r of bySeries) {
+    const list = rowsOf.get(r.memberId);
+    if (list) list.push(r);
+    else rowsOf.set(r.memberId, [r]);
+  }
   const cell = (memberId: number, s?: string) =>
     attendanceSummary(
-      bySeries
-        .filter((r) => r.memberId === memberId && (!s || r.series === s))
+      (rowsOf.get(memberId) ?? [])
+        .filter((r) => !s || r.series === s)
         .map((r) => r.state),
     );
 
   const SHOWN = 8;
+  // A year of a real calendar is hundreds of meetings: the page lists at most this many (a series
+  // filter narrows it down), so it stays quick to load.
+  const MAX_LISTED = 100;
   const listCls =
     "divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-card";
   const renderRow = ({ meeting: m, counts: c }: (typeof shown)[number]) => (
@@ -309,11 +318,16 @@ export default async function AdminMeetingsPage({
         {shown.length > SHOWN && (
           <details>
             <summary className={`${quietLinkClass} cursor-pointer`}>
-              Show all {shown.length} meetings
+              {shown.length > MAX_LISTED ? `Show the next ${MAX_LISTED - SHOWN} of ${shown.length} meetings` : `Show all ${shown.length} meetings`}
             </summary>
             <ul className={`${listCls} mt-3`}>
-              {shown.slice(SHOWN).map(renderRow)}
+              {shown.slice(SHOWN, MAX_LISTED).map(renderRow)}
             </ul>
+            {shown.length > MAX_LISTED && (
+              <p className="mt-2 text-xs text-subtle">
+                {shown.length - MAX_LISTED} more not listed here. Pick a series above to narrow the list down.
+              </p>
+            )}
           </details>
         )}
       </Section>
