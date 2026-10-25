@@ -16,7 +16,7 @@ function Heading() {
 
 function Card({ lines = 2 }: { lines?: number }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
+    <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card">
       <Pulse className="h-4 w-32" />
       {Array.from({ length: lines }, (_, i) => (
         <Pulse key={i} className={`h-5 ${i % 2 ? "w-2/3" : "w-full"}`} />
@@ -27,7 +27,7 @@ function Card({ lines = 2 }: { lines?: number }) {
 
 function List({ rows }: { rows: number }) {
   return (
-    <div className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+    <div className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-card">
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="flex flex-col gap-2 px-4 py-3">
           <Pulse className={`h-5 ${i % 3 === 0 ? "w-3/4" : i % 3 === 1 ? "w-2/3" : "w-1/2"}`} />
@@ -72,7 +72,7 @@ export function AnalyticsSkeleton() {
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {Array.from({ length: 4 }, (_, i) => (
-          <div key={i} className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4">
+          <div key={i} className="flex flex-col gap-2 rounded-card border border-line bg-surface p-5 shadow-card">
             <Pulse className="h-4 w-24" />
             <Pulse className="h-8 w-20" />
           </div>
@@ -80,7 +80,7 @@ export function AnalyticsSkeleton() {
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         {Array.from({ length: 2 }, (_, i) => (
-          <div key={i} className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
+          <div key={i} className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card">
             <Pulse className="h-5 w-48" />
             <Pulse className="h-4 w-full" />
             <Pulse className="h-48 w-full" />

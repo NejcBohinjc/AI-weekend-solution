@@ -42,7 +42,7 @@ export default async function EditEntryPage({
         ← Hours
       </Link>
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Edit hours{entry.memberId !== me.id ? ` · ${row.name}` : ""}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-display">Edit hours{entry.memberId !== me.id ? ` · ${row.name}` : ""}</h1>
         <p className="text-sm text-muted">
           {formatDay(start.date)}, {start.time}–{end.time} ({formatDuration(entry.endedAt!.getTime() - entry.startedAt.getTime())})
           {entry.source === "seed" && " · imported history, not written to the sheet"}

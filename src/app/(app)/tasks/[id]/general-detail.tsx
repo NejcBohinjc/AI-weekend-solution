@@ -17,7 +17,7 @@ export function GeneralTaskDetail({ task, isAdmin, helpers, events }: { task: Ta
         <Link href="/tasks?tab=general" className="text-sm text-subtle hover:text-fg">
           ← General tasks
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight">{task.title}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-display">{task.title}</h1>
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium text-fg-2">General task · never done</span>
           {task.type && <TypeBadge type={task.type} />}
@@ -29,7 +29,7 @@ export function GeneralTaskDetail({ task, isAdmin, helpers, events }: { task: Ta
       </div>
 
       {isAdmin && (
-        <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
+        <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card">
           <h2 className="font-semibold">Edit</h2>
           <GeneralTaskForm
             action={updateGeneralTaskAction.bind(null, task.id)}

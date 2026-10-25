@@ -28,7 +28,7 @@ export function FilterBar({ filters }: { filters: { name: string; label: string;
             name={f.name}
             value={f.value}
             onChange={(e) => set(f.name, e.target.value)}
-            className="rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-fg shadow-sm"
+            className="rounded-pill border border-line-strong bg-surface px-4 py-2 text-sm text-fg"
           >
             {f.options.map((o) => (
               <option key={o.value} value={o.value}>

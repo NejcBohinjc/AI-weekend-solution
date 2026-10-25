@@ -164,6 +164,15 @@ The database is reached through Supabase's transaction pooler, so statements are
 - All colours are design tokens (CSS variables) in `src/app/globals.css`, light values on `:root`, dark on `[data-theme="dark"]`, exposed to Tailwind via `@theme inline` (`bg-surface`, `text-muted`, `border-line`, `bg-success-bg text-success`, ...). Never use raw palette classes (`bg-white`, `text-slate-600`, `bg-red-50`); add a token instead. Every text/background token pair passes WCAG AA (4.5:1) in both themes.
 - Choice System (default) / Light / Dark: `ThemeSwitch` in the header and on the login page, stored in the `theme` cookie. The root layout renders `data-theme` for an explicit choice; `THEME_SCRIPT` (`src/lib/theme.ts`, inline in `<head>`) resolves "system" from `prefers-color-scheme` before first paint and follows it live. `color-scheme` is set in CSS and the viewport meta so native controls match. Tailwind 4 `dark:` variant: `@custom-variant dark` on `[data-theme=dark]`.
 
+## Look and navigation (restyle, matches the Global Shapers Ljubljana site)
+
+- Fonts are self-hosted (`src/fonts/*.woff2`, loaded in `src/lib/fonts.ts`): Clash Display (headings, buttons, numbers), Satoshi (body), Instrument Serif italic (the one accent word in a heading). Files come from the URLs in the site's own CSS; check their licences before reuse.
+- Extra tokens: `--brand`, `--surface-4`, `--elev-card/pop/button` (`shadow-card/pop/button`), `rounded-card` (1.25rem), `rounded-pill`, `tracking-eyebrow`, `tracking-display`, `font-display`, `font-serif`. Light base is porcelain `#fbfaf9` / ink `#14130f` / blue `#0b3ae0`; dark keeps near-black `#0a0a0c`.
+- Building blocks: `src/components/ui.ts` (pill buttons, `cardClass`, inputs), `ui-kit.tsx` (`PageTitle` with italic accent word, numbered `Section`, `PrimaryLink`, `EmptyState`), `popover.tsx` (menus).
+- Navigation: members get Home, Tasks, Hours, Meetings, Projects (bottom tab bar on phones); admins add one "Admin" menu with grouped sections (`src/lib/nav.ts`). Profile menu (initials): notifications, `/settings` (profile, theme, reminder preferences), sign out.
+- Page rules: one primary action per page; secondary actions as quiet links or "..." menus; long lists show the first 4-7 rows with "Show all"; advanced fields under "More options".
+- Hours charts (`src/components/hours-charts.tsx`, plain SVG, `--viz-*`): progress ring, day bars with even-pace line, office/home split, 8-week trend (member); per-member bars grouped by tier with a "working now" dot and an 8-week stacked chart by tier (admin). Day totals come from `src/lib/hours/daily.ts` (tested).
+
 ## Working rules
 
 - Small steps. After each step: run it, check it in the browser, then commit.

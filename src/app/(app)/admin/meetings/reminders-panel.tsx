@@ -12,7 +12,7 @@ export function RemindersPanel({ sending, from, redirectTo, children }: Props) {
   const [run, action, busy] = useActionState(sendRemindersNowAction, null as ReminderRun | null);
   const [test, testAction, testing] = useActionState(sendTestEmailAction, null as TestEmailResult | null);
   return (
-    <section aria-label="Reminders" className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
+    <section aria-label="Reminders" className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold">Email reminders</h2>

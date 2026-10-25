@@ -10,7 +10,7 @@ type Props = { email: string; enabled: boolean; daysBefore: number[]; sending: b
 export function TaskReminderSettingsForm({ email, enabled, daysBefore, sending }: Props) {
   const [state, formAction, pending] = useActionState(saveTaskReminderSettingsAction, {} as TaskReminderSettingsState);
   return (
-    <form action={formAction} className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4" aria-label="Deadline reminder settings">
+    <form action={formAction} className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card" aria-label="Deadline reminder settings">
       <label className="flex items-center gap-2 font-medium">
         <input type="checkbox" name="enabled" defaultChecked={enabled} className="size-4" />
         Email me before my tasks are due

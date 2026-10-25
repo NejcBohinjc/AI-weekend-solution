@@ -9,7 +9,7 @@ export function SyncReportPanel({ report, by }: { report: Partial<SyncReport> & 
   const when = new Date(report.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE });
   const list = <T,>(items: T[] | undefined) => items ?? [];
   return (
-    <details className="rounded-xl border border-line bg-surface p-4 text-sm" open={!report.ok} data-testid="sync-report">
+    <details className="rounded-card border border-line bg-surface p-5 shadow-card text-sm" open={!report.ok} data-testid="sync-report">
       <summary className="cursor-pointer font-semibold">
         Sync report <span className="font-normal text-subtle">· {when}{by ? ` by ${by}` : ""} · admins only</span>
       </summary>

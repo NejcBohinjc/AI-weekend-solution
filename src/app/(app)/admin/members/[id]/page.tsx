@@ -49,7 +49,7 @@ export default async function EditMemberPage({
         <Link href="/admin/members" className="text-sm text-subtle hover:text-fg">
           ← Members
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight">{member.name}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-display">{member.name}</h1>
         {saved && NOTICES[saved] && (
           <p role="status" className="rounded-xl bg-success-bg px-4 py-3 text-sm text-success">
             {NOTICES[saved]}
@@ -77,7 +77,7 @@ export default async function EditMemberPage({
         isSelf={isSelf}
       />
 
-      <div className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4">
+      <div className="flex flex-col gap-4 rounded-card border border-line bg-surface p-5 shadow-card">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-semibold">Access</h2>
           <AccessStatus active={member.active} hasPassword={!!member.passwordHash} linkPending={!!pendingLink} />

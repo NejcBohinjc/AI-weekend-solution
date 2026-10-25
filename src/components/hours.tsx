@@ -106,7 +106,7 @@ export function EntryList({
       {[...days].map(([day, list]) => {
         const dayMs = list.reduce((s, e) => s + ((e.endedAt ?? now).getTime() - e.startedAt.getTime()), 0);
         return (
-          <li key={day} className="overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
+          <li key={day} className="overflow-hidden rounded-card border border-line bg-surface shadow-card">
             <div className="flex justify-between bg-surface-2 px-4 py-2 text-sm">
               <span className="font-semibold">{formatDay(day)}</span>
               <span className="tabular-nums text-muted">{formatDuration(dayMs)}</span>
@@ -177,7 +177,7 @@ export function WeekHistory({
   hrefFor: (week: string) => string;
 }) {
   return (
-    <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm" data-testid="week-history">
+    <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-card" data-testid="week-history">
       {fromFirstWeekWithHours(weeks).map(({ week, totalMs, byLocation }) => {
         const pct = targetHours > 0 ? Math.round((totalMs / 3_600_000 / targetHours) * 100) : 0;
         return (

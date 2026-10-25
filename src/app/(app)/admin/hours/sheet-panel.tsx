@@ -11,7 +11,7 @@ export function SheetPanel({ tab, pending, failed, lastError }: { tab: string; p
   const error = result ? result.error : lastError;
 
   return (
-    <section aria-label="Google Sheets" className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4">
+    <section aria-label="Google Sheets" className="flex flex-col gap-2 rounded-card border border-line bg-surface p-5 shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold">Google Sheets · “{tab}”</h2>

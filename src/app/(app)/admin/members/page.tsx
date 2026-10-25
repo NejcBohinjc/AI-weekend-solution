@@ -1,7 +1,7 @@
 import { and, asc, desc, gt, isNull } from "drizzle-orm";
 import Link from "next/link";
 import { AdminBadge, TierBadge } from "@/components/badges";
-import { DepartmentBadge } from "@/components/task-badges";
+import { PageTitle, PrimaryLink, Section } from "@/components/ui-kit";
 import { db } from "@/db";
 import { members, passwordTokens } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
@@ -34,45 +34,36 @@ export default async function MembersPage() {
   const activeCount = rows.filter((r) => r.active).length;
 
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Members</h1>
-          <p className="text-sm text-muted">
-            {activeCount} active{rows.length > activeCount && `, ${rows.length - activeCount} deactivated`}
-          </p>
-        </div>
-        <Link
-          href="/admin/members/new"
-          className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover"
-        >
-          Add member
-        </Link>
-      </div>
-      <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
-        {rows.map((m) => (
-          <li key={m.id}>
-            <Link
-              href={`/admin/members/${m.id}`}
-              className={`flex flex-col gap-1 px-4 py-3 hover:bg-surface-2 sm:flex-row sm:items-center sm:gap-3 ${m.active ? "" : "opacity-60"}`}
-            >
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate font-medium">{m.name}</span>
-                <span className="truncate text-sm text-subtle">{m.email}</span>
-              </span>
-              <span className="flex flex-wrap items-center gap-1.5">
-                {m.isAdmin && <AdminBadge />}
-                <TierBadge tier={m.tier} />
-                {(departmentsOf.get(m.id) ?? []).map((d) => (
-                  <DepartmentBadge key={d} name={`${d} department`} />
-                ))}
-                <span className="text-xs text-subtle">{m.weeklyHours} h/wk</span>
-                <AccessStatus active={m.active} hasPassword={!!m.passwordHash} linkPending={pendingIds.has(m.id)} />
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+    <section className="flex max-w-3xl flex-col gap-8">
+      <PageTitle accent="members" sub={`${activeCount} active${rows.length > activeCount ? `, ${rows.length - activeCount} deactivated` : ""}`}>
+        Our
+      </PageTitle>
+      <Section n={1} title="Everyone" action={<PrimaryLink href="/admin/members/new">Add member</PrimaryLink>}>
+        <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-card">
+          {rows.map((m) => (
+            <li key={m.id}>
+              <Link
+                href={`/admin/members/${m.id}`}
+                className={`flex items-center gap-3 px-4 py-3.5 transition hover:bg-surface-2 sm:px-5 ${m.active ? "" : "opacity-60"}`}
+              >
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate font-display font-semibold tracking-display">{m.name}</span>
+                  <span className="truncate text-sm text-muted">
+                    {m.weeklyHours} h/wk
+                    {(departmentsOf.get(m.id) ?? []).length > 0 && ` · ${(departmentsOf.get(m.id) ?? []).join(", ")}`}
+                  </span>
+                </span>
+                <span className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-2">
+                  {m.isAdmin && <AdminBadge />}
+                  <TierBadge tier={m.tier} />
+                  {/* Only what needs a look: "can sign in" is the normal case and not repeated on every row. */}
+                  {!(m.active && m.passwordHash) && <AccessStatus active={m.active} hasPassword={!!m.passwordHash} linkPending={pendingIds.has(m.id)} />}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Section>
     </section>
   );
 }
