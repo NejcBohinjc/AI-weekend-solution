@@ -26,6 +26,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/hours", label: "Hours" },
   { href: "/admin/meetings", label: "Meetings" },
   { href: "/admin/analytics", label: "Analytics" },
+  { href: "/admin/slack", label: "Slack" },
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {

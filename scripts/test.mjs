@@ -54,6 +54,8 @@ const env = {
   TRANSCRIBE_API_KEY: "",
   TRANSCRIBE_BASE_URL: "",
   TRANSCRIBE_MODEL: "",
+  // Slack: tests use FakeSlack, never the real workspace.
+  SLACK_BOT_TOKEN: "",
 };
 
 if (dbUrl) {

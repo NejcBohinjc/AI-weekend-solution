@@ -25,6 +25,7 @@ import {
 } from "../lib/meetings/constants";
 import { DEFAULT_PRIORITY, DEFAULT_TASK_REMINDER_DAYS, TASK_PRIORITIES, TASK_STATUSES } from "../lib/tasks/constants";
 import { LATE_DECISIONS, TASK_KINDS } from "../lib/absence-rules";
+import { ANNOUNCEMENT_KIND_VALUES, ANNOUNCEMENT_STATUSES } from "../lib/slack/constants";
 import { TIERS } from "../lib/tiers"; // relative: drizzle-kit does not resolve the @/ alias
 // The meeting recorder's statuses (recordings table); RECORDING_STATUSES above is for meeting_recordings.
 import { RECORDING_STATUSES as RECORDER_STATUSES, SEGMENT_STATUSES } from "../lib/recordings/constants";
@@ -646,3 +647,47 @@ export const recordingSegments = pgTable(
 
 export type Recording = typeof recordings.$inferSelect;
 export type RecordingSegment = typeof recordingSegments.$inferSelect;
+
+// ---------- Slack extras (optional, only with SLACK_BOT_TOKEN) ----------
+
+// The Slack channel each meeting series is announced in; series "*" is the default for the others.
+export const slackChannels = pgTable("slack_channels", {
+  series: text("series").primaryKey(),
+  channelId: text("channel_id").notNull(),
+  channelName: text("channel_name"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// A member's Slack user, found by email or picked by an admin (manual: never replaced by the lookup).
+// slack_user_id null with checked_at: looked up, not found.
+export const slackMembers = pgTable("slack_members", {
+  memberId: integer("member_id")
+    .primaryKey()
+    .references(() => members.id, { onDelete: "cascade" }),
+  slackUserId: text("slack_user_id"),
+  manual: boolean("manual").notNull().default(false),
+  checkedAt: timestamp("checked_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// One Slack announcement per meeting and kind (3 days / 1 day before): scheduled in Slack, then posted.
+export const slackAnnouncements = pgTable(
+  "slack_announcements",
+  {
+    id: serial("id").primaryKey(),
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ANNOUNCEMENT_KIND_VALUES }).notNull(),
+    status: text("status", { enum: ANNOUNCEMENT_STATUSES }).notNull(),
+    channelId: text("channel_id"),
+    postAt: timestamp("post_at", { withTimezone: true }).notNull(),
+    // What was scheduled; a change (meeting moved, invitees, channel) reschedules it.
+    contentHash: text("content_hash"),
+    scheduledMessageId: text("scheduled_message_id"),
+    messageTs: text("message_ts"),
+    error: text("error"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("slack_announcements_meeting_kind_uq").on(t.meetingId, t.kind)],
+);
+export type SlackAnnouncement = typeof slackAnnouncements.$inferSelect;
