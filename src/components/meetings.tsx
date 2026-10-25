@@ -28,8 +28,29 @@ export function meetingWhen(m: Pick<Meeting, "startsAt" | "endsAt">): string {
   return `${formatDay(s.date)}, ${s.time}–${e.time}${e.date !== s.date ? " (next day)" : ""}`;
 }
 
-/** One meeting in a list, linking to its page. */
-export function MeetingRow({ meeting, state, href }: { meeting: Meeting; state?: AttendanceState | null; href: string }) {
+const MEDIA_ICONS = [
+  { key: "recording", icon: "🎙", label: "Recording available" },
+  { key: "transcript", icon: "📝", label: "Transcript available" },
+  { key: "summary", icon: "✦", label: "Summary available" },
+] as const;
+
+/** Small icons for what a past meeting has: recording, transcript, summary (nothing when it has none). */
+export function MediaIcons({ media }: { media?: { recording: boolean; transcript: boolean; summary: boolean } }) {
+  const shown = MEDIA_ICONS.filter((m) => media?.[m.key]);
+  if (!shown.length) return null;
+  return (
+    <span className="flex items-center gap-1 text-sm" data-testid="media-icons">
+      {shown.map((m) => (
+        <span key={m.key} role="img" aria-label={m.label} title={m.label} data-media={m.key}>
+          {m.icon}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** One meeting in a list, linking to its page. `media`: what a past meeting has (icons). */
+export function MeetingRow({ meeting, state, href, media }: { meeting: Meeting; state?: AttendanceState | null; href: string; media?: { recording: boolean; transcript: boolean; summary: boolean } }) {
   const off = meeting.status !== "confirmed";
   return (
     <li>
@@ -42,6 +63,7 @@ export function MeetingRow({ meeting, state, href }: { meeting: Meeting; state?:
           </span>
         </span>
         <span className="flex flex-wrap items-center gap-1.5">
+          <MediaIcons media={media} />
           <SeriesBadge series={meeting.series} />
           {off ? <span className="text-xs font-medium text-subtle">Cancelled</span> : state !== undefined && <AttendanceBadge state={state} />}
         </span>

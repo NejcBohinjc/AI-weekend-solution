@@ -18,7 +18,10 @@ import { adminMarkRestPresentAction, adminSetAttendanceAction, decideLateNoticeA
 import { AttendanceActions } from "../attendance-actions";
 import { addNoteAction, createTasksFromNotesAction } from "../notes-actions";
 import { AddNotesSection, CreateTasksButton } from "../notes-ui";
-import { RecordingItem, type RecordingView } from "../recordings-ui";
+import { RecordingItem, TranscriptItem, type RecordingView } from "../recordings-ui";
+import { SummarySection } from "../summary-ui";
+import { summaryBullets } from "@/lib/ai/meeting-summary";
+import { summaryOfMeeting } from "@/lib/ai/meeting-summary-run";
 import { EarlierRecordings, earlierRecordings } from "../recordings-section";
 import { RecorderPanel } from "@/components/recorder/recorder-panel";
 import { transcribeEnabled } from "@/lib/ai/transcribe";
@@ -34,7 +37,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
   if (!Number.isInteger(id)) notFound();
   // Everything the page needs only depends on the id in the URL, so it is fetched while the session is
   // checked (one wait instead of two). Nothing is shown before the invitee-or-admin check below.
-  const [me, meeting, attendees, notes, runs, recs, earlier] = await Promise.all([
+  const [me, meeting, attendees, notes, runs, recs, earlier, storedSummary] = await Promise.all([
     requireMember(),
     meetingById(id),
     meetingAttendees(id),
@@ -52,6 +55,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
       .orderBy(desc(aiTaskRuns.id)),
     recordingsOfMeeting(id),
     earlierRecordings(id),
+    summaryOfMeeting(id),
   ]);
   syncCalendarInBackground();
   if (!meeting) notFound();
@@ -137,22 +141,40 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      {/* Recordings: admins record and manage them; invitees can listen and read the transcript. */}
-      {(me.isAdmin || recordingViews.length > 0) && (
-        <div id="recording" className="flex scroll-mt-28 flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="recordings">
-          <h2 className="font-semibold">{me.isAdmin ? "Record meeting" : "Recordings"}</h2>
-          {me.isAdmin && <RecorderPanel meetings={[{ id: meeting.id, title: meeting.title, label: meeting.title }]} initialId={meeting.id} storageReady={storageConfigured()} />}
-          {recordingViews.length > 0 && (
-            <div className="flex flex-col gap-3 border-t border-line pt-3">
-              {me.isAdmin && <h3 className="text-sm font-semibold text-subtle">Recordings</h3>}
-              {recordingViews.map((r) => (
-                <RecordingItem key={r.id} rec={r} meetingId={meeting.id} meetingTitle={meeting.title} isAdmin={me.isAdmin} transcribeReady={transcribeEnabled()} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {/* The meeting's recording, transcript and AI summary, together. Only its invitees and admins get this far. */}
+      <div id="recording" className="flex scroll-mt-28 flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="recordings">
+        <h2 className="font-semibold">Recording</h2>
+        {me.isAdmin && <RecorderPanel meetings={[{ id: meeting.id, title: meeting.title, label: meeting.title }]} initialId={meeting.id} storageReady={storageConfigured()} />}
+        {recordingViews.length > 0 ? (
+          <div className="flex flex-col gap-3 border-t border-line pt-3 first:border-t-0 first:pt-0">
+            {recordingViews.map((r) => (
+              <RecordingItem key={r.id} rec={r} meetingId={meeting.id} meetingTitle={meeting.title} isAdmin={me.isAdmin} />
+            ))}
+          </div>
+        ) : (
+          !me.isAdmin && earlier.length === 0 && <p className="text-sm text-muted">This meeting has no recording.</p>
+        )}
+      </div>
       <EarlierRecordings rows={earlier} me={me} now={now} />
+
+      <div id="transcript" className="flex scroll-mt-28 flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="transcripts">
+        <h2 className="font-semibold">Transcript</h2>
+        {recordingViews.some((r) => r.status !== "recording" && (me.isAdmin || r.transcript)) ? (
+          recordingViews.map((r) => (
+            <TranscriptItem key={r.id} rec={r} meetingId={meeting.id} isAdmin={me.isAdmin} transcribeReady={transcribeEnabled()} summariseReady={aiEnabled()} />
+          ))
+        ) : (
+          <p className="text-sm text-muted">{me.isAdmin ? "No transcript yet: record or import the meeting and transcribe it, or add notes below." : "This meeting has no transcript."}</p>
+        )}
+      </div>
+
+      <SummarySection
+        meetingId={meeting.id}
+        summary={storedSummary && { bullets: summaryBullets(storedSummary.text), model: me.isAdmin ? storedSummary.model : null, // admin-only line: not even sent to attendees, atLabel: fmt(storedSummary.at), stale: storedSummary.stale }}
+        isAdmin={me.isAdmin}
+        aiReady={aiEnabled()}
+        hasNotes={notes.length > 0}
+      />
 
       {/* Notes: this page is only shown to the meeting's invitees and admins. */}
       <div id="notes" className="flex scroll-mt-28 flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="meeting-notes">

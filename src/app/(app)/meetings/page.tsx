@@ -5,6 +5,7 @@ import { MeetingRow } from "@/components/meetings";
 import { requireMember } from "@/lib/auth";
 import { emailSettings } from "@/lib/email";
 import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
+import { meetingMedia } from "@/lib/meetings/media";
 import { myMeetings, reminderSettingsFor } from "@/lib/meetings/queries";
 import { attendanceSummary, effectiveState, meetingPhase } from "@/lib/meetings/rules";
 import { NowMeetingCard } from "./now-card";
@@ -14,7 +15,7 @@ export default async function MeetingsPage() {
   const me = await requireMember();
   syncCalendarInBackground();
   const now = new Date();
-  const [rows, settings] = await Promise.all([myMeetings(me.id), reminderSettingsFor(me.id)]);
+  const [rows, settings, media] = await Promise.all([myMeetings(me.id), reminderSettingsFor(me.id), meetingMedia()]);
   const list = rows.map((r) => ({ ...r, phase: meetingPhase(r.meeting, now), effective: effectiveState(r.state, r.meeting, now, { lateNotice: !!r.lateNotice, lateDecision: r.lateDecision }) }));
   const happening = list.filter((r) => r.phase === "open" && r.meeting.status === "confirmed");
   const upcoming = list.filter((r) => r.phase === "upcoming");
@@ -66,7 +67,7 @@ export default async function MeetingsPage() {
         {past.length > 0 && (
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm" data-testid="past-meetings">
             {past.map((r) => (
-              <MeetingRow key={r.meeting.id} meeting={r.meeting} state={r.effective} href={`/meetings/${r.meeting.id}`} />
+              <MeetingRow key={r.meeting.id} meeting={r.meeting} state={r.effective} href={`/meetings/${r.meeting.id}`} media={media.get(r.meeting.id)} />
             ))}
           </ul>
         )}

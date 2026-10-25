@@ -6,6 +6,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { errorClass, inputClass, primaryButtonClass, secondaryButtonClass } from "@/components/ui";
+import { SummariseButton } from "./summary-ui";
 import { useRecorder } from "@/components/recorder/recorder-provider";
 import { TIMEZONE } from "@/lib/app";
 import { TRANSCRIBE_LANGUAGES } from "@/lib/recordings/constants";
@@ -132,7 +133,7 @@ function Player({ recordingId, fileBase }: { recordingId: number; fileBase: stri
   );
 }
 
-function Transcription({ rec, meetingId, transcribeReady }: { rec: RecordingView; meetingId: number; transcribeReady: boolean }) {
+function Transcription({ rec, meetingId, transcribeReady, summariseReady }: { rec: RecordingView; meetingId: number; transcribeReady: boolean; summariseReady: boolean }) {
   const router = useRouter();
   const [languages, setLanguages] = useState(rec.languages ?? "sl");
   const [progress, setProgress] = useState<Progress | null>(null);
@@ -234,6 +235,12 @@ function Transcription({ rec, meetingId, transcribeReady }: { rec: RecordingView
             </button>
             {saved && <span className="text-sm text-success">Saved as meeting notes. Create tasks from them under “Meeting notes”.</span>}
           </div>
+          {saved && summariseReady && (
+            <div className="flex flex-col gap-1 rounded-xl bg-surface-2 p-3" data-testid="summary-offer">
+              <p className="text-sm text-fg-2">Want a short summary of the meeting (key points, decisions, open questions)?</p>
+              <SummariseButton meetingId={meetingId} label="Summarise now" />
+            </div>
+          )}
         </div>
       )}
       {rec.transcribedSeconds > 0 && (
@@ -246,18 +253,48 @@ function Transcription({ rec, meetingId, transcribeReady }: { rec: RecordingView
   );
 }
 
+/** The Transcript section: admins transcribe and edit; everyone who may see the meeting reads it (read-only). */
+export function TranscriptItem({
+  rec,
+  meetingId,
+  isAdmin,
+  transcribeReady,
+  summariseReady,
+}: {
+  rec: RecordingView;
+  meetingId: number;
+  isAdmin: boolean;
+  transcribeReady: boolean;
+  summariseReady: boolean;
+}) {
+  const label = rec.source === "uploaded" ? `Imported: ${rec.fileName ?? "audio file"}` : `Recording of ${when(rec.startedAt)}`;
+  if (rec.status === "recording") return null;
+  if (!isAdmin && !rec.transcript) return null;
+  return (
+    <div className="flex flex-col gap-2 border-t border-line pt-3 first:border-t-0 first:pt-0" data-testid="transcript-item">
+      <p className="text-sm font-medium">{label}</p>
+      {isAdmin ? (
+        <Transcription rec={rec} meetingId={meetingId} transcribeReady={transcribeReady} summariseReady={summariseReady} />
+      ) : (
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-surface-2 p-3 font-sans text-sm text-fg-2" data-testid="transcript-readonly">
+          {rec.transcript}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+/** The Recording section: the player with "Download MP3" (and, for admins, finishing or deleting it). */
 export function RecordingItem({
   rec,
   meetingId,
   meetingTitle,
   isAdmin,
-  transcribeReady,
 }: {
   rec: RecordingView;
   meetingId: number;
   meetingTitle: string;
   isAdmin: boolean;
-  transcribeReady: boolean;
 }) {
   const router = useRouter();
   const recorder = useRecorder();
@@ -295,14 +332,6 @@ export function RecordingItem({
         </p>
       ) : (
         rec.parts > 0 && <Player recordingId={rec.id} fileBase={fileBase} />
-      )}
-
-      {isAdmin && rec.status !== "recording" && <Transcription rec={rec} meetingId={meetingId} transcribeReady={transcribeReady} />}
-      {!isAdmin && rec.transcript && (
-        <details>
-          <summary className="cursor-pointer text-sm font-medium">Transcript</summary>
-          <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-surface-2 p-3 font-sans text-sm text-fg-2">{rec.transcript}</pre>
-        </details>
       )}
 
       {isAdmin && !recordingHere && (

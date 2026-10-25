@@ -113,6 +113,13 @@
       "when": 1792921101831,
       "tag": "0015_dapper_mulholland_black",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792922480778,
+      "tag": "0016_regular_titanium_man",
+      "breakpoints": true
     }
   ]
 }

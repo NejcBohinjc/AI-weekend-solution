@@ -490,6 +490,11 @@ export const meetingNotes = pgTable(
     content: text("content").notNull(),
     contentHash: text("content_hash").notNull(), // SHA-256 of content
     fileName: text("file_name"),
+    // The AI summary of the meeting's notes (lib/ai/meeting-summary.ts). It is kept on the meeting's newest
+    // note (the one that was newest when it was made); older notes have none. Null until generated.
+    summary: text("summary"),
+    summaryModel: text("summary_model"),
+    summaryAt: timestamp("summary_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("meeting_notes_meeting_idx").on(t.meetingId)],

@@ -6,7 +6,8 @@ import { db } from "@/db";
 import { meetingNotes } from "@/db/schema";
 import { aiEnabled, cleanNotes, NOTES_MAX_CHARS } from "@/lib/ai/meeting-tasks";
 import { canUseMeetingNotes, createTasksFromNote, hashNotes, type AiRunResult } from "@/lib/ai/meeting-tasks-run";
-import { requireMember } from "@/lib/auth";
+import { summariseMeeting } from "@/lib/ai/meeting-summary-run";
+import { requireAdmin, requireMember } from "@/lib/auth";
 import { runTasksSync } from "@/lib/tasks/sheet-sync";
 
 const FILE_TYPES = /\.(txt|md|vtt|srt)$/i;
@@ -64,4 +65,16 @@ export async function createTasksFromNotesAction(noteId: number, meetingId: numb
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
   return { ...result, at };
+}
+
+export type SummariseState = { ok: boolean; error?: string; at: number } | null;
+
+/** Admin: "Summarise" / "Regenerate" (also offered right after a transcript is saved as notes). */
+export async function summariseMeetingAction(meetingId: number, _prev: SummariseState): Promise<SummariseState> {
+  const admin = await requireAdmin();
+  const at = Date.now();
+  if (!aiEnabled()) return { ok: false, error: "Summaries are off: ANTHROPIC_API_KEY is not set.", at };
+  const result = await summariseMeeting({ meetingId, admin });
+  if (result.ok) revalidatePath(`/meetings/${meetingId}`);
+  return result.ok ? { ok: true, at } : { ok: false, error: result.error, at };
 }
