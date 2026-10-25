@@ -4,13 +4,14 @@ import { readFileSync } from "node:fs";
 import ExcelJS from "exceljs";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../src/db";
-import { attendance, meetings, members, timeEntries, TIERS, type Tier } from "../src/db/schema";
+import { attendance, departments, memberDepartments, meetings, members, timeEntries, TIERS, type Tier } from "../src/db/schema";
 import { hashPassword } from "../src/lib/auth/password";
 import { PASSWORD_MIN_LENGTH } from "../src/lib/auth/password-rules";
 import { addDays, ljubljanaParts, ljubljanaToUtc } from "../src/lib/hours/time";
 import { ATTENDANCE_STATES, type AttendanceState } from "../src/lib/meetings/constants";
 import { parseIcs } from "../src/lib/meetings/ics";
 import { importMeetings, importWindow } from "../src/lib/meetings/import";
+import { addTeamProjects } from "./team-projects";
 
 async function readSheet(path: string): Promise<Record<string, unknown>[]> {
   const wb = new ExcelJS.Workbook();
@@ -144,8 +145,39 @@ async function seedAttendance() {
   console.log(`attendance: ${values.length} records`);
 }
 
+// Sandbox assumption: roster.xlsx has no department column. Core is the Core tier (the Core department
+// is only for that tier); Tech is everyone in the Shapers Tech series and Voice everyone in Shapers
+// Voice, so a member can be in several or none. Only adds memberships (never removes one).
+async function seedDepartments() {
+  await db.insert(departments).values([{ name: "Core" }, { name: "Voice" }, { name: "Tech" }]).onConflictDoNothing();
+  const id = Object.fromEntries((await db.select().from(departments)).map((d) => [d.name, d.id]));
+  const people = await db.select({ id: members.id, tier: members.tier, series: members.series }).from(members);
+  const values = people.flatMap((m) => [
+    ...(m.tier === "Core" ? [{ memberId: m.id, departmentId: id.Core }] : []),
+    ...(m.series.includes("Shapers Tech") ? [{ memberId: m.id, departmentId: id.Tech }] : []),
+    ...(m.series.includes("Shapers Voice") ? [{ memberId: m.id, departmentId: id.Voice }] : []),
+  ]);
+  if (values.length) await db.insert(memberDepartments).values(values).onConflictDoNothing();
+  const counts = await db
+    .select({ name: departments.name, n: sql<number>`count(${memberDepartments.memberId})::int` })
+    .from(departments)
+    .leftJoin(memberDepartments, eq(memberDepartments.departmentId, departments.id))
+    .groupBy(departments.name)
+    .orderBy(departments.name);
+  const none = people.length - new Set(values.map((v) => v.memberId)).size;
+  console.log(`departments: ${counts.map((c) => `${c.name} ${c.n}`).join(", ")}; ${none} members in none (sandbox rule)`);
+}
+
+// The team's seven running projects, each with placeholder tasks for people and departments.
+async function seedProjects() {
+  const r = await addTeamProjects();
+  console.log(`projects: ${r.projects} team projects, ${r.tasks} placeholder tasks added, ${r.removedPlaceholders} old placeholder projects removed`);
+}
+
 async function main() {
   await seedMembers();
+  await seedDepartments();
+  await seedProjects();
   await seedHours();
   await seedMeetings();
   await seedAttendance();

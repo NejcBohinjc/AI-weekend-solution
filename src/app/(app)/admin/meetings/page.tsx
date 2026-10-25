@@ -1,7 +1,11 @@
+import { eq, ne } from "drizzle-orm";
+import { union } from "drizzle-orm/pg-core";
 import Link from "next/link";
 import { meetingWhen, SeriesBadge } from "@/components/meetings";
 import { ABSENCE_NOTICE_HOURS } from "@/lib/absence-rules";
 import { TIMEZONE } from "@/lib/app";
+import { db } from "@/db";
+import { meetingRecordings, recordings } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { emailSettings } from "@/lib/email";
 import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
@@ -19,7 +23,7 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
   const now = new Date();
   // The queries do not depend on who is asking, so they run while the session is being checked; if the
   // member is not an admin, requireAdmin() redirects and their results are never used.
-  const [, all, last, emails, bySeries, lastPull, lateNotices] = await Promise.all([
+  const [, all, last, emails, bySeries, lastPull, lateNotices, withRecording] = await Promise.all([
     requireAdmin(),
     meetingsWithCounts(now),
     lastMeetingImport(),
@@ -27,8 +31,14 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
     attendanceBySeries(now),
     lastCalendarSync(),
     pendingLateNotices(),
+    // Meetings with a recording: from the meeting recorder, or an earlier one (meeting_recordings).
+    union(
+      db.selectDistinct({ id: meetingRecordings.meetingId }).from(meetingRecordings).where(eq(meetingRecordings.status, "ready")),
+      db.selectDistinct({ id: recordings.meetingId }).from(recordings).where(ne(recordings.status, "recording")),
+    ),
   ]);
   syncCalendarInBackground();
+  const recorded = new Set(withRecording.map((r) => r.id));
   const auto = calendarUrl()
     ? { minutes: CALENDAR_SYNC_MINUTES, last: lastPull && { at: lastPull.at.toISOString(), ok: lastPull.ok, error: lastPull.error } }
     : null;
@@ -141,6 +151,9 @@ export default async function AdminMeetingsPage({ searchParams }: { searchParams
                       ? `${c.present} present · ${c.remote} remote · ${c.excused} excused · ${c.unexcused} unexcused`
                       : `${c.invited} invited · ${c.excused} excused${c.present + c.remote ? ` · ${c.present + c.remote} checked in` : ""}`}
                   </span>
+                  {view === "past" && m.status === "confirmed" && (
+                    <span className={recorded.has(m.id) ? "text-subtle" : "text-warning"}>{recorded.has(m.id) ? "recorded" : "no recording"}</span>
+                  )}
                 </span>
               </Link>
             </li>

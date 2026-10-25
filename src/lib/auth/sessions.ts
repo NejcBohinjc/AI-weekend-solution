@@ -38,12 +38,26 @@ export async function createSession(memberId: number): Promise<{ token: string; 
   return { token, expiresAt };
 }
 
-export type SessionMember = Pick<typeof members.$inferSelect, "id" | "name" | "email" | "tier" | "weeklyHours" | "isAdmin">;
+/** departmentIds: every department the member is in (possibly none). */
+export type SessionMember = Pick<typeof members.$inferSelect, "id" | "name" | "email" | "tier" | "weeklyHours" | "isAdmin"> & {
+  departmentIds: number[];
+};
 
-type SessionRow = { expires_ms: string; id: number; name: string; email: string; tier: SessionMember["tier"]; weekly_hours: number; is_admin: boolean; unread: number };
+type SessionRow = {
+  expires_ms: string;
+  id: number;
+  name: string;
+  email: string;
+  tier: SessionMember["tier"];
+  weekly_hours: number;
+  is_admin: boolean;
+  department_ids: number[] | null;
+  unread: number;
+};
 
 /**
- * Looks up a session and its member (and the member's unread notification count, which every page
+ * Looks up a session and its member (with every department the member is in, and the member's unread
+ * notification count, which every page
  * header shows, so the layout needs no query of its own). Returns null if the session is unknown,
  * expired, or the member is deactivated. The admin flag is read fresh from the members table.
  *
@@ -64,6 +78,7 @@ export async function validateSessionToken(
   const rows = (await db.execute(sql`
     select (extract(epoch from s.expires_at) * 1000)::text as expires_ms,
            m.id, m.name, m.email, m.tier, m.weekly_hours, m.is_admin,
+           (select json_agg(md.department_id order by md.department_id) from member_departments md where md.member_id = m.id) as department_ids,
            (select count(*)::int from notifications n where n.member_id = m.id and n.read_at is null) as unread
     from sessions s
     join members m on m.id = s.member_id
@@ -71,7 +86,15 @@ export async function validateSessionToken(
     limit 1`)) as unknown as SessionRow[];
   const row = rows[0];
   if (!row) return null;
-  const member: SessionMember = { id: row.id, name: row.name, email: row.email, tier: row.tier, weeklyHours: row.weekly_hours, isAdmin: row.is_admin };
+  const member: SessionMember = {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    tier: row.tier,
+    weeklyHours: row.weekly_hours,
+    isAdmin: row.is_admin,
+    departmentIds: (row.department_ids ?? []).map(Number),
+  };
   const expiresAt = new Date(Math.round(Number(row.expires_ms)));
 
   if (renew && expiresAt.getTime() - Date.now() < RENEW_WHEN_LEFT_MS) {

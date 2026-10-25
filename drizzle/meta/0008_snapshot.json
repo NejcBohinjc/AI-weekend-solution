@@ -1,5 +1,5 @@
 {
-  "id": "d7ba079e-5c14-44a7-bfe8-a7394ecc7887",
+  "id": "6e09501d-79b7-4d63-816b-154d7fa2912d",
   "prevId": "6aa4de2b-2981-4ed5-b3a5-6b29d62cdf28",
   "version": "7",
   "dialect": "postgresql",
@@ -436,6 +436,46 @@
         }
       },
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.departments": {
+      "name": "departments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "departments_name_unique": {
+          "name": "departments_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -1112,6 +1152,12 @@
           "notNull": true,
           "default": "'{}'"
         },
+        "department_id": {
+          "name": "department_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1128,7 +1174,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "members_department_id_departments_id_fk": {
+          "name": "members_department_id_departments_id_fk",
+          "tableFrom": "members",
+          "tableTo": "departments",
+          "columnsFrom": [
+            "department_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "members_email_unique": {
@@ -1606,6 +1666,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "department_id": {
+          "name": "department_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "type": {
           "name": "type",
           "type": "text",
@@ -1723,18 +1789,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status_before_done": {
-          "name": "status_before_done",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "deleted_at": {
           "name": "deleted_at",
           "type": "timestamp with time zone",
@@ -1799,6 +1853,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "tasks_department_idx": {
+          "name": "tasks_department_idx",
+          "columns": [
+            {
+              "expression": "department_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -1808,6 +1877,19 @@
           "tableTo": "members",
           "columnsFrom": [
             "assignee_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "tasks_department_id_departments_id_fk": {
+          "name": "tasks_department_id_departments_id_fk",
+          "tableFrom": "tasks",
+          "tableTo": "departments",
+          "columnsFrom": [
+            "department_id"
           ],
           "columnsTo": [
             "id"
@@ -1866,7 +1948,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "tasks_one_owner": {
+          "name": "tasks_one_owner",
+          "value": "\"tasks\".\"assignee_id\" is null or \"tasks\".\"department_id\" is null"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.time_entries": {

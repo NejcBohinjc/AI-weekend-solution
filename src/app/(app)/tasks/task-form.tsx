@@ -2,18 +2,20 @@
 
 import { useActionState } from "react";
 import { errorClass, inputClass, labelClass, primaryButtonClass } from "@/components/ui";
-import { STATUS_LABELS, TASK_STATUSES, TASK_TYPES } from "@/lib/tasks/constants";
+import { PRIORITY_LABELS, STATUS_LABELS, TASK_PRIORITIES, TASK_STATUSES, TASK_TYPES } from "@/lib/tasks/constants";
 import type { TaskFormState, TaskFormValues } from "./actions";
 
 type Props = {
   action: (prev: TaskFormState, formData: FormData) => Promise<TaskFormState>;
   initial: TaskFormValues;
   members: { id: number; name: string }[];
+  departments: { id: number; name: string }[];
+  projects: { id: number; name: string }[];
   submitLabel: string;
 };
 
-/** Create or edit a task. Changing the assignee hands the task over. */
-export function TaskForm({ action, initial, members, submitLabel }: Props) {
+/** Create or edit a task. Changing who it is assigned to (a person or a whole department) hands it over. */
+export function TaskForm({ action, initial, members, departments, projects, submitLabel }: Props) {
   const [state, formAction, pending] = useActionState(action, {});
   const values = state.values ?? initial;
   const extraType = initial.type && !(TASK_TYPES as readonly string[]).includes(initial.type) ? initial.type : null;
@@ -27,12 +29,34 @@ export function TaskForm({ action, initial, members, submitLabel }: Props) {
       </label>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
-          <span className={labelClass}>Assignee</span>
-          <select name="assigneeId" defaultValue={values.assigneeId} className={inputClass}>
+          <span className={labelClass}>Assigned to</span>
+          <select name="owner" defaultValue={values.owner} className={inputClass}>
             <option value="">Unassigned</option>
-            {members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
+            {departments.length > 0 && (
+              <optgroup label="A whole department">
+                {departments.map((d) => (
+                  <option key={d.id} value={`d:${d.id}`}>
+                    {d.name} (department)
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label="One person">
+              {members.map((m) => (
+                <option key={m.id} value={`m:${m.id}`}>
+                  {m.name}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>Project</span>
+          <select name="projectId" defaultValue={values.projectId} className={inputClass}>
+            <option value="">No project</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
               </option>
             ))}
           </select>
@@ -43,6 +67,16 @@ export function TaskForm({ action, initial, members, submitLabel }: Props) {
             {TASK_STATUSES.map((s) => (
               <option key={s} value={s}>
                 {STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>Priority</span>
+          <select name="priority" defaultValue={values.priority} className={inputClass}>
+            {TASK_PRIORITIES.map((p) => (
+              <option key={p} value={p}>
+                {PRIORITY_LABELS[p]}
               </option>
             ))}
           </select>

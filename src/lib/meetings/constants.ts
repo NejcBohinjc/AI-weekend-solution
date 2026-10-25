@@ -37,3 +37,12 @@ export const REMINDER_OPTIONS: { minutes: number; label: string }[] = [
   { minutes: 10, label: "10 minutes before" },
 ];
 export const DEFAULT_REMINDER_MINUTES = [24 * 60, 10];
+
+/** recorded: recorded in the browser during an in-person meeting. uploaded: a file an admin uploaded afterwards. */
+export const RECORDING_SOURCES = ["recorded", "uploaded"] as const;
+export type RecordingSource = (typeof RECORDING_SOURCES)[number];
+/** uploading: the browser is sending the file to storage. ready: stored and playable. */
+export const RECORDING_STATUSES = ["uploading", "ready"] as const;
+
+/** Largest recording that can be stored (an hour of compressed audio is about 15-60 MB). */
+export const MAX_RECORDING_BYTES = 500 * 1024 * 1024;

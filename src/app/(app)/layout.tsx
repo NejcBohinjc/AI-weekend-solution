@@ -14,6 +14,7 @@ import { themePref } from "@/lib/theme-server";
 const MEMBER_NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/tasks", label: "Tasks" },
+  { href: "/projects", label: "Projects" },
   { href: "/hours", label: "Hours" },
   { href: "/meetings", label: "Meetings" },
 ];
@@ -21,7 +22,7 @@ const MEMBER_NAV: NavItem[] = [
 const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/members", label: "Members" },
-  { href: "/admin/tasks", label: "Board" },
+  { href: "/admin/departments", label: "Departments" },
   { href: "/admin/hours", label: "Hours" },
   { href: "/admin/meetings", label: "Meetings" },
   { href: "/admin/analytics", label: "Analytics" },

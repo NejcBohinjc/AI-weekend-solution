@@ -11,6 +11,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
+    "seed:projects": "tsx scripts/seed-projects.ts",
     "create-admin": "tsx scripts/create-admin.ts",
     "test": "node scripts/test.mjs",
     "reminders": "tsx scripts/reminders.ts",
@@ -18,6 +19,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@aws-sdk/s3-request-presigner": "^3.1156.0",
     "@breezystack/lamejs": "^1.2.7",
     "@node-rs/argon2": "^2.2.2",
     "drizzle-orm": "^0.45.4",

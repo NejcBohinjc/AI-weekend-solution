@@ -1,15 +1,29 @@
 import assert from "node:assert/strict";
-import { TASK_STATUSES, TASK_TYPES } from "./constants";
+import { TASK_PRIORITIES, TASK_STATUSES, TASK_TYPES } from "./constants";
 import { test } from "node:test";
-import { buildRowKeys, findColumns, formatStatus, mapStatus, matchAssignee, normalizeType, parseDeadline } from "./sheet-mapping";
+import { buildRowKeys, findColumns, formatPriority, formatStatus, mapPriority, mapStatus, matchAssignee, matchOwner, normalizeType, parseDeadline } from "./sheet-mapping";
 
 const TODAY = "2026-10-24";
 
 test("finds columns by header name, case- and space-insensitive, in any order", () => {
-  const { columns, missing } = findColumns(["Geslo", " Deadline ", "TASK", "Tip  taska", "nosilec", "Status"]);
-  assert.deepEqual(columns, { title: 2, status: 5, assignee: 4, type: 3, deadline: 1 });
+  const { columns, missing } = findColumns(["Geslo", " Deadline ", "TASK", "Tip  taska", "nosilec", "Status", "Prioriteta"]);
+  assert.deepEqual(columns, { title: 2, status: 5, assignee: 4, type: 3, deadline: 1, priority: 6 });
   assert.deepEqual(missing, []);
-  assert.deepEqual(findColumns(["task"]).missing, ["status", "assignee", "type", "deadline"]);
+  assert.deepEqual(findColumns(["task"]).missing, ["status", "assignee", "type", "deadline", "priority"]);
+});
+
+test("maps English and Slovenian priorities; empty or unknown leaves the app's", () => {
+  const cases: [string, string | null][] = [
+    ["urgent", "urgent"], ["Nujno", "urgent"], ["HIGH", "urgent"], ["visoka prioriteta", "urgent"], ["High priority", "urgent"],
+    ["medium", "medium"], ["Srednja", "medium"], ["normal", "medium"],
+    ["low", "low"], ["Nizka", "low"], ["ni nujno", "low"], ["low-priority", "low"],
+  ];
+  for (const [raw, want] of cases) assert.deepEqual(mapPriority(raw), { priority: want, recognised: true }, raw);
+  assert.deepEqual(mapPriority(""), { priority: null, recognised: true });
+  assert.deepEqual(mapPriority(null), { priority: null, recognised: true });
+  assert.deepEqual(mapPriority("whenever"), { priority: null, recognised: false });
+  assert.deepEqual(mapPriority("priority"), { priority: null, recognised: false });
+  for (const p of TASK_PRIORITIES) assert.equal(mapPriority(formatPriority(p)).priority, p, "what the app writes reads back the same");
 });
 
 test("maps English and Slovenian statuses", () => {
@@ -43,6 +57,20 @@ test("leaves assignee empty unless exactly one member matches", () => {
   assert.deepEqual(matchAssignee("Ana", members), { memberId: null, reason: "matches 2 members (Ana Kovač, Ana Novak)" });
   assert.deepEqual(matchAssignee("Marko", members), { memberId: null, reason: "no member matches" });
   assert.deepEqual(matchAssignee("", members), { memberId: null });
+});
+
+test("nosilec can name a whole department instead of one person", () => {
+  const departments = [
+    { id: 7, name: "Tech" },
+    { id: 8, name: "Voice" },
+  ];
+  assert.deepEqual(matchOwner("Tech", members, departments), { assigneeId: null, departmentId: 7 });
+  assert.deepEqual(matchOwner(" voice ", members, departments), { assigneeId: null, departmentId: 8 });
+  assert.deepEqual(matchOwner("Oddelek Tech", members, departments), { assigneeId: null, departmentId: 7 });
+  assert.deepEqual(matchOwner("Tech department", members, departments), { assigneeId: null, departmentId: 7 });
+  assert.deepEqual(matchOwner("Ana Kovac", members, departments), { assigneeId: 2, departmentId: null, reason: undefined });
+  assert.deepEqual(matchOwner("Marko", members, departments), { assigneeId: null, departmentId: null, reason: "no member matches" });
+  assert.deepEqual(matchOwner("", members, departments), { assigneeId: null, departmentId: null });
 });
 
 test("task types: list types match ignoring case and diacritics, other types are kept as typed", () => {

@@ -13,15 +13,21 @@
 //
 // Deleted tasks (tasks.deleted_at): their row is deleted from the sheet; never re-added or re-imported.
 //
-// Scope: only the tasks tab is opened. Only row 1 (header names) and the six mapped columns are read,
+// Scope: only the tasks tab is opened. Only row 1 (header names) and the seven mapped columns are read,
 // and only those cells are written, so other columns (e.g. Geslo) are never read or written.
+//
+// Departments: "nosilec" holds one person or a whole department ("Tech"). assignee_id and
+// department_id share that cell, so they are merged together as one value (never both set).
+//
+// Priority: a "priority" column is added after the last header if the sheet has none. An empty or
+// unreadable priority cell is not a change from the sheet: the app's priority is written into it.
 import { randomBytes } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { members, taskEvents, tasks, taskSyncs, type Task, type TaskSheetSnapshot } from "@/db/schema";
+import { departments, members, taskEvents, tasks, taskSyncs, type Task, type TaskSheetSnapshot } from "@/db/schema";
 import { columnLetter, describeGoogleError, openTab, plainText, type Cell, type SheetsApi } from "@/lib/google/sheets";
 import { acquireSync, finishSync } from "@/lib/sync-state";
-import { STATUS_LABELS, type TaskStatus } from "./constants";
+import { DEFAULT_PRIORITY, PRIORITY_LABELS, STATUS_LABELS, type TaskPriority, type TaskStatus } from "./constants";
 import { completionFields, isReopen } from "./done";
 import {
   buildRowKeys,
@@ -30,12 +36,16 @@ import {
   findIdColumn,
   formatAssignee,
   formatDeadline,
+  formatPriority,
   formatStatus,
+  mapPriority,
   mapStatus,
-  matchAssignee,
+  matchOwner,
   normalizeType,
   parseDeadline,
+  PRIORITY_HEADER,
   todayInLjubljana,
+  type DepartmentRef,
   type MemberRef,
   type SheetField,
 } from "./sheet-mapping";
@@ -90,15 +100,34 @@ export function emptyReport(at = new Date()): SyncReport {
   };
 }
 
-const FIELDS = ["title", "status", "assigneeId", "type", "dueDate"] as const;
+const FIELDS = ["title", "status", "assigneeId", "departmentId", "type", "dueDate", "priority"] as const;
 type Field = (typeof FIELDS)[number];
-const COLUMN_OF: Record<Field, SheetField> = { title: "title", status: "status", assigneeId: "assignee", type: "type", dueDate: "deadline" };
+const COLUMN_OF: Record<Field, SheetField> = {
+  title: "title",
+  status: "status",
+  assigneeId: "assignee",
+  departmentId: "assignee",
+  type: "type",
+  dueDate: "deadline",
+  priority: "priority",
+};
+// Merged as one: fields in a unit share a sheet cell, so they change together or not at all.
+const UNITS: Field[][] = [["title"], ["status"], ["assigneeId", "departmentId"], ["type"], ["dueDate"], ["priority"]];
 
 const isEmpty = (c: Cell) => c === undefined || c === null || String(c).trim() === "";
 const rawText = (c: Cell) => (isEmpty(c) ? null : String(c).trim());
 const cleanTitle = (c: Cell) => String(c).replace(/\s+/g, " ").trim();
 const newKey = () => `t-${randomBytes(5).toString("hex")}`;
-const pick = (t: TaskSheetSnapshot): TaskSheetSnapshot => ({ title: t.title, status: t.status, assigneeId: t.assigneeId, type: t.type, dueDate: t.dueDate });
+// Snapshots from before departments (or priorities) have no departmentId (priority): read it as null.
+const pick = (t: TaskSheetSnapshot): TaskSheetSnapshot => ({
+  title: t.title,
+  status: t.status,
+  assigneeId: t.assigneeId,
+  departmentId: t.departmentId ?? null,
+  type: t.type,
+  dueDate: t.dueDate,
+  priority: t.priority ?? null,
+});
 
 type SheetRow = { row: number; key: string | null; cells: Record<SheetField, Cell> };
 type NewEvent = typeof taskEvents.$inferInsert;
@@ -122,12 +151,17 @@ export async function syncTasks({
   // ---- Read: header names, then only our columns ----
   const header = (await tab.get("1:1"))[0] ?? [];
   const { columns, missing } = findColumns(header);
-  report.missingColumns = missing;
+  report.missingColumns = missing.filter((f) => f !== "priority");
   if (columns.title === undefined) throw new Error(`Tab "${tab.tab}" has no "task" column in its first row.`);
+  let nextFree = header.length; // the first free column after the last header
   let idCol = findIdColumn(header);
   if (idCol < 0) {
-    idCol = header.length; // the first free column after the last header
+    idCol = nextFree++;
     await tab.write(`${columnLetter(idCol)}1`, [["id"]]);
+  }
+  if (columns.priority === undefined) {
+    columns.priority = nextFree++;
+    await tab.write(`${columnLetter(columns.priority)}1`, [[PRIORITY_HEADER]]);
   }
   const fields = Object.keys(columns) as SheetField[];
   const ranges = [...fields.map((f) => columns[f]!), idCol].map((c) => `${columnLetter(c)}2:${columnLetter(c)}`);
@@ -148,24 +182,40 @@ export async function syncTasks({
     .where(eq(members.active, true));
   const memberById = new Map(memberRefs.map((m) => [m.id, m]));
   const allNames = new Map((await db.select({ id: members.id, name: members.name }).from(members)).map((m) => [m.id, m.name]));
+  const departmentRefs: DepartmentRef[] = await db.select({ id: departments.id, name: departments.name }).from(departments);
+  const departmentNames = new Map(departmentRefs.map((d) => [d.id, d.name]));
   const style = detectAssigneeStyle(sheetRows.map((r) => r.cells.assignee));
   const show: Record<Field, (v: unknown) => string | null> = {
     title: (v) => (v as string) ?? null,
     status: (v) => (v ? STATUS_LABELS[v as TaskStatus] : null),
     assigneeId: (v) => (v ? (allNames.get(v as number) ?? `#${v}`) : null),
+    departmentId: (v) => (v ? (departmentNames.get(v as number) ?? `#${v}`) : null),
     type: (v) => (v as string) ?? null,
     dueDate: (v) => (v as string) ?? null,
+    priority: (v) => (v ? PRIORITY_LABELS[v as TaskPriority] : null),
   };
-  const cellText: Record<Field, (v: unknown) => Cell> = {
-    title: (v) => plainText(v as string),
-    status: (v) => formatStatus(v as TaskStatus),
-    assigneeId: (v) => {
-      if (!v) return "";
-      const m = memberById.get(v as number);
-      return plainText(m ? formatAssignee(m, style, memberRefs) : (allNames.get(v as number) ?? ""));
-    },
-    type: (v) => (v ? plainText(v as string) : ""),
-    dueDate: (v) => (v ? formatDeadline(v as string) : ""),
+  /** The sheet text of a field; "nosilec" is the person (written in the sheet's style) or the department name. */
+  const cellFor = (f: Field, t: TaskSheetSnapshot): Cell => {
+    switch (f) {
+      case "title":
+        return plainText(t.title);
+      case "status":
+        return formatStatus(t.status);
+      case "assigneeId":
+      case "departmentId": {
+        if (t.assigneeId) {
+          const m = memberById.get(t.assigneeId);
+          return plainText(m ? formatAssignee(m, style, memberRefs) : (allNames.get(t.assigneeId) ?? ""));
+        }
+        return t.departmentId ? plainText(departmentNames.get(t.departmentId) ?? "") : "";
+      }
+      case "type":
+        return t.type ? plainText(t.type) : "";
+      case "dueDate":
+        return t.dueDate ? formatDeadline(t.dueDate) : "";
+      case "priority":
+        return formatPriority(t.priority ?? DEFAULT_PRIORITY);
+    }
   };
   const writable = (f: Field) => columns[COLUMN_OF[f]] !== undefined;
   const cellRange = (f: Field, row: number) => `${columnLetter(columns[COLUMN_OF[f]]!)}${row}`;
@@ -205,7 +255,12 @@ export async function syncTasks({
     const ref = { row: r.row, title: cleanTitle(r.cells.title) };
     const status = mapStatus(r.cells.status);
     if (!status.recognised) report.warnings.push({ ...ref, message: `unknown status "${rawText(r.cells.status)}", read as To do` });
-    const assignee = matchAssignee(r.cells.assignee, memberRefs);
+    const owner = matchOwner(r.cells.assignee, memberRefs, departmentRefs);
+    const priority = mapPriority(r.cells.priority);
+    if (!priority.recognised) {
+      const kept = current ? `kept ${PRIORITY_LABELS[current.priority]}` : `set to ${PRIORITY_LABELS[DEFAULT_PRIORITY]}`;
+      report.warnings.push({ ...ref, message: `unknown priority "${rawText(r.cells.priority)}", ${kept}` });
+    }
     const deadline = parseDeadline(r.cells.deadline, today);
     if (deadline.error) {
       const kept = current?.dueDate ? "kept the app's due date" : "left empty";
@@ -214,10 +269,13 @@ export async function syncTasks({
     const values: TaskSheetSnapshot = {
       title: ref.title,
       status: status.status,
-      assigneeId: assignee.memberId,
+      assigneeId: owner.assigneeId,
+      departmentId: owner.departmentId,
       type: normalizeType(r.cells.type),
       // An unreadable deadline never wipes a due date the app already has.
       dueDate: deadline.error ? (current?.dueDate ?? null) : deadline.date,
+      // Null when the cell is empty or unreadable: the app's priority is written into it.
+      priority: priority.priority,
     };
     // Columns the sheet does not have keep the app's value.
     if (current) for (const f of FIELDS) if (!writable(f)) (values as Record<Field, unknown>)[f] = current[f];
@@ -229,9 +287,11 @@ export async function syncTasks({
       sheetRow: r.row,
       inSheet: true,
     };
-    // Reported only if the task ends up without an assignee (the app may have one to write back).
-    const reportUnassigned = (finalAssignee: number | null) => {
-      if (assignee.reason && finalAssignee === null) report.unassigned.push({ ...ref, raw: rawText(r.cells.assignee)!, reason: assignee.reason });
+    // Reported only if the task ends up with nobody (the app may have a person or department to write back).
+    const reportUnassigned = (final: Pick<TaskSheetSnapshot, "assigneeId" | "departmentId">) => {
+      if (owner.reason && final.assigneeId === null && !final.departmentId) {
+        report.unassigned.push({ ...ref, raw: rawText(r.cells.assignee)!, reason: owner.reason });
+      }
     };
     return { ref, values, raw, reportUnassigned };
   };
@@ -247,30 +307,51 @@ export async function syncTasks({
     }
     // Base: the sheet as of the last sync. Tasks from the earlier read-only import have none yet: there,
     // fields an admin had edited (locked) count as app changes and everything else follows the sheet.
-    const base: TaskSheetSnapshot =
-      task.sheetSnapshot ?? (Object.fromEntries(FIELDS.map((f) => [f, task.lockedFields.includes(f) ? s[f] : task[f]])) as TaskSheetSnapshot);
+    const base = pick(
+      task.sheetSnapshot ?? (Object.fromEntries(FIELDS.map((f) => [f, task.lockedFields.includes(f) ? s[f] : task[f]])) as TaskSheetSnapshot),
+    );
+    const app = pick(task);
     const final = pick(task);
     const fromSheet: Field[] = [];
     const toSheet: Field[] = [];
     const events: NewEvent[] = [];
-    for (const f of FIELDS) {
-      const sheetChanged = s[f] !== base[f];
-      const appChanged = task[f] !== base[f];
+    // An empty or unreadable priority cell is not a change from the sheet: the app's priority fills it.
+    const fillPriority = s.priority === null && writable("priority");
+    if (fillPriority) toSheet.push("priority");
+    for (const unit of UNITS) {
+      if (fillPriority && unit[0] === "priority") continue;
+      const differs = (a: TaskSheetSnapshot, b: TaskSheetSnapshot) => unit.some((f) => a[f] !== b[f]);
+      const sheetChanged = differs(s, base);
+      const appChanged = differs(app, base);
       if (sheetChanged && !appChanged) {
-        (final as Record<Field, unknown>)[f] = s[f];
-        fromSheet.push(f);
-        const kind = f === "status" && isReopen(task.status, s.status) ? "reopened" : "updated";
-        events.push({ taskId: task.id, actorId, source: "sheet_sync", kind, field: f, oldValue: show[f](task[f]), newValue: show[f](s[f]) });
-      } else if (appChanged && s[f] !== task[f] && writable(f)) {
-        toSheet.push(f);
-        if (sheetChanged) {
-          report.conflicts.push({ ...ref, field: f, sheetValue: show[f](s[f]), appValue: show[f](task[f]) });
-          events.push({ taskId: task.id, actorId, source: "sheet_sync", kind: "conflict", field: f, oldValue: show[f](s[f]), newValue: show[f](task[f]) });
+        for (const f of unit) {
+          if (s[f] === app[f]) continue;
+          (final as Record<Field, unknown>)[f] = s[f];
+          fromSheet.push(f);
+          // Done -> not done from the sheet is a reopen, as in the app.
+          const kind = f === "status" && isReopen(app.status, s.status) ? "reopened" : "updated";
+          events.push({ taskId: task.id, actorId, source: "sheet_sync", kind, field: f, oldValue: show[f](app[f]), newValue: show[f](s[f]) });
+        }
+      } else if (appChanged && differs(s, app) && writable(unit[0])) {
+        for (const f of unit) {
+          if (s[f] === app[f]) continue;
+          toSheet.push(f);
+          if (sheetChanged) {
+            report.conflicts.push({ ...ref, field: f, sheetValue: show[f](s[f]), appValue: show[f](app[f]) });
+            events.push({ taskId: task.id, actorId, source: "sheet_sync", kind: "conflict", field: f, oldValue: show[f](s[f]), newValue: show[f](app[f]) });
+          }
         }
       }
     }
-    reportUnassigned(final.assigneeId);
-    for (const f of toSheet) writes.push({ range: cellRange(f, r.row), values: [[cellText[f](task[f])]] });
+    reportUnassigned(final);
+    // Fields sharing a cell (person/department) are written once.
+    const written = new Set<string>();
+    for (const f of toSheet) {
+      const range = cellRange(f, r.row);
+      if (written.has(range)) continue;
+      written.add(range);
+      writes.push({ range, values: [[cellFor(f, app)]] });
+    }
     if (writeKey) writes.push({ range: idRange(r.row), values: [[key]] });
 
     // The snapshot is what the sheet holds: fields still to be written are recorded after the write.
@@ -298,7 +379,12 @@ export async function syncTasks({
   const takenLegacyKeys = new Set(allTasks.filter((t) => t.source === SHEET_SOURCE && t.sourceKey).map((t) => t.sourceKey!));
   const create = (r: SheetRow, key: string, legacyKey: string | null) => {
     const { values, raw, reportUnassigned } = mapRow(r, null);
-    reportUnassigned(values.assigneeId);
+    reportUnassigned(values);
+    if (values.priority === null) {
+      // A row typed into the sheet without a priority gets the default, written into its cell.
+      values.priority = DEFAULT_PRIORITY;
+      if (writable("priority")) writes.push({ range: cellRange("priority", r.row), values: [[formatPriority(DEFAULT_PRIORITY)]] });
+    }
     // The legacy key lets the next sync find this task if writing its key to the row fails. A copied
     // row repeats an existing legacy key, which must stay unique, so it goes without.
     creates.push({ key, legacyKey: legacyKey && !takenLegacyKeys.has(legacyKey) ? legacyKey : null, values, raw, row: r.row });
@@ -345,7 +431,7 @@ export async function syncTasks({
       const key = task.sheetKey ?? newKey();
       const row = nextRow++;
       appends.push({ task, key, row });
-      for (const f of FIELDS.filter(writable)) writes.push({ range: cellRange(f, row), values: [[cellText[f](task[f])]] });
+      for (const [f] of UNITS) if (writable(f)) writes.push({ range: cellRange(f, row), values: [[cellFor(f, pick(task))]] });
       writes.push({ range: idRange(row), values: [[key]] });
     } else if (task.inSheet) {
       goneFromSheet.push(task);
@@ -357,7 +443,15 @@ export async function syncTasks({
     for (const c of creates) {
       const [created] = await tx
         .insert(tasks)
-        .values({ ...c.values, ...c.raw, source: SHEET_SOURCE, sheetKey: c.key, sourceKey: c.legacyKey, sheetSnapshot: c.values })
+        .values({
+          ...c.values,
+          priority: c.values.priority ?? DEFAULT_PRIORITY,
+          ...c.raw,
+          source: SHEET_SOURCE,
+          sheetKey: c.key,
+          sourceKey: c.legacyKey,
+          sheetSnapshot: c.values,
+        })
         .returning({ id: tasks.id });
       await tx.insert(taskEvents).values({ taskId: created.id, actorId, source: "sheet_sync", kind: "created", newValue: `Imported from sheet row ${c.row}` });
       report.created.push({ row: c.row, title: c.values.title });

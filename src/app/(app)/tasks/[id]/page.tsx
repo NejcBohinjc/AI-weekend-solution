@@ -2,20 +2,23 @@ import { aliasedTable, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { after } from "next/server";
-import { AiBadge, DueDate, StatusBadge, TypeBadge } from "@/components/task-badges";
+import { AiBadge, DepartmentBadge, DueDate, PriorityBadge, StatusBadge, TypeBadge } from "@/components/task-badges";
 import { secondaryButtonClass } from "@/components/ui";
 import { db } from "@/db";
-import { generalTaskRequests, meetings, members, taskEvents, tasks } from "@/db/schema";
+import { departments, generalTaskRequests, meetings, members, projects, taskEvents, tasks } from "@/db/schema";
 import { TIMEZONE } from "@/lib/app";
 import { requireMember } from "@/lib/auth";
+import { departmentList } from "@/lib/departments";
+import { projectList } from "@/lib/projects/queries";
 import { FIELD_LABELS } from "@/lib/tasks/constants";
-import { canConfirmAiTask, canDeleteAiTask, canEditTask } from "@/lib/tasks/permissions";
+import { ownerValue } from "@/lib/tasks/owner";
+import { canConfirmAiTask, canDeleteAiTask, canEditTask, canTakeTask } from "@/lib/tasks/permissions";
 import { sheetState } from "@/lib/tasks/sheet-state";
 import { activeMembers } from "@/lib/tasks/queries";
 import { normalizeType, todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { runTasksSyncQuietly } from "@/lib/tasks/sheet-sync";
 import { tasksSyncStatus } from "@/lib/tasks/sync-status";
-import { confirmAiTaskAction, deleteAiTaskAction, updateTaskAction } from "../actions";
+import { confirmAiTaskAction, deleteAiTaskAction, takeTaskAction, updateTaskAction } from "../actions";
 import { DoneToggle } from "../done-toggle";
 import { GeneralTaskDetail } from "./general-detail";
 import { SyncStatus } from "../sync-status";
@@ -29,20 +32,24 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
   const actor = aliasedTable(members, "actor");
   const creator = aliasedTable(members, "creator");
   const triggerer = aliasedTable(members, "triggerer");
-  // The task, its history and the member list only need the id from the URL: they are fetched while the
-  // session is checked. Nothing from them is shown before the permission checks below.
-  const [me, [row], events, memberList, syncStatus] = await Promise.all([
+  // The task, its history and the lists for the form only need the id from the URL: they are fetched
+  // while the session is checked. Nothing from them is shown before the permission checks below.
+  const [me, [row], events, memberList, syncStatus, departmentOptions, projectOptions] = await Promise.all([
     requireMember(),
     db
       .select({
         task: tasks,
         assigneeName: members.name,
+        departmentName: departments.name,
+        project: { id: projects.id, name: projects.name },
         creatorName: creator.name,
         triggeredByName: triggerer.name,
         meeting: { id: meetings.id, title: meetings.title, startsAt: meetings.startsAt },
       })
       .from(tasks)
       .leftJoin(members, eq(tasks.assigneeId, members.id))
+      .leftJoin(departments, eq(tasks.departmentId, departments.id))
+      .leftJoin(projects, eq(tasks.projectId, projects.id))
       .leftJoin(creator, eq(tasks.createdById, creator.id))
       .leftJoin(triggerer, eq(tasks.triggeredById, triggerer.id))
       .leftJoin(meetings, eq(tasks.sourceMeetingId, meetings.id))
@@ -56,6 +63,8 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
       .orderBy(desc(taskEvents.createdAt), desc(taskEvents.id)),
     activeMembers(),
     tasksSyncStatus(),
+    departmentList(),
+    projectList(),
   ]);
   after(runTasksSyncQuietly);
   if (!row || row.task.deletedAt) notFound();
@@ -108,10 +117,25 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
         <h1 className="text-2xl font-bold tracking-tight">{task.title}</h1>
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <StatusBadge status={task.status} />
+          <PriorityBadge priority={task.priority} />
           {task.createdByAi && <AiBadge confirmed={!!task.aiConfirmedAt} />}
           {task.type && <TypeBadge type={task.type} />}
           {task.dueDate && <DueDate date={task.dueDate} today={todayInLjubljana()} done={task.status === "done"} />}
-          <span className="text-muted">{row.assigneeName ?? "Unassigned"}</span>
+          {row.assigneeName ? (
+            <span className="text-muted">{row.assigneeName}</span>
+          ) : row.departmentName ? (
+            <span className="flex items-center gap-1.5 text-muted">
+              <DepartmentBadge name={row.departmentName} />
+              whole department{task.departmentId && me.departmentIds.includes(task.departmentId) ? " (yours)" : ""}
+            </span>
+          ) : (
+            <span className="text-muted">Unassigned</span>
+          )}
+          {row.project?.id && (
+            <Link href={`/projects?open=${row.project.id}`} className="text-xs font-medium text-link hover:underline">
+              in {row.project.name}
+            </Link>
+          )}
           {row.creatorName && <span className="text-xs text-subtle">created by {row.creatorName}</span>}
           {inSheet === "removed" && <span className="text-xs text-warning">no longer in the sheet (its row was deleted there)</span>}
         </p>
@@ -155,9 +179,17 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
         )}
         {editable && (
           <div className="flex flex-wrap items-center gap-3">
+            {task.status !== "done" && canTakeTask(me, task) && (
+              <form action={takeTaskAction.bind(null, task.id)}>
+                <button type="submit" className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">
+                  Take it
+                </button>
+              </form>
+            )}
             <DoneToggle taskId={task.id} title={task.title} done={task.status === "done"} variant="button" />
-            {task.status === "done" && task.completedAt && (
-              <span className="text-xs text-subtle">Done on {fmt(task.completedAt)}</span>
+            {task.status === "done" && task.completedAt && <span className="text-xs text-subtle">Done on {fmt(task.completedAt)}</span>}
+            {task.status !== "done" && canTakeTask(me, task) && (
+              <p className="w-full text-xs text-subtle">This task is for everyone in {row.departmentName}. Take it to make it yours, so the others know it is handled.</p>
             )}
           </div>
         )}
@@ -187,17 +219,21 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
             initial={{
               title: task.title,
               status: task.status,
-              assigneeId: task.assigneeId ? String(task.assigneeId) : "",
+              priority: task.priority,
+              owner: ownerValue(task),
+              projectId: task.projectId ? String(task.projectId) : "",
               // "marketing" from the sheet shows as the list's "Marketing"; other values stay as they are.
               type: normalizeType(task.type) ?? "",
               dueDate: task.dueDate ?? "",
             }}
             members={memberList}
+            departments={departmentOptions}
+            projects={projectOptions}
             submitLabel="Save task"
           />
         </div>
       ) : (
-        <p className="text-sm text-subtle">Only the assignee, the person who created it, or an admin can change this task.</p>
+        <p className="text-sm text-subtle">Only the assignee (or their department, for a department task), the person who created it, or an admin can change this task.</p>
       )}
 
       <div className="flex flex-col gap-2">

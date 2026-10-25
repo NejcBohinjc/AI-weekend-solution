@@ -1,6 +1,6 @@
 // Pure mapping from Google Sheets cell values to task fields. No I/O, so it is unit-tested.
 import { TIMEZONE } from "@/lib/app";
-import { TASK_TYPES, type TaskStatus } from "./constants";
+import { TASK_TYPES, type TaskPriority, type TaskStatus } from "./constants";
 
 export type Cell = string | number | boolean | undefined | null;
 
@@ -16,7 +16,7 @@ export function normalizeText(value: Cell): string {
 
 // ---------- Headers ----------
 
-export type SheetField = "title" | "status" | "assignee" | "type" | "deadline";
+export type SheetField = "title" | "status" | "assignee" | "type" | "deadline" | "priority";
 
 // Header names as they appear in the sheet (compared after normalizeText).
 const HEADERS: Record<SheetField, string[]> = {
@@ -25,7 +25,11 @@ const HEADERS: Record<SheetField, string[]> = {
   assignee: ["nosilec"],
   type: ["tip taska"],
   deadline: ["deadline"],
+  priority: ["priority", "prioriteta", "prio", "nujnost"],
 };
+
+/** The header the sync writes when the sheet has no priority column yet. */
+export const PRIORITY_HEADER = "priority";
 
 /** Finds each field's column index in the header row. Only these columns are ever read. */
 export function findColumns(headerRow: Cell[]): { columns: Partial<Record<SheetField, number>>; missing: SheetField[] } {
@@ -81,6 +85,37 @@ export function formatStatus(status: TaskStatus): string {
   return STATUS_TEXT[status];
 }
 
+// ---------- Priority ----------
+
+const PRIORITY_WORDS: Record<TaskPriority, string[]> = {
+  urgent: ["urgent", "high", "highest", "critical", "asap", "top", "!", "!!", "!!!", "nujno", "nujna", "nujen", "zelo nujno", "visoka", "visoko", "visok", "kriticno"],
+  medium: ["medium", "med", "normal", "normalno", "normalna", "srednja", "srednje", "srednji", "obicajno", "obicajna"],
+  low: ["low", "lowest", "minor", "later", "nizka", "nizko", "nizek", "ni nujno", "manj nujno", "kasneje"],
+};
+const PRIORITY_LOOKUP = new Map<string, TaskPriority>(
+  (Object.entries(PRIORITY_WORDS) as [TaskPriority, string[]][]).flatMap(([p, words]) => words.map((w) => [w, p])),
+);
+
+/**
+ * Maps a sheet priority, also "high"/"nujno"/"srednja"/"nizka" and the like, with or without the word
+ * "priority"/"prioriteta". Empty or unrecognised gives null: the app keeps (and writes back) its own.
+ */
+export function mapPriority(raw: Cell): { priority: TaskPriority | null; recognised: boolean } {
+  const key = normalizeText(raw)
+    .replace(/[-_/]+/g, " ")
+    .replace(/\b(priority|prioriteta|prioriteto|prio)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!key) return { priority: null, recognised: !normalizeText(raw) };
+  const priority = PRIORITY_LOOKUP.get(key);
+  return priority ? { priority, recognised: true } : { priority: null, recognised: false };
+}
+
+/** How the app writes a priority into the sheet: "urgent", "medium" or "low". */
+export function formatPriority(priority: TaskPriority): string {
+  return priority;
+}
+
 // ---------- Assignee ----------
 
 export type MemberRef = { id: number; name: string; email: string };
@@ -97,6 +132,28 @@ export function matchAssignee(raw: Cell, members: MemberRef[]): { memberId: numb
   if (matches.length === 1) return { memberId: matches[0].id };
   if (matches.length === 0) return { memberId: null, reason: "no member matches" };
   return { memberId: null, reason: `matches ${matches.length} members (${matches.map((m) => m.name).join(", ")})` };
+}
+
+export type DepartmentRef = { id: number; name: string };
+
+/**
+ * "nosilec" names one person or a whole department. A department name (ignoring case and diacritics,
+ * with or without the word "department"/"oddelek") makes it a department task; anything else is
+ * matched to a member as in matchAssignee.
+ */
+export function matchOwner(
+  raw: Cell,
+  members: MemberRef[],
+  departments: DepartmentRef[],
+): { assigneeId: number | null; departmentId: number | null; reason?: string } {
+  const key = normalizeText(raw)
+    .replace(/^(oddelek|department)\s+/, "")
+    .replace(/\s+(department|oddelek)$/, "");
+  if (!key) return { assigneeId: null, departmentId: null };
+  const department = departments.find((d) => normalizeText(d.name) === key);
+  if (department) return { assigneeId: null, departmentId: department.id };
+  const member = matchAssignee(raw, members);
+  return { assigneeId: member.memberId, departmentId: null, reason: member.reason };
 }
 
 export type AssigneeStyle = "email" | "first" | "full";

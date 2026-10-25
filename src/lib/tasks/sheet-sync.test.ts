@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { eq, inArray } from "drizzle-orm";
 import { closeDb, db } from "@/db";
-import { members, syncState, taskEvents, tasks, taskSyncs } from "@/db/schema";
+import { departments, members, syncState, taskEvents, tasks, taskSyncs } from "@/db/schema";
 import { FakeSheets } from "@/lib/google/fake-sheets";
 import { testDatabaseSkip } from "@/lib/test-db";
 import { setTaskDone } from "./changes";
@@ -61,10 +61,13 @@ describe("two-way tasks sync", { skip: testDatabaseSkip() }, () => {
     assert.deepEqual(report.skipped, [{ row: 6, reason: "no task title" }]);
     assert.deepEqual(report.unassigned.map((u) => u.raw), ["Marko"]);
     assert.equal(rows()[0][6], "id");
+    assert.equal(rows()[0][7], "priority", "a priority column is added after the id column");
     for (const title of ["Objava na IG", "Plakat", "Najem dvorane"]) {
       const t = await taskBy(title);
       assert.match(String(rowOf(title)[6]), /^t-[0-9a-f]{10}$/);
       assert.equal(rowOf(title)[6], t.sheetKey);
+      assert.equal(t.priority, "medium");
+      assert.equal(rowOf(title)[7], "medium", "the default priority is written into the sheet");
     }
     assert.equal((await taskBy("Plakat")).assigneeId, ids.ana);
     // Types: "Marketing" / "marketing" become the listed "Marketing"; a type not in the list is kept as typed.
@@ -174,6 +177,38 @@ describe("two-way tasks sync", { skip: testDatabaseSkip() }, () => {
     assert.ok(events.some((e) => e.kind === "reopened" && e.source === "app"));
   });
 
+  test("priority syncs both ways; an empty cell gets the app's priority, an unknown one is reported", async () => {
+    const r = () => rows().findIndex((x) => x[0] === "Objava na IG");
+    // Sheet -> app (a Slovenian word), with history.
+    sheets.tabs.get(TAB)!.grid[r()][7] = "Nujno";
+    let report = await sync();
+    const t = await taskBy("Objava na IG");
+    assert.equal(t.priority, "urgent");
+    assert.deepEqual(report.updated.find((u) => u.title === "Objava na IG")?.fields, ["priority"]);
+    const events = await db.select().from(taskEvents).where(eq(taskEvents.taskId, t.id));
+    assert.ok(events.some((e) => e.source === "sheet_sync" && e.field === "priority" && e.newValue === "Urgent"));
+
+    // App -> sheet.
+    await db.update(tasks).set({ priority: "low" }).where(eq(tasks.id, t.id));
+    await sync();
+    assert.equal(rowOf("Objava na IG")[7], "low");
+
+    // An emptied cell is not a change from the sheet: the app's priority is written back into it.
+    sheets.tabs.get(TAB)!.grid[r()][7] = "";
+    report = await sync();
+    assert.equal((await taskBy("Objava na IG")).priority, "low");
+    assert.equal(rowOf("Objava na IG")[7], "low");
+
+    // An unknown word is reported, and the app's priority stays and is written back.
+    sheets.tabs.get(TAB)!.grid[r()][7] = "whenever";
+    report = await sync();
+    assert.ok(report.warnings.some((w) => w.title === "Objava na IG" && w.message.includes('unknown priority "whenever"')), JSON.stringify(report.warnings));
+    assert.equal((await taskBy("Objava na IG")).priority, "low");
+    assert.equal(rowOf("Objava na IG")[7], "low");
+    report = await sync();
+    assert.equal(report.updated.length + report.exported.length, 0, "stable afterwards");
+  });
+
   test("a task created in the app is appended once with its key", async () => {
     const [created] = await db
       .insert(tasks)
@@ -247,5 +282,54 @@ describe("two-way tasks sync", { skip: testDatabaseSkip() }, () => {
     const failed = await runTasksSync({ api: sheets, sheetId: "test", force: true });
     assert.equal(failed.report?.error, "403 PERMISSION_DENIED: The caller does not have permission");
     sheets.failWith = null;
+  });
+
+  test("nosilec can be a whole department; taking it, handing it back and conflicts sync both ways", async () => {
+    // Core, Voice and Tech come with the migration that added departments.
+    const dept = Object.fromEntries((await db.select().from(departments)).map((d) => [d.name, d.id]));
+    sheets.tabs.get(TAB)!.grid.push(["Stojnica na sejmu", "to do", "Tech", "", "", ""]);
+    let report = await sync();
+    let t = await taskBy("Stojnica na sejmu");
+    assert.equal(t.departmentId, dept.Tech, "a department name makes it a department task");
+    assert.equal(t.assigneeId, null);
+    assert.ok(!report.unassigned.some((u) => u.title === "Stojnica na sejmu"), "not reported as unassigned");
+
+    // Ana takes it in the app: the cell becomes her name, written once.
+    const writesBefore = sheets.writes.length;
+    await db.update(tasks).set({ assigneeId: ids.ana, departmentId: null }).where(eq(tasks.id, t.id));
+    report = await sync();
+    assert.match(String(rowOf("Stojnica na sejmu")[2]), /^(Ana|Ana Kovač|ana\.kovac@sandbox\.example)$/);
+    assert.deepEqual(report.exported.find((e) => e.title === "Stojnica na sejmu")?.fields, ["assigneeId", "departmentId"]);
+    assert.equal(sheets.writes.length - writesBefore, 1, "one write for the shared cell");
+
+    // Handed to Voice in the sheet (any case): back to a department task, with history.
+    const r = rows().findIndex((x) => x[0] === "Stojnica na sejmu");
+    sheets.tabs.get(TAB)!.grid[r][2] = "voice";
+    report = await sync();
+    t = await taskBy("Stojnica na sejmu");
+    assert.equal(t.departmentId, dept.Voice);
+    assert.equal(t.assigneeId, null);
+    const events = await db.select().from(taskEvents).where(eq(taskEvents.taskId, t.id));
+    assert.ok(events.some((e) => e.source === "sheet_sync" && e.field === "departmentId" && e.newValue === "Voice"));
+    report = await sync();
+    assert.equal(report.updated.length + report.exported.length, 0, "stable afterwards");
+
+    // Both sides change it: the app (Eva) wins over the sheet (Tech), and the sheet value is kept.
+    await db.update(tasks).set({ assigneeId: ids.eva, departmentId: null }).where(eq(tasks.id, t.id));
+    sheets.tabs.get(TAB)!.grid[r][2] = "Tech";
+    report = await sync();
+    assert.equal(rowOf("Stojnica na sejmu")[2], "Eva");
+    assert.ok(report.conflicts.some((c) => c.title === "Stojnica na sejmu" && c.field === "departmentId" && c.sheetValue === "Tech"));
+    t = await taskBy("Stojnica na sejmu");
+    assert.deepEqual([t.assigneeId, t.departmentId], [ids.eva, null]);
+  });
+
+  test("snapshots from before departments existed do not look like app changes", async () => {
+    const objava = await taskBy("Objava na IG");
+    const old = { ...objava.sheetSnapshot! };
+    delete old.departmentId;
+    await db.update(tasks).set({ sheetSnapshot: old }).where(eq(tasks.id, objava.id));
+    const report = await sync();
+    assert.ok(!report.exported.some((e) => e.title === "Objava na IG"), JSON.stringify(report.exported));
   });
 });

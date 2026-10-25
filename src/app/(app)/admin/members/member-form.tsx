@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { errorClass, inputClass, labelClass, primaryButtonClass } from "@/components/ui";
+import { tierOfDepartment } from "@/lib/department-rules";
 import { TIER_HOURS, TIERS, type Tier } from "@/lib/tiers";
 import type { MemberFormState, MemberValues } from "./actions";
 import { CopyLink } from "./copy-link";
@@ -9,11 +10,12 @@ import { CopyLink } from "./copy-link";
 type Props = {
   action: (prev: MemberFormState, formData: FormData) => Promise<MemberFormState>;
   initial: MemberValues;
+  departments: { id: number; name: string }[];
   submitLabel: string;
   isSelf?: boolean;
 };
 
-export function MemberForm({ action, initial, submitLabel, isSelf }: Props) {
+export function MemberForm({ action, initial, departments, submitLabel, isSelf }: Props) {
   const [state, formAction, pending] = useActionState(action, {});
 
   if (state.created) {
@@ -35,6 +37,7 @@ export function MemberForm({ action, initial, submitLabel, isSelf }: Props) {
     <FormFields
       key={JSON.stringify(values)}
       values={values}
+      departments={departments}
       errors={state.errors ?? {}}
       formAction={formAction}
       pending={pending}
@@ -46,6 +49,7 @@ export function MemberForm({ action, initial, submitLabel, isSelf }: Props) {
 
 function FormFields({
   values,
+  departments,
   errors,
   formAction,
   pending,
@@ -53,6 +57,7 @@ function FormFields({
   isSelf,
 }: {
   values: MemberValues;
+  departments: { id: number; name: string }[];
   errors: NonNullable<MemberFormState["errors"]>;
   formAction: (formData: FormData) => void;
   pending: boolean;
@@ -61,12 +66,22 @@ function FormFields({
 }) {
   const [tier, setTier] = useState(values.tier || "");
   const [hours, setHours] = useState(values.weeklyHours);
+  const [departmentIds, setDepartmentIds] = useState<string[]>(values.departmentIds);
 
   function changeTier(next: string) {
     // Follow the tier's default hours unless the admin typed a custom number.
     const prevDefault = tier ? String(TIER_HOURS[tier as Tier]) : "";
     if (hours === "" || hours === prevDefault) setHours(next ? String(TIER_HOURS[next as Tier]) : "");
+    // A department named like a tier (Core) follows the tier: ticked for its members, unticked for others.
+    setDepartmentIds((ids) => [
+      ...ids.filter((id) => !tierOfDepartment(departments.find((d) => String(d.id) === id)?.name ?? "")),
+      ...departments.filter((d) => tierOfDepartment(d.name) === next).map((d) => String(d.id)),
+    ]);
     setTier(next);
+  }
+
+  function toggleDepartment(id: string, on: boolean) {
+    setDepartmentIds((ids) => (on ? [...ids, id] : ids.filter((x) => x !== id)));
   }
 
   return (
@@ -98,6 +113,37 @@ function FormFields({
           />
         </Field>
       </div>
+      <Field error={errors.departmentIds}>
+        <fieldset className="flex flex-col gap-2">
+          <legend className={`${labelClass} mb-1.5`}>Departments</legend>
+          <div className="flex flex-wrap gap-2">
+            {departments.map((d) => {
+              const onlyFor = tierOfDepartment(d.name);
+              const blocked = onlyFor !== null && onlyFor !== tier;
+              return (
+                <label
+                  key={d.id}
+                  className={`flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-sm ${blocked ? "opacity-60" : ""}`}
+                  title={onlyFor ? `Only for members of the ${onlyFor} tier` : undefined}
+                >
+                  <input
+                    type="checkbox"
+                    name="departmentIds"
+                    value={d.id}
+                    checked={departmentIds.includes(String(d.id))}
+                    disabled={blocked}
+                    onChange={(e) => toggleDepartment(String(d.id), e.target.checked)}
+                    className="size-4 accent-primary"
+                  />
+                  {d.name}
+                  {onlyFor && <span className="text-xs text-subtle">({onlyFor} tier only)</span>}
+                </label>
+              );
+            })}
+          </div>
+          <span className="text-xs text-subtle">Any number, or none. A task given to a department shows for everyone in it.</span>
+        </fieldset>
+      </Field>
       <Field error={errors.isAdmin}>
         <label className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
           <input name="isAdmin" type="checkbox" defaultChecked={values.isAdmin} className="size-5 accent-primary" />

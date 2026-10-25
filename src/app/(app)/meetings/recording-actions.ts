@@ -2,12 +2,16 @@
 
 // Server actions for meeting recordings. Audio never passes through here (Vercel's ~4.5 MB body
 // limit): the browser gets a signed upload URL, uploads to Supabase Storage itself, then confirms.
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { requireMember } from "@/lib/auth";
+import { db } from "@/db";
+import { meetingRecordings } from "@/db/schema";
+import { requireAdmin, requireMember } from "@/lib/auth";
 import { transcribeEnabled } from "@/lib/ai/transcribe";
 import { RecordingError, confirmSegment, createRecording, deleteRecording, finishRecording, playbackUrls, prepareSegmentUpload } from "@/lib/recordings/service";
 import { runTranscription, saveTranscriptAsNotes, startTranscription, transcriptionProgress, type Progress } from "@/lib/recordings/transcription";
+import { deleteStored } from "@/lib/storage";
 import { StorageError, storageConfigured } from "@/lib/storage/supabase";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -122,4 +126,17 @@ export async function saveTranscriptAction(recordingId: number, text: string): P
     revalidatePath("/dashboard");
     return { noteId };
   });
+}
+
+/**
+ * Earlier recordings (the first recorder, table meeting_recordings): admins delete one (also an upload that
+ * never finished); the file is removed from its bucket. New recordings are made with the recorder above.
+ */
+export async function deleteEarlierRecordingAction(recordingId: number): Promise<void> {
+  await requireAdmin();
+  const [row] = await db.select().from(meetingRecordings).where(eq(meetingRecordings.id, recordingId)).limit(1);
+  if (!row) return;
+  await deleteStored(row.storageKey);
+  await db.delete(meetingRecordings).where(eq(meetingRecordings.id, row.id));
+  revalidatePath(`/meetings/${row.meetingId}`);
 }

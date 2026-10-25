@@ -1,7 +1,6 @@
-import { Placeholder } from "@/components/placeholder";
-import { requireAdmin } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
-export default async function AdminTasksPage() {
-  await requireAdmin();
-  return <Placeholder title="Project board" description="All projects and tasks on one board, with assignment and history." />;
+// The project board is /projects (for everyone; admins add and edit projects there).
+export default function AdminTasksPage() {
+  redirect("/projects");
 }

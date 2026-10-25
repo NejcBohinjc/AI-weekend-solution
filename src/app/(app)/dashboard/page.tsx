@@ -13,6 +13,7 @@ import { syncCalendarInBackground } from "@/lib/meetings/auto-sync";
 import { myMeetings } from "@/lib/meetings/queries";
 import { meetingPhase } from "@/lib/meetings/rules";
 import { DueDate } from "@/components/task-badges";
+import { myTasksCondition } from "@/lib/tasks/queries";
 import { todayInLjubljana } from "@/lib/tasks/sheet-mapping";
 import { TimerCard } from "../hours/timer-card";
 import { DoneToggle } from "../tasks/done-toggle";
@@ -68,16 +69,18 @@ export default async function DashboardPage() {
         dueDate: tasks.dueDate,
         n: sql<number>`(count(*) filter (where ${or(eq(tasks.createdByAi, false), isNotNull(tasks.aiConfirmedAt))}) over ())::int`,
         review: sql<number>`(count(*) filter (where ${and(eq(tasks.createdByAi, true), isNull(tasks.aiConfirmedAt))}) over ())::int`,
+        department: sql<number>`(count(*) filter (where ${isNull(tasks.assigneeId)}) over ())::int`,
       })
       .from(tasks)
-      .where(and(eq(tasks.assigneeId, member.id), ne(tasks.status, "done"), isNull(tasks.deletedAt), eq(tasks.kind, "project")))
+      // As under My tasks: assigned to me, or to one of my departments and not taken yet.
+      .where(and(myTasksCondition(member), ne(tasks.status, "done"), isNull(tasks.deletedAt), eq(tasks.kind, "project")))
       .orderBy(sql`${tasks.dueDate} asc nulls last`, tasks.title)
       .limit(5),
     lastLocation(member.id),
     member.isAdmin ? recordableMeetings(now) : null,
     aiEnabled() ? notesWaitingForTasks(member) : null,
   ]);
-  const openTasks = { n: myOpen[0]?.n ?? 0, review: myOpen[0]?.review ?? 0 };
+  const openTasks = { n: myOpen[0]?.n ?? 0, review: myOpen[0]?.review ?? 0, department: myOpen[0]?.department ?? 0 };
   const confirmed = meetings.filter((r) => r.meeting.status === "confirmed");
   const happening = confirmed.filter((r) => meetingPhase(r.meeting, now) === "open");
   const next = confirmed.find((r) => meetingPhase(r.meeting, now) === "upcoming");
@@ -108,6 +111,7 @@ export default async function DashboardPage() {
             <span className="font-semibold">
               {openTasks.n} open {openTasks.n === 1 ? "task" : "tasks"}
             </span>
+            {openTasks.department > 0 && <span className="text-sm text-muted">{openTasks.department} for your whole department</span>}
             {openTasks.review > 0 && <span className="text-sm font-medium text-violet">{openTasks.review} from AI to review</span>}
           </Link>
           <Link href="/tasks/new" className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-hover">

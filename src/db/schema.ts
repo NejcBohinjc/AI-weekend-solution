@@ -20,13 +20,27 @@ import {
   DEFAULT_REMINDER_MINUTES,
   EMAIL_STATUSES,
   MEETING_STATUSES,
+  RECORDING_SOURCES,
+  RECORDING_STATUSES,
 } from "../lib/meetings/constants";
-import { TASK_STATUSES } from "../lib/tasks/constants";
+import { DEFAULT_PRIORITY, DEFAULT_TASK_REMINDER_DAYS, TASK_PRIORITIES, TASK_STATUSES } from "../lib/tasks/constants";
 import { LATE_DECISIONS, TASK_KINDS } from "../lib/absence-rules";
 import { TIERS } from "../lib/tiers"; // relative: drizzle-kit does not resolve the @/ alias
-import { RECORDING_STATUSES, SEGMENT_STATUSES } from "../lib/recordings/constants";
+// The meeting recorder's statuses (recordings table); RECORDING_STATUSES above is for meeting_recordings.
+import { RECORDING_STATUSES as RECORDER_STATUSES, SEGMENT_STATUSES } from "../lib/recordings/constants";
 
 export { TIER_HOURS, TIERS, type Tier } from "../lib/tiers";
+
+// Departments (Core, Voice, Tech to start; admins add more on /admin/departments). A member belongs to
+// any number of them (member_departments) or none; a department named like a tier ("Core") is only for
+// members of that tier. A task can be delegated to a whole department instead of one person.
+export const departments = pgTable("departments", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Department = typeof departments.$inferSelect;
 
 export const members = pgTable("members", {
   id: serial("id").primaryKey(),
@@ -43,6 +57,19 @@ export const members = pgTable("members", {
 });
 
 export type Member = typeof members.$inferSelect;
+
+export const memberDepartments = pgTable(
+  "member_departments",
+  {
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    departmentId: integer("department_id")
+      .notNull()
+      .references(() => departments.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.memberId, t.departmentId] }), index("member_departments_department_idx").on(t.departmentId)],
+);
 
 // The id is the SHA-256 hash of the cookie token, so a database leak does not leak sessions.
 export const sessions = pgTable(
@@ -86,6 +113,18 @@ export const loginAttempts = pgTable(
   (t) => [index("login_attempts_email_idx").on(t.email, t.createdAt), index("login_attempts_ip_idx").on(t.ip, t.createdAt)],
 );
 
+// Projects group tasks (app-only: the tasks tab of the sheet has no project column). Admins add,
+// rename and delete them on /projects; a task belongs to at most one.
+export const projects = pgTable("projects", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Project = typeof projects.$inferSelect;
+
 // Tasks. Imported tasks carry the raw sheet values so admins can see what the sheet said.
 export const tasks = pgTable(
   "tasks",
@@ -98,8 +137,12 @@ export const tasks = pgTable(
     description: text("description"),
     status: text("status", { enum: TASK_STATUSES }).notNull().default("todo"),
     assigneeId: integer("assignee_id").references(() => members.id, { onDelete: "set null" }),
+    // Delegated to a whole department instead of one person (never both; see the check below).
+    departmentId: integer("department_id").references(() => departments.id, { onDelete: "set null" }),
+    projectId: integer("project_id").references(() => projects.id, { onDelete: "set null" }),
     type: text("type"), // normalised label, e.g. "marketing"
     dueDate: date("due_date"), // calendar date in Europe/Ljubljana
+    priority: text("priority", { enum: TASK_PRIORITIES }).notNull().default(DEFAULT_PRIORITY),
     createdById: integer("created_by_id").references(() => members.id, { onDelete: "set null" }),
     // Where the task came from: "app" or "gsheet".
     source: text("source").notNull().default("app"),
@@ -145,6 +188,9 @@ export const tasks = pgTable(
     index("tasks_created_idx").on(t.createdAt).where(sql`${t.deletedAt} is null`),
     index("tasks_completed_idx").on(t.completedAt).where(sql`${t.completedAt} is not null`),
     index("tasks_source_meeting_idx").on(t.sourceMeetingId).where(sql`${t.sourceMeetingId} is not null`),
+    index("tasks_department_idx").on(t.departmentId),
+    index("tasks_project_idx").on(t.projectId),
+    check("tasks_one_owner", sql`${t.assigneeId} is null or ${t.departmentId} is null`),
   ],
 );
 
@@ -153,8 +199,13 @@ export type TaskSheetSnapshot = {
   title: string;
   status: (typeof TASK_STATUSES)[number];
   assigneeId: number | null;
+  // Missing in snapshots from before departments existed: read it as null.
+  departmentId?: number | null;
   type: string | null;
   dueDate: string | null;
+  // Null: the sheet's priority cell was empty or unreadable (the sync then writes the app's value).
+  // Missing in snapshots from before priorities existed: read it as null.
+  priority?: (typeof TASK_PRIORITIES)[number] | null;
 };
 
 // Task history: one row per creation or per changed field. actorId null means the sheet sync did it.
@@ -317,6 +368,9 @@ export const reminderSettings = pgTable("reminder_settings", {
     .references(() => members.id, { onDelete: "cascade" }),
   emailEnabled: boolean("email_enabled").notNull().default(true),
   minutesBefore: integer("minutes_before").array().notNull().default(DEFAULT_REMINDER_MINUTES),
+  // Task deadline reminders: on/off and the days before the due date (0 = on the due day).
+  taskEmailEnabled: boolean("task_email_enabled").notNull().default(true),
+  taskDaysBefore: integer("task_days_before").array().notNull().default(DEFAULT_TASK_REMINDER_DAYS),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -353,7 +407,52 @@ export const meetingReminders = pgTable(
   (t) => [primaryKey({ columns: [t.meetingId, t.memberId, t.minutesBefore] })],
 );
 
+// Task deadline reminders already handled, so none is sent twice. The due date is part of the key:
+// a rescheduled task gets its reminders again.
+export const taskReminders = pgTable(
+  "task_reminders",
+  {
+    taskId: integer("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    dueDate: date("due_date").notNull(),
+    daysBefore: integer("days_before").notNull(),
+    emailId: integer("email_id").references(() => emailLog.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.taskId, t.memberId, t.dueDate, t.daysBefore] })],
+);
+
 // One row per calendar import (file upload, calendar URL or seed), with the report.
+// Earlier meeting recordings (the first recorder: one file per meeting in an S3-compatible bucket, see
+// lib/storage.ts). No new rows are made: the meeting recorder (recordings + recording_segments below)
+// replaced it. Kept so recordings already stored stay playable for the meeting's invitees and admins.
+export const meetingRecordings = pgTable(
+  "meeting_recordings",
+  {
+    id: serial("id").primaryKey(),
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    uploadedById: integer("uploaded_by_id").references(() => members.id, { onDelete: "set null" }),
+    source: text("source", { enum: RECORDING_SOURCES }).notNull(),
+    status: text("status", { enum: RECORDING_STATUSES }).notNull().default("uploading"),
+    storageKey: text("storage_key").notNull().unique(),
+    fileName: text("file_name"),
+    contentType: text("content_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    durationSeconds: integer("duration_seconds"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+  },
+  (t) => [index("meeting_recordings_meeting_idx").on(t.meetingId)],
+);
+
+export type MeetingRecording = typeof meetingRecordings.$inferSelect;
+
 export const meetingImports = pgTable(
   "meeting_imports",
   {
@@ -506,7 +605,7 @@ export const recordings = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     durationMs: integer("duration_ms").notNull().default(0),
-    status: text("status", { enum: RECORDING_STATUSES }).notNull().default("recording"),
+    status: text("status", { enum: RECORDER_STATUSES }).notNull().default("recording"),
     error: text("error"),
     source: text("source", { enum: ["recorded", "uploaded"] }).notNull().default("recorded"),
     fileName: text("file_name"), // for imported files

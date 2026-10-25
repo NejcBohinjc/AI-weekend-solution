@@ -19,6 +19,7 @@ import { AttendanceActions } from "../attendance-actions";
 import { addNoteAction, createTasksFromNotesAction } from "../notes-actions";
 import { AddNotesSection, CreateTasksButton } from "../notes-ui";
 import { RecordingItem, type RecordingView } from "../recordings-ui";
+import { EarlierRecordings, earlierRecordings } from "../recordings-section";
 import { RecorderPanel } from "@/components/recorder/recorder-panel";
 import { transcribeEnabled } from "@/lib/ai/transcribe";
 import { recordingsOfMeeting } from "@/lib/recordings/service";
@@ -33,7 +34,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
   if (!Number.isInteger(id)) notFound();
   // Everything the page needs only depends on the id in the URL, so it is fetched while the session is
   // checked (one wait instead of two). Nothing is shown before the invitee-or-admin check below.
-  const [me, meeting, attendees, notes, runs, recs] = await Promise.all([
+  const [me, meeting, attendees, notes, runs, recs, earlier] = await Promise.all([
     requireMember(),
     meetingById(id),
     meetingAttendees(id),
@@ -50,6 +51,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
       .where(eq(aiTaskRuns.meetingId, id))
       .orderBy(desc(aiTaskRuns.id)),
     recordingsOfMeeting(id),
+    earlierRecordings(id),
   ]);
   syncCalendarInBackground();
   if (!meeting) notFound();
@@ -150,6 +152,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
           )}
         </div>
       )}
+      <EarlierRecordings rows={earlier} me={me} now={now} />
 
       {/* Notes: this page is only shown to the meeting's invitees and admins. */}
       <div id="notes" className="flex scroll-mt-28 flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="meeting-notes">
