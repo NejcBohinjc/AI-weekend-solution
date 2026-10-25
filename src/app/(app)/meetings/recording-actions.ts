@@ -8,7 +8,7 @@ import { after } from "next/server";
 import { db } from "@/db";
 import { meetingRecordings } from "@/db/schema";
 import { requireAdmin, requireMember } from "@/lib/auth";
-import { transcribeEnabled } from "@/lib/ai/transcribe";
+import { TRANSCRIBE_NOT_SET_UP, transcribeEnabled } from "@/lib/ai/transcribe";
 import { RecordingError, confirmSegment, createRecording, deleteRecording, finishRecording, playbackUrls, prepareSegmentUpload } from "@/lib/recordings/service";
 import { runTranscription, saveTranscriptAsNotes, startTranscription, transcriptionProgress, type Progress } from "@/lib/recordings/transcription";
 import { deleteStored } from "@/lib/storage";
@@ -100,7 +100,7 @@ export async function startTranscriptionAction(recordingId: number, meetingId: n
   const me = await requireMember();
   return guarded("transcribe", async () => {
     needStorage();
-    if (!transcribeEnabled()) throw new RecordingError("Transcription is not set up (OPENAI_API_KEY).");
+    if (!transcribeEnabled()) throw new RecordingError(TRANSCRIBE_NOT_SET_UP);
     await startTranscription(me, recordingId, { languages, onlyFailed });
     runInBackground(recordingId);
     revalidatePath(`/meetings/${meetingId}`);

@@ -7,7 +7,7 @@ import { after, before, describe, test } from "node:test";
 import { eq, inArray } from "drizzle-orm";
 import { closeDb, db } from "@/db";
 import { meetingInvites, meetingNotes, meetings, members, recordings, recordingSegments } from "@/db/schema";
-import type { Transcriber } from "@/lib/ai/transcribe";
+import { RateLimitError, type Transcriber } from "@/lib/ai/transcribe";
 import { FakeStore } from "@/lib/storage/fake-store";
 import { testDatabaseSkip } from "@/lib/test-db";
 import { confirmSegment, createRecording, deleteRecording, finishRecording, playbackUrls, prepareSegmentUpload, recordingsForMeeting, segmentPath } from "./service";
@@ -91,7 +91,7 @@ describe("meeting recordings", { skip: testDatabaseSkip() }, () => {
   });
 
   test("transcription part by part; a failed part is retried on its own; the transcript is saved as notes only on request", async () => {
-    process.env.OPENAI_API_KEY = "sk-test";
+    process.env.TRANSCRIBE_API_KEY = "gsk-test";
     const [rec] = await recordingsForMeeting(admin, meetingId);
     const calls: string[] = [];
     let failPart1 = true;
@@ -127,16 +127,52 @@ describe("meeting recordings", { skip: testDatabaseSkip() }, () => {
     const [note] = await db.select().from(meetingNotes).where(eq(meetingNotes.id, noteId));
     assert.match(note.content, /Budget je 2.000 €/);
     assert.equal(note.authorId, admin.id);
-    delete process.env.OPENAI_API_KEY;
+    delete process.env.TRANSCRIBE_API_KEY;
+  });
+
+  test("a provider rate limit stops the run, keeps the parts already transcribed and is retryable", async () => {
+    process.env.TRANSCRIBE_API_KEY = "gsk-test";
+    const rec = await createRecording(admin, meetingId);
+    for (const i of [0, 1, 2]) await uploadPart(rec.id, i);
+    await finishRecording(admin, rec.id);
+    const calls: string[] = [];
+    let limited = true;
+    const transcribe: Transcriber = async ({ fileName }) => {
+      calls.push(fileName);
+      if (fileName === "part-1.mp3" && limited) throw new RateLimitError(30);
+      return { text: `Text of ${fileName}`, model: "whisper-large-v3" };
+    };
+    await startTranscription(admin, rec.id, { languages: "sl" });
+    assert.equal(await runTranscription(rec.id, { store, transcribe, concurrency: 1 }), "done");
+    assert.deepEqual(calls, ["part-0.mp3", "part-1.mp3"], "part 2 was not even tried: the provider would refuse it too");
+    let segs = await db.select().from(recordingSegments).where(eq(recordingSegments.recordingId, rec.id)).orderBy(recordingSegments.index);
+    assert.deepEqual(segs.map((x) => x.transcriptStatus), ["done", "failed", "failed"]);
+    assert.equal(segs[0].transcript, "Text of part-0.mp3", "the finished part is kept");
+    assert.match(segs[1].transcriptError ?? "", /rate limit was reached \(it asks to wait 30 s\)/);
+    assert.equal(segs[2].transcriptError, segs[1].transcriptError);
+    let [r] = await db.select().from(recordings).where(eq(recordings.id, rec.id));
+    assert.equal(r.status, "failed");
+    assert.match(r.error ?? "", /2 of 3 parts could not be transcribed: The transcription provider's rate limit/);
+
+    limited = false;
+    await startTranscription(admin, rec.id, { languages: "sl", onlyFailed: true });
+    await runTranscription(rec.id, { store, transcribe, concurrency: 1 });
+    assert.deepEqual(calls, ["part-0.mp3", "part-1.mp3", "part-1.mp3", "part-2.mp3"], "only the two failed parts again");
+    segs = await db.select().from(recordingSegments).where(eq(recordingSegments.recordingId, rec.id)).orderBy(recordingSegments.index);
+    assert.deepEqual(segs.map((x) => x.transcriptStatus), ["done", "done", "done"]);
+    [r] = await db.select().from(recordings).where(eq(recordings.id, rec.id));
+    assert.equal(r.status, "transcribed");
+    assert.equal(r.transcript, "[00:00:00] Text of part-0.mp3\n\n[00:10:00] Text of part-1.mp3\n\n[00:20:00] Text of part-2.mp3");
+    delete process.env.TRANSCRIBE_API_KEY;
   });
 
   test("another run holding the lease makes a second run step aside", async () => {
-    process.env.OPENAI_API_KEY = "sk-test";
+    process.env.TRANSCRIBE_API_KEY = "gsk-test";
     const [rec] = await recordingsForMeeting(admin, meetingId);
     await startTranscription(admin, rec.id, { languages: "auto" });
     await db.update(recordings).set({ transcribeLeaseUntil: new Date(Date.now() + 60_000) }).where(eq(recordings.id, rec.id));
     assert.equal(await runTranscription(rec.id, { store, transcribe: async () => ({ text: "", model: "m" }) }), "busy");
-    delete process.env.OPENAI_API_KEY;
+    delete process.env.TRANSCRIBE_API_KEY;
   });
 
   test("only admins delete; deleting removes the files and the rows", async () => {

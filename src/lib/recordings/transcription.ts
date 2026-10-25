@@ -8,7 +8,7 @@ import { db } from "@/db";
 import { meetingInvites, meetingNotes, meetings, members, recordings, recordingSegments, type RecordingSegment } from "@/db/schema";
 import { cleanNotes, NOTES_MAX_CHARS } from "@/lib/ai/meeting-tasks";
 import { hashNotes } from "@/lib/ai/meeting-tasks-run";
-import { transcribeAudio, transcribeEnabled, type Transcriber } from "@/lib/ai/transcribe";
+import { RateLimitError, TRANSCRIBE_NOT_SET_UP, transcribeAudio, transcribeEnabled, type Transcriber } from "@/lib/ai/transcribe";
 import { ljubljanaParts } from "@/lib/hours/time";
 import { supabaseStore, type ObjectStore } from "@/lib/storage/supabase";
 import { TRANSCRIBE_LANGUAGES } from "./constants";
@@ -20,7 +20,7 @@ const STALE_PART = "6 minutes"; // a part "running" this long was abandoned by a
 /** Queues every part (or only the failed ones) and marks the recording as transcribing. */
 export async function startTranscription(member: Member, recordingId: number, opts: { languages: string; onlyFailed?: boolean }): Promise<void> {
   if (!member.isAdmin) throw new RecordingError("Only admins can transcribe recordings.");
-  if (!transcribeEnabled()) throw new RecordingError("Transcription is not set up (OPENAI_API_KEY).");
+  if (!transcribeEnabled()) throw new RecordingError(TRANSCRIBE_NOT_SET_UP);
   const languages = TRANSCRIBE_LANGUAGES[opts.languages] ? opts.languages : "sl";
   const [rec] = await db.select().from(recordings).where(eq(recordings.id, recordingId)).limit(1);
   if (!rec) throw new RecordingError("Recording not found.");
@@ -83,8 +83,9 @@ export async function runTranscription(recordingId: number, deps: RunDeps = {}):
     return seg;
   };
 
+  let rateLimited = false;
   const worker = async () => {
-    while (Date.now() < deadline) {
+    while (Date.now() < deadline && !rateLimited) {
       const seg = await claim();
       if (!seg) return;
       try {
@@ -101,10 +102,17 @@ export async function runTranscription(recordingId: number, deps: RunDeps = {}):
           })
           .where(eq(recordings.id, recordingId));
       } catch (err) {
-        await db
-          .update(recordingSegments)
-          .set({ transcriptStatus: "failed", transcriptError: ((err as Error).message || "unknown error").slice(0, 300) })
-          .where(eq(recordingSegments.id, seg.id));
+        const message = ((err as Error).message || "unknown error").slice(0, 300);
+        await db.update(recordingSegments).set({ transcriptStatus: "failed", transcriptError: message }).where(eq(recordingSegments.id, seg.id));
+        if (err instanceof RateLimitError) {
+          // Every further request would be refused too: stop here and leave the parts not yet tried as failed
+          // with the same message, so "Retry the failed parts" picks them up later. Finished parts are kept.
+          rateLimited = true;
+          await db
+            .update(recordingSegments)
+            .set({ transcriptStatus: "failed", transcriptError: message })
+            .where(and(eq(recordingSegments.recordingId, recordingId), eq(recordingSegments.transcriptStatus, "pending")));
+        }
       }
     }
   };
