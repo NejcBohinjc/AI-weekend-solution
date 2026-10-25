@@ -1,31 +1,41 @@
+import { and, count, eq, isNull } from "drizzle-orm";
+import { db } from "@/db";
+import { members, tasks } from "@/db/schema";
+import { TIMEZONE } from "@/lib/app";
 import { requireAdmin } from "@/lib/auth";
-import { AUTO_CONFIRM_AI_TASKS, getFlag } from "@/lib/settings";
-import { PageTitle, Section } from "@/components/ui-kit";
-import { AutoConfirmToggle } from "./toggle";
+import { aiConfirmationSetting } from "@/lib/settings";
+import { PageTitle } from "@/components/ui-kit";
+import { AiConfirmationForm } from "./ai-confirmation-form";
 
 export default async function AdminSettingsPage() {
-  // The setting does not depend on who is asking, so it is read while the session is checked.
-  const [, autoConfirm] = await Promise.all([requireAdmin(), getFlag(AUTO_CONFIRM_AI_TASKS)]);
+  const [, setting, [waiting]] = await Promise.all([
+    requireAdmin(),
+    aiConfirmationSetting(),
+    db
+      .select({ n: count() })
+      .from(tasks)
+      .where(and(eq(tasks.createdByAi, true), isNull(tasks.aiConfirmedAt), isNull(tasks.deletedAt))),
+  ]);
+  const [by] = setting.updatedById ? await db.select({ name: members.name }).from(members).where(eq(members.id, setting.updatedById)) : [];
 
   return (
-    <section className="flex max-w-2xl flex-col gap-10">
-      <PageTitle accent="settings" sub="Switches that apply to the whole institute.">
-        Admin
+    <section className="flex max-w-2xl flex-col gap-8">
+      <PageTitle accent="settings" sub="Choices that apply to the whole institute. Only admins see this page.">
+        System
       </PageTitle>
 
-      <Section n={1} title="AI tasks">
-        <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card">
-          <h2 className="font-display text-lg font-semibold tracking-display">Confirming AI tasks</h2>
-          <p className="max-w-prose text-sm text-muted">
-            A task that AI created from meeting notes normally waits for its assignee to confirm it, and does not count in
-            anyone&apos;s numbers until they do. Turn confirming off when you trust the notes and want the tasks to count at once.
-          </p>
-          <AutoConfirmToggle on={autoConfirm} />
-          <p className="text-xs text-subtle">
-            This applies to AI tasks created from now on. Tasks already waiting keep their “AI” badge until someone confirms them.
-          </p>
-        </div>
-      </Section>
+      <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card" data-testid="ai-confirmation">
+        <h2 className="font-display text-lg font-semibold tracking-display">Do AI-created tasks need confirming?</h2>
+        <p className="text-sm text-fg-2">
+          Tasks the AI creates from meeting notes. Now: <strong>{setting.required ? "yes, the assignee confirms them" : "no, they count at once"}</strong>
+          {setting.required && waiting.n > 0 ? ` · ${waiting.n} waiting for review` : ""}
+          {setting.updatedAt
+            ? ` · changed ${setting.updatedAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TIMEZONE })}${by ? ` by ${by.name}` : ""}`
+            : " (the default)"}
+          .
+        </p>
+        <AiConfirmationForm required={setting.required} waiting={waiting.n} />
+      </div>
     </section>
   );
 }

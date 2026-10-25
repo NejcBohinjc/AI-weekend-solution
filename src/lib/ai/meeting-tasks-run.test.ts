@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { closeDb, db } from "@/db";
-import { aiTaskItems, aiTaskRuns, meetingInvites, meetingNotes, meetings, members, tasks } from "@/db/schema";
+import { aiTaskItems, aiTaskRuns, appSettings, meetingInvites, meetingNotes, meetings, members, taskEvents, tasks } from "@/db/schema";
+import { aiTasksNeedConfirmation, setAiTasksNeedConfirmation } from "@/lib/settings";
 import { testDatabaseSkip } from "@/lib/test-db";
 import type { ModelCall } from "./meeting-tasks";
 import { createTasksFromNote, hashNotes } from "./meeting-tasks-run";
@@ -30,6 +31,7 @@ const aiTasks = () => db.select().from(tasks).where(and(eq(tasks.sourceMeetingId
 
 describe("create tasks from notes", { skip: testDatabaseSkip() }, () => {
   before(async () => {
+    await db.delete(appSettings); // the defaults
     // The test database starts empty: add the members these tests use.
     await db
       .insert(members)
@@ -49,6 +51,7 @@ describe("create tasks from notes", { skip: testDatabaseSkip() }, () => {
     const ids = (await aiTasks()).map((t) => t.id);
     if (ids.length) await db.delete(tasks).where(inArray(tasks.id, ids));
     await db.delete(meetings).where(eq(meetings.id, meetingId)); // cascades notes, runs, items, invites
+    await db.delete(appSettings); // back to the defaults
     await closeDb();
   });
 
@@ -97,6 +100,39 @@ describe("create tasks from notes", { skip: testDatabaseSkip() }, () => {
     const live = await db.select().from(tasks).where(and(eq(tasks.sourceMeetingId, meetingId), isNull(tasks.deletedAt)));
     assert.deepEqual(live.map((t) => t.title).sort(), ["Book the room", "Write the report"]);
     assert.equal((await db.select().from(aiTaskItems).where(eq(aiTaskItems.meetingId, meetingId))).length, 3);
+  });
+
+  test("Admin → Settings: with confirming off, waiting AI tasks are accepted (with history) and new ones count at once", async () => {
+    assert.equal(await aiTasksNeedConfirmation(), true, "on by default");
+    const waiting = (await aiTasks()).filter((t) => !t.deletedAt && !t.aiConfirmedAt);
+    assert.ok(waiting.length > 0);
+
+    const { accepted } = await setAiTasksNeedConfirmation(false, zigaId);
+    assert.equal(await aiTasksNeedConfirmation(), false);
+    assert.ok(accepted >= waiting.length);
+    for (const t of await aiTasks()) if (!t.deletedAt) assert.ok(t.aiConfirmedAt, `${t.title} is accepted`);
+    const events = await db
+      .select()
+      .from(taskEvents)
+      .where(and(inArray(taskEvents.taskId, waiting.map((t) => t.id)), eq(taskEvents.kind, "confirmed")));
+    assert.equal(events.length, waiting.length);
+    assert.match(events[0].newValue ?? "", /Accepted automatically/);
+
+    reply = { action_items: [{ title: "Order the banners", assignee_email: "ziga.krajnc@sandbox.example", due_date: null, type: null, quote: "banners" }] };
+    const r = await createTasksFromNote({ noteId: await addNote("Žiga orders the banners."), member: { id: zigaId, isAdmin: false }, call: fakeClaude });
+    assert.equal(r.confirmed, true);
+    const [banners] = (await aiTasks()).filter((t) => t.title === "Order the banners");
+    assert.ok(banners.aiConfirmedAt, "counts at once");
+    assert.equal(banners.createdByAi, true, "still marked AI");
+
+    // Back on: new AI tasks wait for review again; accepted ones stay accepted.
+    await setAiTasksNeedConfirmation(true, zigaId);
+    reply = { action_items: [{ title: "Print the flyers", assignee_email: "ziga.krajnc@sandbox.example", due_date: null, type: null, quote: "flyers" }] };
+    const r2 = await createTasksFromNote({ noteId: await addNote("Žiga prints the flyers."), member: { id: zigaId, isAdmin: false }, call: fakeClaude });
+    assert.equal(r2.confirmed, false);
+    const [flyers] = (await aiTasks()).filter((t) => t.title === "Print the flyers");
+    assert.equal(flyers.aiConfirmedAt, null);
+    assert.ok((await aiTasks()).find((t) => t.title === "Order the banners")?.aiConfirmedAt);
   });
 
   test("only invitees and admins can run it; a rate limit applies per member", async () => {

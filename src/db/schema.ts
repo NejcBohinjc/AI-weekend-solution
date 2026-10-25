@@ -244,15 +244,6 @@ export const syncState = pgTable("sync_state", {
   lastError: text("last_error"),
 });
 
-// Settings the whole institute shares: one row per switch, changed by admins only. Key/value, so
-// the next switch needs no migration.
-export const appSettings = pgTable("app_settings", {
-  key: text("key").primaryKey(),
-  value: text("value").notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedById: integer("updated_by_id").references(() => members.id, { onDelete: "set null" }),
-});
-
 // One row per "Sync from Google Sheets" run, with the full report.
 export const taskSyncs = pgTable("task_syncs", {
   id: serial("id").primaryKey(),
@@ -727,4 +718,13 @@ export const slackWithdrawals = pgTable("slack_withdrawals", {
   attempts: integer("attempts").notNull().default(0),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// System-wide settings that admins change on Admin → Settings (src/lib/settings.ts). One row per
+// setting; a missing row means the default.
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedById: integer("updated_by_id").references(() => members.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

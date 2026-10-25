@@ -6,7 +6,7 @@ import { and, count, desc, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
 import { aiTaskItems, aiTaskRuns, meetingInvites, meetingNotes, meetings, members, taskEvents, tasks } from "@/db/schema";
 import { ljubljanaParts } from "@/lib/hours/time";
-import { AUTO_CONFIRM_AI_TASKS, getFlag } from "@/lib/settings";
+import { aiTasksNeedConfirmation } from "@/lib/settings";
 import { AI_RUNS_PER_HOUR, callClaude, extractActionItems, itemKey, type ActionItem, type ModelCall } from "./meeting-tasks";
 
 export function hashNotes(content: string): string {
@@ -31,6 +31,7 @@ export type AiRunResult = {
   skipped: number;
   discarded: number;
   reused: boolean;
+  confirmed?: boolean; // the created tasks count at once (confirming AI tasks is off)
 };
 
 export async function createTasksFromNote({
@@ -96,8 +97,8 @@ export async function createTasksFromNote({
 
   const created: { id: number; title: string }[] = [];
   let skipped = 0;
-  // Read the switch before the transaction: it decides whether these tasks still need a tap to confirm.
-  const autoConfirm = await getFlag(AUTO_CONFIRM_AI_TASKS);
+  // Admin → Settings: with confirmation off, the tasks count at once (no review by the assignee).
+  const confirmed = !(await aiTasksNeedConfirmation());
   await db.transaction(async (tx) => {
     const [run] = await tx
       .insert(aiTaskRuns)
@@ -140,8 +141,7 @@ export async function createTasksFromNote({
           sourceQuote: item.quote,
           aiModel: usage.model,
           triggeredById: member.id,
-          // With the switch on, the task counts from the start; with it off, its assignee confirms it.
-          aiConfirmedAt: autoConfirm ? new Date() : null,
+          aiConfirmedAt: confirmed ? now : null,
         })
         .returning({ id: tasks.id, title: tasks.title });
       await tx.update(aiTaskItems).set({ taskId: task.id }).where(eq(aiTaskItems.id, slot.id));
@@ -150,11 +150,11 @@ export async function createTasksFromNote({
         actorId: member.id,
         source: "ai",
         kind: "created",
-        newValue: `Created by AI from the notes of “${meeting.title}”`,
+        newValue: `Created by AI from the notes of “${meeting.title}”${confirmed ? " (counts at once: confirming AI tasks is off)" : ""}`,
       });
       created.push(task);
     }
     await tx.update(aiTaskRuns).set({ created: created.length, skipped }).where(eq(aiTaskRuns.id, run.id));
   });
-  return { ok: true, created, skipped, discarded, reused: !!earlier };
+  return { ok: true, created, skipped, discarded, reused: !!earlier, confirmed };
 }

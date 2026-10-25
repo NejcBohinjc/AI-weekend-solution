@@ -66,7 +66,7 @@ export function CreateTasksButton({ action }: { action: (prev: AiRunState) => Pr
         <div role="status" className="rounded-xl bg-violet-bg px-4 py-3 text-sm text-fg-2" data-testid="ai-result">
           <p className="font-semibold text-violet">
             {state.created.length
-              ? `Created ${state.created.length} ${state.created.length === 1 ? "task" : "tasks"} (marked AI, waiting for review):`
+              ? `Created ${state.created.length} ${state.created.length === 1 ? "task" : "tasks"} (marked AI${state.confirmed ? "" : ", waiting for review"}):`
               : "No new tasks."}
           </p>
           {state.created.length > 0 && (

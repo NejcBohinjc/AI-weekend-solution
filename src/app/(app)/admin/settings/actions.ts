@@ -2,20 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
-import { AUTO_CONFIRM_AI_TASKS, setFlag } from "@/lib/settings";
+import { setAiTasksNeedConfirmation } from "@/lib/settings";
 
-export type SettingsState = { done?: string; error?: string } | null;
+export type SettingsState = { saved?: boolean; message?: string } | null;
 
-/** Turns the "AI tasks need confirming" requirement off or on for the whole institute. */
-export async function setAutoConfirmAction(_prev: SettingsState, form: FormData): Promise<SettingsState> {
-  const me = await requireAdmin();
-  const on = form.get("on") === "true";
-  try {
-    await setFlag(AUTO_CONFIRM_AI_TASKS, on, me.id);
-  } catch {
-    return { error: "Could not save the setting. Try again." };
-  }
-  revalidatePath("/admin/settings");
-  revalidatePath("/tasks");
-  return { done: on ? "New AI tasks now count straight away." : "New AI tasks now wait to be confirmed." };
+/** Admin → Settings: whether AI-created tasks wait for the assignee to confirm them. */
+export async function saveAiConfirmationAction(_prev: SettingsState, formData: FormData): Promise<SettingsState> {
+  const admin = await requireAdmin();
+  const required = formData.get("aiConfirmation") !== "off";
+  const { accepted } = await setAiTasksNeedConfirmation(required, admin.id);
+  for (const path of ["/admin/settings", "/tasks", "/dashboard", "/projects", "/admin/analytics"]) revalidatePath(path, "layout");
+  const message = required
+    ? "Saved. New AI-created tasks wait for the assignee to confirm them."
+    : `Saved. New AI-created tasks count at once.${accepted ? ` ${accepted} waiting ${accepted === 1 ? "task was" : "tasks were"} accepted.` : ""}`;
+  return { saved: true, message };
 }
