@@ -51,6 +51,9 @@ const env = {
   SUPABASE_URL: "",
   SUPABASE_SERVICE_ROLE_KEY: "",
   OPENAI_API_KEY: "",
+  TRANSCRIBE_API_KEY: "",
+  TRANSCRIBE_BASE_URL: "",
+  TRANSCRIBE_MODEL: "",
 };
 
 if (dbUrl) {

@@ -184,7 +184,7 @@ function Transcription({ rec, meetingId, transcribeReady }: { rec: RecordingView
   }
 
   if (!transcribeReady) {
-    return <p className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning">Transcription is off: OPENAI_API_KEY is not set. (Only admins see this.)</p>;
+    return <p className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning">Transcription is off: TRANSCRIBE_API_KEY is not set. (Only admins see this.)</p>;
   }
   const languagePicker = (
     <select value={languages} onChange={(e) => setLanguages(e.target.value)} className={`${inputClass} w-auto py-1.5 text-sm`} aria-label="Language of the recording">
